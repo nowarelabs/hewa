@@ -27,7 +27,6 @@ hewa/
 │   ├── errors/         @hewa/errors   — typed application errors
 │   ├── observability/  @hewa/observability — logging, request context, metrics
 │   ├── proto/          @hewa/proto    — protobuf schemas + buf-generated code
-│   ├── utils/          @hewa/utils    — published library (vp pack)
 │   ├── marketplace-types/ @hewa/marketplace-types — money, SLA, capacity, transactions
 │   ├── billing-domain/ @hewa/billing-domain — commitments, overage, SLA credits
 │   ├── settlement-domain/ @hewa/settlement-domain — payout obligations and FX
@@ -157,8 +156,8 @@ Run a single package by selecting it explicitly:
 
 ```bash
 pnpm --filter @hewa/website dev
-pnpm --filter @hewa/utils test
-pnpm --filter @hewa/utils build
+pnpm --filter @hewa/proto test
+pnpm --filter @hewa/proto build
 ```
 
 `pnpm run` with no arguments lists every script; `vp run` also lists

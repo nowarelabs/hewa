@@ -15,11 +15,18 @@ import {
   totalsFor,
   trialBalance,
   accrueSlaCredit,
+  convertCurrencies,
+  recordChainFee,
+  settlePayoutObligation,
 } from "../src/index.ts";
 
 const receivable = account("ar:isp:1", "Receivable - ISP", "asset", "USD");
 const revenue = account("rev:bandwidth", "Revenue - bandwidth", "revenue", "USD");
-const cash = account("asset:cash", "Cash - USDC", "asset", "USD");
+const cash = account("asset:cash", "Cash", "asset", "USD");
+const payable = account("ap:isp:1", "Payable - ISP", "liability", "USD");
+const usdcClearing = account("asset:usdc", "Clearing - USDC", "asset", "USDC");
+const fxPosition = account("equity:fx", "FX position", "equity", "USD");
+const chainExpense = account("exp:chain", "Expense - chain fees", "expense", "USDC");
 
 describe("chart of accounts", () => {
   test("assigns the normal balance side per type", () => {
@@ -191,5 +198,121 @@ describe("entry templates", () => {
     ];
     for (const entry of entries)
       expect(() => assertBalanced(entry.postings, entry.id)).not.toThrow();
+  });
+});
+
+describe("stablecoin payout", () => {
+  /**
+   * A payout is three entries, not one. The version that was drawn first —
+   * retained earnings, the ISP payout account, and gas, in a single entry —
+   * does not balance and cannot be made to, and putting a USD leg and a USDC
+   * leg in one entry fails for a different reason again: `assertBalanced`
+   * nets each currency separately, so the two can never cancel.
+   */
+  const payout = () => [
+    settlePayoutObligation(
+      "je:pay:1",
+      "payout:2026-09:vituIT",
+      "2026-09-15T02:00:00.000Z",
+      money(12_500_00, "USD"),
+      payable.id,
+      cash.id,
+    ),
+    convertCurrencies(
+      "je:fx:1",
+      "payout:2026-09:vituIT",
+      "2026-09-15T02:00:00.000Z",
+      money(12_500_00, "USD"),
+      money(12_500_000_000, "USDC"),
+      cash.id,
+      usdcClearing.id,
+      fxPosition.id,
+    ),
+    recordChainFee(
+      "je:fee:1",
+      "payout:2026-09:vituIT",
+      "2026-09-15T02:20:00.000Z",
+      money(2_000_000, "USDC"),
+      chainExpense.id,
+      usdcClearing.id,
+    ),
+  ];
+
+  test("balances every currency independently", () => {
+    const entries = payout();
+    expect(() => assertLedgerBalances(entries, "USD")).not.toThrow();
+    expect(() => assertLedgerBalances(entries, "USDC")).not.toThrow();
+  });
+
+  test("is rejected if USD and USDC are tried as one balanced entry", () => {
+    // The trap, pinned: a naive entry that debits the USD amount and credits
+    // the USDC amount reads as "balanced" to the eye and is not.
+    expect(() =>
+      journalEntry("je:naive", "r", "t", "naive", [
+        posting(cash.id, money(12_500_00, "USD")),
+        posting(usdcClearing.id, money(-12_500_000_000, "USDC")),
+      ]),
+    ).toThrow(/Ledger entry does not balance|balance/);
+  });
+
+  test("leaves the FX difference on the position account", () => {
+    // At par, the position nets to nothing. Buy 12,500.00 USD of USDC for
+    // 12,499.00 and the shortfall is the realised loss, not a rounding error
+    // to be absorbed silently.
+    const entry = convertCurrencies(
+      "je:fx:2",
+      "r",
+      "t",
+      money(12_499_00, "USD"),
+      money(12_500_000_000, "USDC"),
+      cash.id,
+      usdcClearing.id,
+      fxPosition.id,
+    );
+    const usd = totalsFor(entry, "USD");
+    expect(usd.debits.amountMinor).toBe(usd.credits.amountMinor);
+    expect(totalsFor(entry, "USDC").debits.amountMinor).toBe(
+      totalsFor(entry, "USDC").credits.amountMinor,
+    );
+    expect(entry.postings.filter((p) => p.accountId === fxPosition.id)).toHaveLength(2);
+  });
+
+  test("refuses a conversion that changes no currency", () => {
+    expect(() =>
+      convertCurrencies(
+        "je:fx:3",
+        "r",
+        "t",
+        money(100, "USD"),
+        money(100, "USD"),
+        cash.id,
+        cash.id,
+        fxPosition.id,
+      ),
+    ).toThrow(/must change currency/);
+  });
+
+  test("keeps the chain fee out of the FX result", () => {
+    const entries = payout();
+    const fx = convertCurrencies(
+      "je:fx:4",
+      "r",
+      "t",
+      money(12_500_00, "USD"),
+      money(12_500_000_000, "USDC"),
+      cash.id,
+      usdcClearing.id,
+      fxPosition.id,
+    );
+    const usdcFromFee = entries
+      .filter((e) => e.id === "je:fee:1")
+      .flatMap((e) => e.postings)
+      .filter((p) => p.accountId === usdcClearing.id)
+      .reduce((sum, p) => sum + p.amount.amountMinor, 0);
+    const usdcFromFx = fx.postings
+      .filter((p) => p.accountId === usdcClearing.id)
+      .reduce((sum, p) => sum + p.amount.amountMinor, 0);
+    expect(usdcFromFee).not.toBe(0);
+    expect(usdcFromFx).toBe(12_500_000_000);
   });
 });

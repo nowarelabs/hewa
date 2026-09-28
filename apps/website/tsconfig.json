@@ -14,12 +14,6 @@
     "moduleDetection": "force",
     "noEmit": true,
 
-    /* Resolve workspace libraries from source so type checking and the dev
-       server both work without building them first. */
-    "paths": {
-      "@hewa/utils": ["../../packages/utils/src/index.ts"]
-    },
-
     /* Linting */
     "noUnusedLocals": true,
     "noUnusedParameters": true,

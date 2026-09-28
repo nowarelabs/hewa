@@ -1,0 +1,162 @@
+syntax = "proto3";
+
+package hewa.identity.v1;
+
+import "google/protobuf/duration.proto";
+import "google/protobuf/timestamp.proto";
+import "hewa/common/v1/common.proto";
+
+// What a party is on the platform.
+//
+// One enum rather than an `Isp` message and a `Customer` message: both are a
+// party with an id and a name, and the differences between them are which
+// services they are allowed to call, not what the record is. Splitting them
+// would put the same identity check in several services.
+enum PartyKind {
+  PARTY_KIND_UNSPECIFIED = 0;
+  // Sells or resells bandwidth capacity.
+  PARTY_KIND_ISP = 1;
+  // Subscribes to service. A business on a circuit, not a person.
+  PARTY_KIND_CUSTOMER = 2;
+  // Provides capacity or field service.
+  PARTY_KIND_SUPPLIER = 3;
+  // Carries out surveys, installs, and repairs.
+  PARTY_KIND_FIELD_ENGINEER = 4;
+  // hewa staff. Internal only.
+  PARTY_KIND_INTERNAL = 5;
+}
+
+enum PrincipalStatus {
+  PRINCIPAL_STATUS_UNSPECIFIED = 0;
+  PRINCIPAL_STATUS_ACTIVE = 1;
+  PRINCIPAL_STATUS_SUSPENDED = 2;
+  PRINCIPAL_STATUS_REVOKED = 3;
+}
+
+enum ApiKeyStatus {
+  API_KEY_STATUS_UNSPECIFIED = 0;
+  API_KEY_STATUS_ACTIVE = 1;
+  API_KEY_STATUS_EXPIRED = 2;
+  API_KEY_STATUS_REVOKED = 3;
+}
+
+// What a principal or key is allowed to do.
+//
+// A closed enum rather than free-text scopes, because a scope that nothing
+// declares is a scope nothing checks. Adding a capability means adding a value
+// here, and every service that switches on the scope then has a compile error
+// where it needs a new decision.
+enum Scope {
+  SCOPE_UNSPECIFIED = 0;
+  // Read invoices, payments, and disputes for the party.
+  SCOPE_BILLING_READ = 1;
+  // Pay an invoice.
+  SCOPE_BILLING_WRITE = 2;
+  // Read own usage, commitments, and SLA performance.
+  SCOPE_USAGE_READ = 3;
+  // Read own payout obligations and settlement history.
+  SCOPE_SETTLEMENT_READ = 4;
+  // Read own service orders.
+  SCOPE_SERVICE_ORDER_READ = 5;
+  // Place and cancel service orders.
+  SCOPE_SERVICE_ORDER_WRITE = 6;
+  // Operate the webhook endpoints and replay deliveries.
+  SCOPE_WEBHOOK_MANAGE = 7;
+  // Reconciliation, disputes, and adjustments. Internal and support.
+  SCOPE_RECONCILIATION_MANAGE = 8;
+  // Approve a month close. Held by finance only.
+  SCOPE_LEDGER_ADMIN = 9;
+  // Trigger and read attestations.
+  SCOPE_ATTESTATION_MANAGE = 10;
+}
+
+// A party on the platform, whatever kind it is.
+message Party {
+  string party_id = 1;
+  PartyKind kind = 2;
+  string display_name = 3;
+  // Owning tenant. Every read is scoped by this, and it is the value carried
+  // in `hewa.common.v1.Metadata.tenant_id` so a log line can be traced back to
+  // exactly one customer of the platform.
+  string tenant_id = 4;
+  google.protobuf.Timestamp created_at = 5;
+}
+
+// An authenticated actor for the duration of a session.
+message Principal {
+  string principal_id = 1;
+  string party_id = 2;
+  string tenant_id = 3;
+  repeated Scope scopes = 4;
+  PrincipalStatus status = 5;
+  google.protobuf.Timestamp issued_at = 6;
+  google.protobuf.Timestamp expires_at = 7;
+}
+
+// A long-lived credential for a machine integrator.
+message ApiKey {
+  string key_id = 1;
+  string party_id = 2;
+  string tenant_id = 3;
+  repeated Scope scopes = 4;
+  ApiKeyStatus status = 5;
+  // The leading characters of the key, stored so an operator can identify a key
+  // in a log without the log ever carrying the secret.
+  string display_prefix = 6;
+  google.protobuf.Timestamp created_at = 7;
+  // Null until first use; a key that has never been used is worth knowing
+  // about before it is rotated.
+  google.protobuf.Timestamp last_used_at = 8;
+  google.protobuf.Timestamp expires_at = 9;
+}
+
+message AuthenticateRequest {
+  string token = 1;
+  hewa.common.v1.Metadata metadata = 2;
+}
+
+message AuthenticateResponse {
+  Principal principal = 1;
+}
+
+message IssueTokenRequest {
+  string party_id = 1;
+  repeated Scope scopes = 2;
+  google.protobuf.Duration ttl = 3;
+}
+
+message IssueTokenResponse {
+  // Bearer token. Returned once and never again; there is no way to read it
+  // back, which is the point.
+  string token = 1;
+  Principal principal = 2;
+}
+
+message ResolveApiKeyRequest {
+  string api_key = 1;
+}
+
+message ResolveApiKeyResponse {
+  ApiKey api_key_record = 1;
+}
+
+message RevokeApiKeyRequest {
+  string key_id = 1;
+}
+
+message RevokeApiKeyResponse {
+  ApiKey api_key_record = 1;
+}
+
+// The only place a caller learns who it is and what it may do.
+//
+// Every other service calls this rather than validating a token itself. Token
+// format, key hashing, and revocation are all decisions that have to be made
+// once; the alternative is eleven services each with a slightly different
+// opinion about when a token is valid.
+service IdentityService {
+  rpc Authenticate(AuthenticateRequest) returns (AuthenticateResponse);
+  rpc IssueToken(IssueTokenRequest) returns (IssueTokenResponse);
+  rpc ResolveApiKey(ResolveApiKeyRequest) returns (ResolveApiKeyResponse);
+  rpc RevokeApiKey(RevokeApiKeyRequest) returns (RevokeApiKeyResponse);
+}

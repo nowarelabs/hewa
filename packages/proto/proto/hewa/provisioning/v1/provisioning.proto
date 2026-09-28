@@ -56,3 +56,60 @@ message ProvisioningFailed {
   bool reported_upstream = 5;
   google.protobuf.Timestamp failed_at = 6;
 }
+
+message SubmitOrderRequest {
+  CustomerOrder order = 1;
+  // Idempotency key, unique per BSS/OSS. Submitting the same order twice would
+  // provision the same subscriber twice, and a duplicate activation is a
+  // customer with two circuits and one bill.
+  string idempotency_key = 2;
+}
+
+message SubmitOrderResponse {
+  CustomerOrder order = 1;
+  // False when the order was recognised as already submitted. Success, not
+  // failure: the caller wanted it provisioned once and it is.
+  bool duplicate = 2;
+}
+
+message GetCustomerOrderRequest {
+  string order_id = 1;
+}
+
+message GetCustomerOrderResponse {
+  CustomerOrder order = 1;
+}
+
+message ListCustomerOrdersRequest {
+  string isp_id = 1;
+  ProvisioningStatus status = 2;
+  int32 page_size = 3;
+  string page_token = 4;
+}
+
+message ListCustomerOrdersResponse {
+  repeated CustomerOrder orders = 1;
+  string next_page_token = 2;
+}
+
+message RetryProvisioningRequest {
+  string order_id = 1;
+}
+
+message RetryProvisioningResponse {
+  CustomerOrder order = 1;
+}
+
+// Drives a BSS/OSS order through to an active subscriber.
+//
+// The vendor is behind an interface, not an import, so this service is the only
+// thing that knows an Amdocs wire format exists. It is also the only place a
+// vendor's error body could leak customer data into our logs, so an upstream
+// failure arrives here as a status and a generic reason — never the vendor's
+// own message.
+service ProvisioningService {
+  rpc SubmitOrder(SubmitOrderRequest) returns (SubmitOrderResponse);
+  rpc GetCustomerOrder(GetCustomerOrderRequest) returns (GetCustomerOrderResponse);
+  rpc ListCustomerOrders(ListCustomerOrdersRequest) returns (ListCustomerOrdersResponse);
+  rpc RetryProvisioning(RetryProvisioningRequest) returns (RetryProvisioningResponse);
+}

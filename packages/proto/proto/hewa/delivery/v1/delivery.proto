@@ -5,24 +5,61 @@ package hewa.delivery.v1;
 import "google/protobuf/timestamp.proto";
 import "hewa/common/v1/common.proto";
 
-// Status of a delivery attempt.
+// Where a field visit is in its life.
+//
+// These are the states a technician's day actually has, not a parcel courier's.
+// What the visit *achieved* is not here: a completed survey and a completed
+// install are both `COMPLETED`, and telling them apart is the order's job —
+// `hewa.service_order.v1.ServiceOrderStatus` moves to `SURVEY_COMPLETE` or
+// `INSTALLED` from there. A visit that says the work is done, and an order that
+// decides what "done" means for this kind of work, are two different questions
+// and a courier-shaped single status cannot answer the second.
 enum DeliveryStatus {
   DELIVERY_STATUS_UNSPECIFIED = 0;
+  // Booked, nobody allocated yet.
   DELIVERY_STATUS_PENDING = 1;
+  // An engineer or crew is allocated.
   DELIVERY_STATUS_ASSIGNED = 2;
-  DELIVERY_STATUS_IN_TRANSIT = 3;
-  DELIVERY_STATUS_DELIVERED = 4;
-  DELIVERY_STATUS_FAILED = 5;
+  // Travelling to the site. A survey has not begun.
+  DELIVERY_STATUS_EN_ROUTE = 3;
+  // On site and working.
+  DELIVERY_STATUS_ON_SITE = 4;
+  // The visit happened and produced a result.
+  DELIVERY_STATUS_COMPLETED = 5;
+  // Could not be completed. `failure_reason` says why.
+  DELIVERY_STATUS_FAILED = 6;
+  // Cancelled before it happened, e.g. the order was withdrawn.
+  DELIVERY_STATUS_CANCELLED = 7;
 }
 
+// The field visit that satisfies one service order.
+//
+// Deliberately distinct from `hewa.service_order.v1.ServiceOrder`: the order is
+// what the customer asked for, this is who turns up, when, and what they found.
+// A visit records what a human observed — a drop point, a distance estimate, a
+// reason the site was not viable — and none of that belongs in the commercial
+// record.
 message Delivery {
   string delivery_id = 1;
   string order_id = 2;
   DeliveryStatus status = 3;
-  string courier_id = 4;
-  // RFC 3339 timestamps.
-  google.protobuf.Timestamp picked_up_at = 5;
-  google.protobuf.Timestamp delivered_at = 6;
+  // The engineer or crew doing the work. Either an ISP's own people or the
+  // platform's; the service order records which, because it decides who is
+  // charged.
+  string engineer_id = 4;
+  // When the visit is booked for.
+  google.protobuf.Timestamp scheduled_for = 5;
+  // When the work actually finished. Null until `COMPLETED` or `FAILED`.
+  google.protobuf.Timestamp completed_at = 6;
+  // Populated only on `FAILED` and `CANCELLED`. Never a free-text excuse for a
+  // site that was never surveyed.
+  string failure_reason = 7;
+  // Distance from the intended drop point to the nearest available hewa
+  // presence, in metres, as measured on the survey. The input to whether a
+  // site is viable at all.
+  int32 surveyed_distance_metres = 8;
+  // Notes taken on site. Attestation about the site, not about the order.
+  string notes = 9;
 }
 
 message DeliveryPlaced {
@@ -33,7 +70,70 @@ message DeliveryPlaced {
 
 message DeliveryStatusChanged {
   string delivery_id = 1;
+  // The order this delivery belongs to. Carried here, as on DeliveryPlaced, so
+  // both events partition on the same key. Keyed on `delivery_id` instead, a
+  // placement and its later status changes land on different partitions, and a
+  // consumer replaying one partition sees a delivery jump to "on site" with no
+  // placement before it.
+  string order_id = 5;
   DeliveryStatus previous_status = 2;
   DeliveryStatus status = 3;
   hewa.common.v1.Metadata metadata = 4;
+}
+
+message PlaceDeliveryRequest {
+  string order_id = 1;
+  string engineer_id = 2;
+  google.protobuf.Timestamp scheduled_for = 3;
+  // Idempotency key, unique per calling system. A retried booking that created
+  // a second visit would send two crews to one site.
+  string idempotency_key = 4;
+}
+
+message PlaceDeliveryResponse {
+  Delivery delivery = 1;
+}
+
+message GetDeliveryRequest {
+  string delivery_id = 1;
+}
+
+message GetDeliveryResponse {
+  Delivery delivery = 1;
+}
+
+message TransitionDeliveryRequest {
+  string delivery_id = 1;
+  DeliveryStatus status = 2;
+  // Must equal the visit's current status. A blind transition discards a
+  // concurrent change silently; the expected value turns that race into a
+  // retryable conflict instead.
+  DeliveryStatus expected_previous_status = 3;
+  string failure_reason = 4;
+  int32 surveyed_distance_metres = 5;
+  string notes = 6;
+}
+
+message TransitionDeliveryResponse {
+  Delivery delivery = 1;
+}
+
+message ListDeliveriesRequest {
+  string order_id = 1;
+  DeliveryStatus status = 2;
+  int32 page_size = 3;
+  string page_token = 4;
+}
+
+message ListDeliveriesResponse {
+  repeated Delivery deliveries = 1;
+  string next_page_token = 2;
+}
+
+// Owns the field-visit aggregate and its status machine.
+service DeliveryService {
+  rpc PlaceDelivery(PlaceDeliveryRequest) returns (PlaceDeliveryResponse);
+  rpc GetDelivery(GetDeliveryRequest) returns (GetDeliveryResponse);
+  rpc TransitionDelivery(TransitionDeliveryRequest) returns (TransitionDeliveryResponse);
+  rpc ListDeliveries(ListDeliveriesRequest) returns (ListDeliveriesResponse);
 }

@@ -74,3 +74,108 @@ message PayoutFailed {
   string reason = 3;
   google.protobuf.Timestamp failed_at = 4;
 }
+
+message CreatePayoutRequest {
+  string isp_id = 1;
+  string reference = 2;
+  hewa.common.v1.Money amount = 3;
+  hewa.common.v1.Money already_paid = 4;
+}
+
+message CreatePayoutResponse {
+  PayoutObligation obligation = 1;
+}
+
+message GetPayoutRequest {
+  string reference = 1;
+}
+
+message GetPayoutResponse {
+  PayoutObligation obligation = 1;
+}
+
+message ListPayoutsRequest {
+  string isp_id = 1;
+  PayoutStatus status = 2;
+  int32 page_size = 3;
+  string page_token = 4;
+}
+
+message ListPayoutsResponse {
+  repeated PayoutObligation obligations = 1;
+  string next_page_token = 2;
+}
+
+message QuoteConversionRequest {
+  hewa.common.v1.Money amount = 1;
+  string to_currency = 2;
+}
+
+message QuoteConversionResponse {
+  ConversionQuote quote = 1;
+}
+
+message PrepareTransferRequest {
+  // The obligation's reference, which is its idempotency key. Preparing the
+  // same one twice returns the same transfer rather than a second signature
+  // over a second amount.
+  string reference = 1;
+}
+
+message PrepareTransferResponse {
+  // The digest to sign, and the signed transfer once signed. A payout never
+  // carries a raw private key: the key lives in cloud KMS and this service only
+  // ever sees a digest and a signature.
+  bytes digest = 2;
+  bytes signature = 3;
+  string chain_id = 4;
+  string verifying_contract = 5;
+}
+
+message RecordPayoutSentRequest {
+  string reference = 1;
+  string transaction_hash = 2;
+}
+
+message RecordPayoutSentResponse {
+  PayoutObligation obligation = 1;
+}
+
+message RecordPayoutFailedRequest {
+  string reference = 1;
+  string reason = 2;
+  // Whether the service should try again. A rejected nonce or a transient RPC
+  // failure is retryable; an underfunded wallet is not, and retrying it forever
+  // would drain the gas budget on a payout that can never settle.
+  bool retryable = 3;
+}
+
+message RecordPayoutFailedResponse {
+  PayoutObligation obligation = 1;
+}
+
+message SettlementSummaryRequest {
+  string isp_id = 1;
+}
+
+message SettlementSummaryResponse {
+  hewa.common.v1.Money owed = 1;
+  hewa.common.v1.Money converted = 2;
+}
+
+// Owns the payout obligation and its status machine.
+//
+// Every transition is a separate RPC rather than a generic "update status"
+// because each one has a different precondition and a different consequence on
+// chain. A single settable field would let a caller move an obligation from
+// `COMPLETED` back to `PENDING` and have the books believe it.
+service SettlementService {
+  rpc CreatePayout(CreatePayoutRequest) returns (CreatePayoutResponse);
+  rpc GetPayout(GetPayoutRequest) returns (GetPayoutResponse);
+  rpc ListPayouts(ListPayoutsRequest) returns (ListPayoutsResponse);
+  rpc QuoteConversion(QuoteConversionRequest) returns (QuoteConversionResponse);
+  rpc PrepareTransfer(PrepareTransferRequest) returns (PrepareTransferResponse);
+  rpc RecordPayoutSent(RecordPayoutSentRequest) returns (RecordPayoutSentResponse);
+  rpc RecordPayoutFailed(RecordPayoutFailedRequest) returns (RecordPayoutFailedResponse);
+  rpc SettlementSummary(SettlementSummaryRequest) returns (SettlementSummaryResponse);
+}

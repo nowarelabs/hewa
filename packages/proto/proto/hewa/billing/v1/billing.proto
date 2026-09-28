@@ -91,3 +91,102 @@ message DisputeResolved {
   hewa.common.v1.Money adjustment = 4;
   google.protobuf.Timestamp resolved_at = 5;
 }
+
+message CalculateBillRequest {
+  string isp_id = 1;
+  string customer_id = 2;
+  // The month being billed, as `YYYYMM`. Not a timestamp: a bill is for a
+  // calendar month, and deriving one from a date in a timezone is a bug that
+  // only shows up at month boundaries.
+  uint32 month = 3;
+  hewa.common.v1.Money commitment_charge = 4;
+  hewa.common.v1.Money overage_charge = 5;
+  // A credit already granted for SLA misses, as a positive amount to deduct.
+  hewa.common.v1.Money sla_credit = 6;
+}
+
+message CalculateBillResponse {
+  Invoice invoice = 1;
+  // What was owed before the SLA credit, so a support agent can show the
+  // customer the service level they were credited for rather than only the
+  // reduced total.
+  hewa.common.v1.Money subtotal = 2;
+}
+
+message GetInvoiceRequest {
+  string invoice_id = 1;
+}
+
+message GetInvoiceResponse {
+  Invoice invoice = 1;
+}
+
+message ListInvoicesRequest {
+  string customer_id = 1;
+  InvoiceStatus status = 2;
+  int32 page_size = 3;
+  string page_token = 4;
+}
+
+message ListInvoicesResponse {
+  repeated Invoice invoices = 1;
+  string next_page_token = 2;
+}
+
+message RecordPaymentRequest {
+  string invoice_id = 1;
+  hewa.common.v1.Money amount = 2;
+  // The caller's unique reference for this payment. A retried `RecordPayment`
+  // that applied twice would mark an invoice settled that is not, so the
+  // reference is what makes the write idempotent rather than the amount.
+  string idempotency_key = 3;
+}
+
+message RecordPaymentResponse {
+  Invoice invoice = 1;
+  // What remains after this payment. A second application of the same payment
+  // leaves this unchanged.
+  hewa.common.v1.Money outstanding = 2;
+}
+
+message RaiseDisputeRequest {
+  string invoice_id = 1;
+  string reason = 2;
+  // The disputed lines. Empty means the whole invoice.
+  repeated string line_ids = 3;
+}
+
+message RaiseDisputeResponse {
+  string dispute_id = 1;
+}
+
+message ResolveDisputeRequest {
+  string dispute_id = 1;
+  DisputeStatus status = 2;
+  // The credit granted in settlement, if any.
+  hewa.common.v1.Money adjustment = 3;
+}
+
+message ResolveDisputeResponse {
+  Invoice invoice = 1;
+}
+
+message ReceivablesSummaryRequest {
+  string isp_id = 1;
+}
+
+message ReceivablesSummaryResponse {
+  hewa.common.v1.Money outstanding = 1;
+  hewa.common.v1.Money overdue = 2;
+}
+
+// Owns the invoice aggregate, disputes, and the commitment-plus-overage bill.
+service BillingService {
+  rpc CalculateBill(CalculateBillRequest) returns (CalculateBillResponse);
+  rpc GetInvoice(GetInvoiceRequest) returns (GetInvoiceResponse);
+  rpc ListInvoices(ListInvoicesRequest) returns (ListInvoicesResponse);
+  rpc RecordPayment(RecordPaymentRequest) returns (RecordPaymentResponse);
+  rpc RaiseDispute(RaiseDisputeRequest) returns (RaiseDisputeResponse);
+  rpc ResolveDispute(ResolveDisputeRequest) returns (ResolveDisputeResponse);
+  rpc ReceivablesSummary(ReceivablesSummaryRequest) returns (ReceivablesSummaryResponse);
+}

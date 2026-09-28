@@ -1,0 +1,55 @@
+syntax = "proto3";
+
+package hewa.rates.v1;
+
+import "google/protobuf/timestamp.proto";
+import "hewa/common/v1/common.proto";
+
+// A conversion rate as an exact fraction.
+//
+// Never a decimal and never a double. A rate is multiplied into an amount and
+// the result has to reconcile against a ledger, so a figure that has been
+// through a float has already lost digits it cannot get back. `rate` is
+// `rate_numerator / rate_denominator` reduced by nothing — the arithmetic that
+// consumes it does the dividing, once, and rounds once.
+message RateQuote {
+  string quote_id = 1;
+  // ISO 4217 code, e.g. `USD`, `KES`, `USDC`.
+  string from_currency = 2;
+  string to_currency = 3;
+  int64 rate_numerator = 4;
+  int64 rate_denominator = 5;
+  // Where the figure came from, e.g. a provider name or `on-chain`. Kept on
+  // the quote because "which rate" is a question months later, when someone is
+  // reconciling a payout that does not match.
+  string source = 6;
+  google.protobuf.Timestamp quoted_at = 7;
+  // A settlement run quotes once and executes many payouts. A quote that is
+  // still live at send time is the same rate for the whole batch, so every
+  // payout in a batch can be reconciled to one printed rate.
+  google.protobuf.Timestamp expires_at = 8;
+}
+
+message QuoteRequest {
+  string from_currency = 1;
+  string to_currency = 2;
+  // The amount to convert. Optional: a caller that only needs the rate for a
+  // disclosure or a preview may leave it unset and get the quote alone.
+  hewa.common.v1.Money notional = 3;
+}
+
+message QuoteResponse {
+  RateQuote quote = 1;
+  // The converted amount, computed with the quote's own rate and rounded once,
+  // half away from zero. Unset when `notional` was.
+  hewa.common.v1.Money converted = 2;
+}
+
+// Supplies one number: what a currency is worth in another, exactly.
+//
+// Deliberately the whole surface. A rate that a service can fetch from two
+// places is a rate that will be fetched from two places, and the two figures
+// will differ by a basis point in whichever direction nobody is looking.
+service RatesService {
+  rpc Quote(QuoteRequest) returns (QuoteResponse);
+}

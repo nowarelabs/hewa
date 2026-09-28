@@ -2,12 +2,26 @@ version: v2
 managed:
   enabled: false
 plugins:
-  - local: protoc-gen-ts_proto
+  # protobuf-es, not ts-proto. The Connect RPC layer needs v2 descriptors
+  # (`DescService`, `DescMessage`) and ts-proto emits its own `MessageFns`
+  # encoding instead, which the two toolchains cannot share.
+  #
+  # `import_extension=.js` is not optional: `@hewa/tsconfig/base.json` sets
+  # `moduleResolution: nodenext`, which requires an extension on every
+  # relative import in an ES module.
+  #
+  # Left at the protobuf-es defaults on purpose:
+  #
+  #  - int64/uint64 become `bigint`, not `string`. The old `forceLong=string`
+  #    made every 64-bit field a parse, and `Money.amount_minor` is far happier
+  #    as a `bigint` — it matches `TokenAmount` in `@hewa/blockchain-types`, so
+  #    a money figure no longer changes type on its way to the chain.
+  #  - singular message fields are `T | undefined` with no `| null`, which is
+  #    what `useOptionals=messages` bought us.
+  #  - `json_types` stays off; `@bufbuild/protobuf`'s `toJson`/`fromJson` cover
+  #    the JSON hop without a second generated type per message.
+  - local: protoc-gen-es
     out: src/gen
     opt:
-      - esModuleInterop=true
-      - forceLong=string
-      - importSuffix=.js
-      - outputServices=generic-definitions
-      - snakeToCamel=true
-      - useOptionals=messages
+      - target=ts
+      - import_extension=.js

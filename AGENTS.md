@@ -49,7 +49,6 @@ check.
 | `@hewa/supplier-dashboard`        | `apps/supplier-dashboard`        | private    |
 | `@hewa/financial-dashboard`       | `apps/financial-dashboard`       | private    |
 | `@hewa/billing-reconciliation-ui` | `apps/billing-reconciliation-ui` | private    |
-| `@hewa/utils`                     | `packages/utils`                 | published  |
 | `@hewa/tsconfig`                  | `packages/tsconfig`              | private    |
 | `@hewa/response-codes`            | `packages/response-codes`        | published  |
 | `@hewa/errors`                    | `packages/errors`                | published  |
@@ -102,10 +101,6 @@ Rules for working on the generator:
   reference them as `catalog:` from each package. Never pin versions directly in
   a workspace package.
 - Reference sibling packages with `workspace:*`, never a semver range.
-- `@hewa/utils` is resolved from source during development through a
-  `paths` entry in `apps/website/tsconfig.json` and a matching `resolve.alias`
-  in `apps/website/vite.config.ts`. Keep the two in sync, and do not drop the
-  `dist` conditions from `packages/utils/package.json`.
 - Shared packages depend on each other through built `dist` output at **runtime**
   and test time. Type checking uses a `paths` entry pointing at the sibling
   `src`, but Vite and Vitest resolve through `node_modules`. Build a shared

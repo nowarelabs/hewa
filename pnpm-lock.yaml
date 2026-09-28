@@ -201,9 +201,18 @@ catalogs:
     '@bufbuild/protobuf':
       specifier: ^2
       version: 2.15.0
+    '@bufbuild/protoc-gen-es':
+      specifier: ^2
+      version: 2.15.0
     '@changesets/cli':
       specifier: ^3
       version: 3.0.3
+    '@connectrpc/connect':
+      specifier: ^2
+      version: 2.2.0
+    '@connectrpc/connect-node':
+      specifier: ^2
+      version: 2.2.0
     '@hono/node-server':
       specifier: ^1
       version: 1.19.17
@@ -270,9 +279,6 @@ catalogs:
     rxjs:
       specifier: ^7
       version: 7.8.2
-    ts-proto:
-      specifier: ^2
-      version: 2.12.4
     typescript:
       specifier: ^6
       version: 6.0.3
@@ -626,10 +632,6 @@ importers:
         version: 1.0.0(@types/node@26.6.3)(@vitest/ui@5.0.1)(esbuild@0.28.2)(typescript@6.0.3)(yaml@2.9.1)
 
   apps/website:
-    dependencies:
-      '@hewa/utils':
-        specifier: workspace:*
-        version: link:../../packages/utils
     devDependencies:
       typescript:
         specifier: 'catalog:'
@@ -1049,19 +1051,25 @@ importers:
       '@bufbuild/protobuf':
         specifier: 'catalog:'
         version: 2.15.0
+      '@connectrpc/connect':
+        specifier: 'catalog:'
+        version: 2.2.0(@bufbuild/protobuf@2.15.0)
+      '@connectrpc/connect-node':
+        specifier: 'catalog:'
+        version: 2.2.0(@bufbuild/protobuf@2.15.0)(@connectrpc/connect@2.2.0(@bufbuild/protobuf@2.15.0))
     devDependencies:
       '@bufbuild/buf':
         specifier: 'catalog:'
         version: 1.73.0
+      '@bufbuild/protoc-gen-es':
+        specifier: 'catalog:'
+        version: 2.15.0(@bufbuild/protobuf@2.15.0)
       '@hewa/tsconfig':
         specifier: workspace:*
         version: link:../tsconfig
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.3
-      ts-proto:
-        specifier: 'catalog:'
-        version: 2.12.4
       typescript:
         specifier: 'catalog:'
         version: 6.0.3
@@ -1160,18 +1168,6 @@ importers:
         version: 1.0.0(@types/node@26.6.3)(@vitest/ui@5.0.1)(esbuild@0.28.2)(typescript@6.0.3)(yaml@2.9.1)
 
   packages/tsconfig: {}
-
-  packages/utils:
-    devDependencies:
-      '@types/node':
-        specifier: 'catalog:'
-        version: 26.6.3
-      typescript:
-        specifier: 'catalog:'
-        version: 6.0.3
-      vite-plus:
-        specifier: 'catalog:'
-        version: 1.0.0(@types/node@26.6.3)(@vitest/ui@5.0.1)(esbuild@0.28.2)(typescript@6.0.3)(yaml@2.9.1)
 
   services/billing-service:
     dependencies:
@@ -2122,6 +2118,19 @@ packages:
   '@bufbuild/protobuf@2.15.0':
     resolution: {integrity: sha512-DAheWUkVr/SJTWCc+lg9dhY0eN4SaWlf4+bG1KzHeXbnqt0AfB/NX0Z+VunGlM1ki1B4zVvye27MpKh/svySUA==}
 
+  '@bufbuild/protoc-gen-es@2.15.0':
+    resolution: {integrity: sha512-FRhNTAZEXW6arWx2JxgtpuazhmewYctXugu5SfXGpXpLLCInDT1005fSKDzEM/70Es2oIn07PM4RvpwvDvR/fg==}
+    engines: {node: '>=22'}
+    hasBin: true
+    peerDependencies:
+      '@bufbuild/protobuf': 2.15.0
+    peerDependenciesMeta:
+      '@bufbuild/protobuf':
+        optional: true
+
+  '@bufbuild/protoplugin@2.15.0':
+    resolution: {integrity: sha512-vZhRoqB/jTHATqItRvJQf1zbxdrGRRhiusGty4+lKcfEFODG0PMXky2Ezv4WHHS6oSxq+5qShITuE7K1/82SuQ==}
+
   '@capsizecss/unpack@4.0.1':
     resolution: {integrity: sha512-CuNiSqg7+e1cO/GjffyMOm5Tt2jUF9CWHHnvQ/UkqvtkGfHdgwEC0wpmq7fkN3gxwpRnrAN0WzO3vREKmNolMQ==}
     engines: {node: '>=18'}
@@ -2198,6 +2207,18 @@ packages:
   '@colors/colors@1.5.0':
     resolution: {integrity: sha512-ooWCrlZP11i8GImSjTHYHLkvFDP48nS4+204nGb1RiX/WXYHmJA2III9/e2DWVabCESdW7hBAEzHRqUn9OUVvQ==}
     engines: {node: '>=0.1.90'}
+
+  '@connectrpc/connect-node@2.2.0':
+    resolution: {integrity: sha512-E6uUO6e11WdynAuBjuN+0WpHjqxEM9BNDdfDIJHcn49Esg/WxSIbn2y1KFt9XL96IJi01qdBbvubcdpBz1X3Zw==}
+    engines: {node: '>=22'}
+    peerDependencies:
+      '@bufbuild/protobuf': ^2.7.0
+      '@connectrpc/connect': 2.2.0
+
+  '@connectrpc/connect@2.2.0':
+    resolution: {integrity: sha512-M63OQ1ZFcPUm85CuewJ9G9CMV8LjzGR9935xOnXNQGSazAbwMb3x2W7vXBYM1zqrP7XFD8uxp/dUAhirclgwnQ==}
+    peerDependencies:
+      '@bufbuild/protobuf': ^2.7.0
 
   '@emnapi/core@1.11.1':
     resolution: {integrity: sha512-RSvbQmHzdKzNsLYa/wHrbc3KN4sYLKAdPZxqiM2HATqv/SBk2/ENSHpvXGaLOMcsAyz0poEGqkmmKYG3OWiJEQ==}
@@ -3350,6 +3371,11 @@ packages:
   '@types/unist@3.0.3':
     resolution: {integrity: sha512-ko/gIFJRv177XgZsZcBwnqJN5x/Gien8qNOn0D5bQU/zAzVf9Zt3BlcUiLqhV9y4ARk0GbT3tnUiPNgnTXzc/Q==}
 
+  '@typescript/vfs@1.6.5':
+    resolution: {integrity: sha512-gobLHQLmvQGJInFk31NvgMd1uYzRXsd8qgnOssyLD055R2QPnw1ubRbBQ4+T+5qC7IQVuYXdvNDE2G7tMDVHgw==}
+    peerDependencies:
+      typescript: '*'
+
   '@ungap/structured-clone@1.4.0':
     resolution: {integrity: sha512-1mEZtMKPM09vDmQt5y7YvmN2+DFTP7Tg0EWXdic8/C6VRnpb33e4ghisCIE3WZjsE2N8mf+QV1Zqh7ZFYLWInQ==}
 
@@ -3778,10 +3804,6 @@ packages:
   caniuse-lite@1.0.30001812:
     resolution: {integrity: sha512-qN+QNNBr93TCmFrmte0bBCjSDMuRvt78VlHT99qIGPszm4QsqCX8lnyWUFkHi8B7ZBAPq8SH+UqyXNy/odMdng==}
 
-  case-anything@2.1.13:
-    resolution: {integrity: sha512-zlOQ80VrQ2Ue+ymH5OuM/DlDq64mEm+B9UTdHULv5osUMD6HalNTblf2b1u/m6QecjsnOkBpqVZ+XPwIVsy7Ng==}
-    engines: {node: '>=12.13'}
-
   ccount@2.0.1:
     resolution: {integrity: sha512-eyrF0jiFpY+3drT6383f1qhkbGsLSifNAjA61IUjZjmLCWjItY6LB9ft9YhoDgwfmclB2zhu51Lc7+95b8NRAg==}
 
@@ -3950,11 +3972,6 @@ packages:
   destr@2.0.5:
     resolution: {integrity: sha512-ugFTXCtDZunbzasqBxrK93Ik/DRYsO6S/fedkWEMKqt04xZ4csmnmwGDBAb07QWNaGMAmnTIemsYZCksjATwsA==}
 
-  detect-libc@1.0.3:
-    resolution: {integrity: sha512-pGjwhsmsp4kL2RTz08wcOlGN83otlqHeD/Z5T8GXZB+/YcpQ/dgo+lbU8ZsGxV0HIvqqxo9l7mqYwyYMD9bKDg==}
-    engines: {node: '>=0.10'}
-    hasBin: true
-
   detect-libc@2.1.2:
     resolution: {integrity: sha512-Btj2BOOO83o3WyH59e8MgXsxEQVcarkUOpEYrubB0urwnN10yQ364rsiByU11nZlqWYZm05i/of7io4mzihBtQ==}
     engines: {node: '>=8'}
@@ -3984,9 +4001,6 @@ packages:
 
   domutils@3.2.2:
     resolution: {integrity: sha512-6kZKyUajlDuqlHKVX1w7gyslj9MPIXzIFiz/rGu35uC1wMi+kMhQwGhl4lt9unC9Vb9INnY9Z3/ZA3+FhASLaw==}
-
-  dprint-node@1.0.8:
-    resolution: {integrity: sha512-iVKnUtYfGrYcW1ZAlfR/F59cUVL8QIhWoBJoSjkkdua/dkWIgjZfiLMeTjiB06X0ZLkQ0M2C1VbUj/CxkIf1zg==}
 
   dset@3.1.4:
     resolution: {integrity: sha512-2QF/g9/zTaPDc3BjNcVTGoBbXBgYfMTTceLaYcFJ/W9kggFUkhxD/hMEeuLKbugyef9SqAx8cpgwlIP/jinUTA==}
@@ -4971,16 +4985,6 @@ packages:
   trough@2.2.0:
     resolution: {integrity: sha512-tmMpK00BjZiUyVyvrBK7knerNgmgvcV/KLVyuma/SC+TQN167GrMRciANTz09+k3zW8L8t60jWO1GpfkZdjTaw==}
 
-  ts-poet@6.12.0:
-    resolution: {integrity: sha512-xo+iRNMWqyvXpFTaOAvLPA5QAWO6TZrSUs5s4Odaya3epqofBu/fMLHEWl8jPmjhA0s9sgj9sNvF1BmaQlmQkA==}
-
-  ts-proto-descriptors@2.1.0:
-    resolution: {integrity: sha512-S5EZYEQ6L9KLFfjSRpZWDIXDV/W7tAj8uW7pLsihIxyr62EAVSiKuVPwE8iWnr849Bqa53enex1jhDUcpgquzA==}
-
-  ts-proto@2.12.4:
-    resolution: {integrity: sha512-nZ2UyT+xEanL90lCnL0BrTfKtljZE4wnOvUqR0XUpuWCu3w4k8LUnR4AKJoy1UtxPDa1HpJ1z//pu2tvIPDrUA==}
-    hasBin: true
-
   tsconfig-paths@4.2.0:
     resolution: {integrity: sha512-NoZ4roiN7LnbKn9QqE1amc9DJfzvZXxF4xDavcOWt1BPkdx+m+0gJuPM+S0vCe7zTJMYUP0R8pO2XMr+Y8oLIg==}
     engines: {node: '>=6'}
@@ -4998,6 +5002,11 @@ packages:
   type-is@2.1.0:
     resolution: {integrity: sha512-faYHw0anBbc/kWF3zFTEnxSFOAGUX9GFbOBthvDdLsIlEoWOFOtS0zgCiQYwIskL9iGXZL3kAXD8OoZ4GmMATA==}
     engines: {node: '>= 18'}
+
+  typescript@5.4.5:
+    resolution: {integrity: sha512-vcI4UpRgg81oIRUFwR0WSIHKt11nJ7SAVlYNIu+QpqeyXP+gpQJy/Z4+F0aGxSE4MqwjyXvW/TzgkLAx2AGHwQ==}
+    engines: {node: '>=14.17'}
+    hasBin: true
 
   typescript@6.0.3:
     resolution: {integrity: sha512-y2TvuxSZPDyQakkFRPZHKFm+KKVqIisdg9/CZwm9ftvKXLP8NRWj38/ODjNbr43SsoXqNuAisEf1GdCxqWcdBw==}
@@ -5663,6 +5672,22 @@ snapshots:
 
   '@bufbuild/protobuf@2.15.0': {}
 
+  '@bufbuild/protoc-gen-es@2.15.0(@bufbuild/protobuf@2.15.0)':
+    dependencies:
+      '@bufbuild/protoplugin': 2.15.0
+    optionalDependencies:
+      '@bufbuild/protobuf': 2.15.0
+    transitivePeerDependencies:
+      - supports-color
+
+  '@bufbuild/protoplugin@2.15.0':
+    dependencies:
+      '@bufbuild/protobuf': 2.15.0
+      '@typescript/vfs': 1.6.5(typescript@5.4.5)
+      typescript: 5.4.5
+    transitivePeerDependencies:
+      - supports-color
+
   '@capsizecss/unpack@4.0.1':
     dependencies:
       fontkitten: 1.0.3
@@ -5785,6 +5810,15 @@ snapshots:
 
   '@colors/colors@1.5.0':
     optional: true
+
+  '@connectrpc/connect-node@2.2.0(@bufbuild/protobuf@2.15.0)(@connectrpc/connect@2.2.0(@bufbuild/protobuf@2.15.0))':
+    dependencies:
+      '@bufbuild/protobuf': 2.15.0
+      '@connectrpc/connect': 2.2.0(@bufbuild/protobuf@2.15.0)
+
+  '@connectrpc/connect@2.2.0(@bufbuild/protobuf@2.15.0)':
+    dependencies:
+      '@bufbuild/protobuf': 2.15.0
 
   '@emnapi/core@1.11.1':
     dependencies:
@@ -6639,6 +6673,13 @@ snapshots:
 
   '@types/unist@3.0.3': {}
 
+  '@typescript/vfs@1.6.5(typescript@5.4.5)':
+    dependencies:
+      debug: 4.4.3
+      typescript: 5.4.5
+    transitivePeerDependencies:
+      - supports-color
+
   '@ungap/structured-clone@1.4.0': {}
 
   '@vitest/browser-preview@5.0.1(@voidzero-dev/vite-plus-core@1.0.0(@types/node@26.6.3)(esbuild@0.28.2)(typescript@6.0.3)(yaml@2.9.1))(vitest@5.0.1)':
@@ -7033,8 +7074,6 @@ snapshots:
 
   caniuse-lite@1.0.30001812: {}
 
-  case-anything@2.1.13: {}
-
   ccount@2.0.1: {}
 
   chai@6.2.2: {}
@@ -7157,8 +7196,6 @@ snapshots:
 
   destr@2.0.5: {}
 
-  detect-libc@1.0.3: {}
-
   detect-libc@2.1.2: {}
 
   devalue@5.9.4: {}
@@ -7188,10 +7225,6 @@ snapshots:
       dom-serializer: 2.0.0
       domelementtype: 2.3.0
       domhandler: 5.0.3
-
-  dprint-node@1.0.8:
-    dependencies:
-      detect-libc: 1.0.3
 
   dset@3.1.4: {}
 
@@ -8231,21 +8264,6 @@ snapshots:
 
   trough@2.2.0: {}
 
-  ts-poet@6.12.0:
-    dependencies:
-      dprint-node: 1.0.8
-
-  ts-proto-descriptors@2.1.0:
-    dependencies:
-      '@bufbuild/protobuf': 2.15.0
-
-  ts-proto@2.12.4:
-    dependencies:
-      '@bufbuild/protobuf': 2.15.0
-      case-anything: 2.1.13
-      ts-poet: 6.12.0
-      ts-proto-descriptors: 2.1.0
-
   tsconfig-paths@4.2.0:
     dependencies:
       json5: 2.2.3
@@ -8266,6 +8284,8 @@ snapshots:
       content-type: 2.1.0
       media-typer: 1.1.1
       mime-types: 3.0.2
+
+  typescript@5.4.5: {}
 
   typescript@6.0.3: {}
 

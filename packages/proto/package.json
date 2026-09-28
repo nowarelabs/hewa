@@ -30,13 +30,15 @@
     "proto:breaking": "buf breaking --against '.git#branch=main'"
   },
   "dependencies": {
-    "@bufbuild/protobuf": "catalog:"
+    "@bufbuild/protobuf": "catalog:",
+    "@connectrpc/connect": "catalog:",
+    "@connectrpc/connect-node": "catalog:"
   },
   "devDependencies": {
     "@bufbuild/buf": "catalog:",
+    "@bufbuild/protoc-gen-es": "catalog:",
     "@hewa/tsconfig": "workspace:*",
     "@types/node": "catalog:",
-    "ts-proto": "catalog:",
     "typescript": "catalog:",
     "vite-plus": "catalog:"
   }

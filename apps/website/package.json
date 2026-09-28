@@ -8,9 +8,6 @@
     "build": "tsc && vp build",
     "preview": "vp preview"
   },
-  "dependencies": {
-    "@hewa/utils": "workspace:*"
-  },
   "devDependencies": {
     "typescript": "catalog:",
     "vite": "catalog:",

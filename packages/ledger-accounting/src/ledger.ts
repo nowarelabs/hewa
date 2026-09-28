@@ -323,6 +323,93 @@ export function accrueSlaCredit(
   ]);
 }
 
+/**
+ * Release a payout obligation once it has been paid.
+ *
+ * The mirror of `settleReceivable`, and deliberately not a reuse of it: an ISP
+ * paying us debits cash and credits their receivable, while us paying an ISP
+ * debits their payable and credits cash. Signing the same way round books an
+ * ISP who is owed money as a debtor, which is the error that turns a payout
+ * run into a negative receivable with no explanation.
+ */
+export function settlePayoutObligation(
+  entryId: string,
+  reference: string,
+  occurredAt: string,
+  amount: Money,
+  payableAccountId: string,
+  clearingAccountId: string,
+): JournalEntry {
+  return journalEntry(entryId, reference, occurredAt, "Payout obligation released", [
+    posting(payableAccountId, amount),
+    posting(clearingAccountId, negate(amount)),
+  ]);
+}
+
+/**
+ * Convert one currency into another.
+ *
+ * `assertBalanced` nets each currency independently, so a USD leg and a USDC
+ * leg can never offset each other. This books the swap as four postings that
+ * net to zero *within* each currency, and lets the difference fall on the
+ * position account, which therefore ends up holding `sold` of one currency
+ * against `bought` of the other. That residual is the realised FX gain or
+ * loss — which is the correct place for it, and the only arrangement that keeps
+ * both currency legs individually balanced.
+ *
+ * It is also why this cannot be a single two-line entry the way every template
+ * above is. There is no sign that makes one USD posting and one USDC posting
+ * cancel.
+ */
+export function convertCurrencies(
+  entryId: string,
+  reference: string,
+  occurredAt: string,
+  sold: Money,
+  bought: Money,
+  soldAccountId: string,
+  boughtAccountId: string,
+  positionAccountId: string,
+): JournalEntry {
+  if (sold.currency === bought.currency) {
+    throw new ValidationError("A conversion must change currency", {
+      currency: sold.currency,
+      soldMinor: sold.amountMinor,
+      boughtMinor: bought.amountMinor,
+    });
+  }
+
+  return journalEntry(entryId, reference, occurredAt, "Currency converted for settlement", [
+    // The currency leaving: out of the account it came from, onto the position.
+    posting(soldAccountId, sold),
+    posting(positionAccountId, negate(sold)),
+    // The currency arriving: onto the account it is for, off the position.
+    posting(boughtAccountId, bought),
+    posting(positionAccountId, negate(bought)),
+  ]);
+}
+
+/**
+ * A chain fee, in the currency it was charged in.
+ *
+ * Gas is not part of the payout and not part of the conversion, so it gets its
+ * own entry. Folded into either of the above, it lands in the position account
+ * and silently inflates the realised FX result by the amount of the fee.
+ */
+export function recordChainFee(
+  entryId: string,
+  reference: string,
+  occurredAt: string,
+  fee: Money,
+  expenseAccountId: string,
+  clearingAccountId: string,
+): JournalEntry {
+  return journalEntry(entryId, reference, occurredAt, "Chain fee on settlement", [
+    posting(expenseAccountId, fee),
+    posting(clearingAccountId, negate(fee)),
+  ]);
+}
+
 function negate(value: Money): Money {
   return { amountMinor: -value.amountMinor, currency: value.currency };
 }

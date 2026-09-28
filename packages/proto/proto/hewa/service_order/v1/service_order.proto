@@ -1,0 +1,158 @@
+syntax = "proto3";
+
+package hewa.service_order.v1;
+
+import "google/protobuf/timestamp.proto";
+import "hewa/common/v1/common.proto";
+
+// Where a service order is in its life.
+//
+// The states are the physical sequence — somebody has to walk to the site
+// before a circuit can be lit — rather than a generic status column, because
+// every downstream question depends on which of these is true: a customer
+// asking when the service will work needs a different answer from an ops team
+// asking why a job is stuck.
+enum ServiceOrderStatus {
+  SERVICE_ORDER_STATUS_UNSPECIFIED = 0;
+  // A site survey is booked. Nothing has been built.
+  SERVICE_ORDER_STATUS_SURVEY_SCHEDULED = 1;
+  // The survey happened; feasibility and the exact drop point are known.
+  SERVICE_ORDER_STATUS_SURVEY_COMPLETE = 2;
+  // Build is booked.
+  SERVICE_ORDER_STATUS_INSTALL_SCHEDULED = 3;
+  SERVICE_ORDER_STATUS_IN_PROGRESS = 4;
+  // Built but not yet carrying traffic.
+  SERVICE_ORDER_STATUS_INSTALLED = 5;
+  // Carrying traffic. Terminal for the delivery half; the order stays open for
+  // billing for its term.
+  SERVICE_ORDER_STATUS_ACTIVATED = 6;
+  SERVICE_ORDER_STATUS_CANCELLED = 7;
+  SERVICE_ORDER_STATUS_FAILED = 8;
+}
+
+enum ServiceOrderKind {
+  SERVICE_ORDER_KIND_UNSPECIFIED = 0;
+  SERVICE_ORDER_KIND_NEW_SERVICE = 1;
+  // Raises the committed bandwidth on an existing circuit.
+  SERVICE_ORDER_KIND_UPGRADE = 2;
+  SERVICE_ORDER_KIND_REPAIR = 3;
+  SERVICE_ORDER_KIND_DECOMMISSION = 4;
+}
+
+// Who is paying for the field work.
+//
+// Distinct from the commercial relationship, and the distinction is the point:
+// an ISP's own engineer on a survey costs the ISP nothing and earns the
+// platform nothing, while a platform-engineered install is a charge against the
+// order. Deriving cost from the ISP/customer relationship rather than from who
+// is doing the work bills ISPs for their own labour.
+enum FieldWorkAccountableTo {
+  FIELD_WORK_ACCOUNTABLE_TO_UNSPECIFIED = 0;
+  FIELD_WORK_ACCOUNTABLE_TO_ISP = 1;
+  FIELD_WORK_ACCOUNTABLE_TO_PLATFORM = 2;
+}
+
+message ServiceOrder {
+  string order_id = 1;
+  string isp_id = 2;
+  string customer_id = 3;
+  ServiceOrderKind kind = 4;
+  ServiceOrderStatus status = 5;
+  int32 committed_mbps = 6;
+  int32 burst_mbps = 7;
+  // The field visit that satisfies this order. One order, one visit; a second
+  // visit is a second order, so the two never disagree about what is done.
+  string delivery_id = 8;
+  FieldWorkAccountableTo field_work_accountable_to = 9;
+  // What the platform charges for the field work, if anything. Unset when the
+  // ISP is accountable, rather than zero, so "not charged" and "charged
+  // nothing" stay distinguishable.
+  hewa.common.v1.Money field_work_charge = 10;
+  google.protobuf.Timestamp placed_at = 11;
+  google.protobuf.Timestamp activated_at = 12;
+}
+
+// The order aggregate, as opposed to `hewa.delivery.v1.Delivery`, which is the
+// field visit that fulfils it. An order is what the customer asked for; a
+// delivery is who turned up and when.
+message ServiceOrderPlaced {
+  string order_id = 1;
+  string isp_id = 2;
+  string customer_id = 3;
+  ServiceOrderKind kind = 4;
+  int32 committed_mbps = 5;
+  hewa.common.v1.Metadata metadata = 6;
+}
+
+message ServiceOrderStatusChanged {
+  string order_id = 1;
+  string isp_id = 2;
+  ServiceOrderStatus previous_status = 3;
+  ServiceOrderStatus status = 4;
+  hewa.common.v1.Metadata metadata = 5;
+}
+
+message FieldWorkCharged {
+  string order_id = 1;
+  string isp_id = 2;
+  hewa.common.v1.Money amount = 3;
+  FieldWorkAccountableTo accountable_to = 4;
+  hewa.common.v1.Metadata metadata = 5;
+}
+
+message PlaceOrderRequest {
+  string isp_id = 1;
+  string customer_id = 2;
+  ServiceOrderKind kind = 3;
+  int32 committed_mbps = 4;
+  int32 burst_mbps = 5;
+  // Idempotency key, unique per ordering caller. The same key replays to the
+  // same order rather than creating a second one, because a retried request
+  // that places a duplicate order starts a second build.
+  string idempotency_key = 6;
+}
+
+message PlaceOrderResponse {
+  ServiceOrder order = 1;
+}
+
+message GetOrderRequest {
+  string order_id = 1;
+}
+
+message GetOrderResponse {
+  ServiceOrder order = 1;
+}
+
+message TransitionOrderRequest {
+  string order_id = 1;
+  ServiceOrderStatus status = 2;
+  // Must equal the order's current status. A blind transition loses a
+  // concurrent change silently; the expected value turns that race into a
+  // retryable conflict.
+  ServiceOrderStatus expected_previous_status = 3;
+}
+
+message TransitionOrderResponse {
+  ServiceOrder order = 1;
+}
+
+message ListOrdersRequest {
+  string isp_id = 1;
+  ServiceOrderStatus status = 2;
+  int32 page_size = 3;
+  string page_token = 4;
+}
+
+message ListOrdersResponse {
+  repeated ServiceOrder orders = 1;
+  string next_page_token = 2;
+}
+
+// Owns the service order aggregate and its status machine.
+service ServiceOrderService {
+  rpc PlaceOrder(PlaceOrderRequest) returns (PlaceOrderResponse);
+  rpc GetOrder(GetOrderRequest) returns (GetOrderResponse);
+  rpc TransitionOrder(TransitionOrderRequest) returns (TransitionOrderResponse);
+  rpc ListOrders(ListOrdersRequest) returns (ListOrdersResponse);
+}

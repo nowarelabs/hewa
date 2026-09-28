@@ -1,0 +1,130 @@
+syntax = "proto3";
+
+package hewa.attestation.v1;
+
+import "google/protobuf/timestamp.proto";
+import "hewa/common/v1/common.proto";
+
+// One city, one day, committed and signed.
+//
+// This is the record that ends up on chain, so the amount is in the token's
+// base units — an integer count, never a decimal. `$6,700` of USDC is
+// `6_700_000_000`, and a `double` cannot hold that. `merkle_root` and
+// `signature` are 32 and 65 raw bytes respectively; the hex form is a
+// presentation concern and belongs in a UI, not in a signed payload.
+message AttestationRecord {
+  string city = 1;
+  // `YYYYMMDD`, UTC. A day key and a month key are both plain integers and
+  // mixing them up understates a period by a factor of 30, so `month` below
+  // is bounded to six digits rather than sharing this field's width.
+  uint32 day = 2;
+  int64 revenue_base_units = 3;
+  uint32 isp_count = 4;
+  // Keccak-256 of the day's per-ISP leaves. 32 bytes.
+  bytes merkle_root = 5;
+  // EIP-712 signature over the record and the root, together. 65 bytes.
+  bytes signature = 6;
+  // Bound into the EIP-712 domain. Without it a signature authorises a
+  // revenue figure on whichever chain that key has ever touched.
+  uint64 chain_id = 7;
+  // Also bound into the domain. Without it the same signature is valid against
+  // any deployment of the contract.
+  bytes verifying_contract = 8;
+  google.protobuf.Timestamp attested_at = 9;
+}
+
+// A month's worth of attestations, checked against the books.
+message ReservesReport {
+  string city = 1;
+  // `YYYYMM`. Six digits, and a request carrying eight is a day key, not a
+  // month.
+  uint32 month = 2;
+  int64 gross_base_units = 3;
+  int64 operating_cost_base_units = 4;
+  int64 net_base_units = 5;
+  // The single month's root, as published.
+  bytes merkle_root = 6;
+  // Content hash of the report document, wherever it is stored.
+  bytes document_hash = 7;
+  // How many days the month has. A report covering fewer is refused rather
+  // than prorated: a partial month is not a smaller number, it is a wrong one.
+  uint32 days_in_month = 8;
+  uint32 attested_days = 9;
+  google.protobuf.Timestamp published_at = 10;
+}
+
+message AttestationPublished {
+  AttestationRecord attestation = 1;
+  hewa.common.v1.Metadata metadata = 2;
+}
+
+message AttestationFailed {
+  string city = 1;
+  uint32 day = 2;
+  // Why it did not sign. Never a signer or key detail.
+  string reason = 3;
+  google.protobuf.Timestamp failed_at = 4;
+}
+
+message ReservesReportPublished {
+  ReservesReport report = 1;
+  hewa.common.v1.Metadata metadata = 2;
+}
+
+message ReservesCheckFailed {
+  string city = 1;
+  uint32 month = 2;
+  // The exact per-base-unit difference, signed, so a reader can tell which way
+  // the books are wrong rather than only how far.
+  int64 difference_base_units = 3;
+  repeated string reasons = 4;
+  google.protobuf.Timestamp failed_at = 5;
+}
+
+message AttestDayRequest {
+  string city = 1;
+  uint32 day = 2;
+}
+
+message AttestDayResponse {
+  AttestationRecord attestation = 1;
+}
+
+message AttestMonthRequest {
+  string city = 1;
+  uint32 month = 2;
+}
+
+message AttestMonthResponse {
+  ReservesReport report = 1;
+}
+
+message LatestAttestationRequest {
+  string city = 1;
+}
+
+message LatestAttestationResponse {
+  AttestationRecord attestation = 1;
+}
+
+message ListAttestationsRequest {
+  string city = 1;
+  uint32 month = 2;
+}
+
+message ListAttestationsResponse {
+  repeated AttestationRecord attestations = 1;
+}
+
+// Signs the books and puts them on chain.
+//
+// The signer is an `AttestationSigner` in `@hewa/revenue-proof-protocol`, which
+// is an interface precisely so the key never sits in a process that also parses
+// vendor HTTP responses. Only this service holds an implementation, and it
+// calls cloud KMS; nothing here ever sees a private key.
+service AttestationService {
+  rpc AttestDay(AttestDayRequest) returns (AttestDayResponse);
+  rpc AttestMonth(AttestMonthRequest) returns (AttestMonthResponse);
+  rpc LatestAttestation(LatestAttestationRequest) returns (LatestAttestationResponse);
+  rpc ListAttestations(ListAttestationsRequest) returns (ListAttestationsResponse);
+}

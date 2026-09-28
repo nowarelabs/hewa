@@ -3,6 +3,7 @@ syntax = "proto3";
 package hewa.metering.v1;
 
 import "google/protobuf/timestamp.proto";
+import "hewa/common/v1/common.proto";
 
 // A single meter reading, as it arrives from the network.
 message MeterReading {
@@ -24,6 +25,11 @@ message MeterReading {
 message UsageIngested {
   string reading_id = 1;
   string subscriber_id = 2;
+  // The ISP the readings belong to. Carried here so the topic can be
+  // partitioned by `isp_id`: without it there is no field on this event to
+  // hash, and an ingestion event that cannot be routed to its ISP's partition
+  // is a design flaw rather than a missing optimisation.
+  string isp_id = 5;
   int32 readings_in_batch = 3;
   // RFC 3339 timestamp.
   google.protobuf.Timestamp ingested_at = 4;
@@ -60,4 +66,76 @@ message SlaBreached {
   uint32 credit_numerator = 6;
   uint32 credit_denominator = 7;
   google.protobuf.Timestamp detected_at = 8;
+}
+
+message IngestReadingRequest {
+  MeterReading reading = 1;
+  // Idempotency key, unique per meter. A device that retries a reading after a
+  // timeout would otherwise double-count, and a doubled reading inflates an
+  // overage charge by a whole interval with nothing to detect it.
+  string idempotency_key = 2;
+}
+
+message IngestReadingResponse {
+  // Whether this reading was recorded or recognised as a duplicate. A caller
+  // that sees `false` has to treat the RPC as successful, not as failed.
+  bool accepted = 1;
+  // True when the reading matched an earlier one and was dropped.
+  bool duplicate = 2;
+}
+
+message GetUsageRequest {
+  string customer_id = 1;
+  uint32 month = 2;
+}
+
+message GetUsageResponse {
+  repeated MeterReading readings = 1;
+  // True when the window closed, i.e. the figures are final. An open window's
+  // total is a running total and is not a billable number.
+  bool closed = 2;
+}
+
+message CloseWindowRequest {
+  string isp_id = 1;
+  uint32 month = 2;
+}
+
+message CloseWindowResponse {
+  // The per-ISP totals that were closed. Returned rather than fetched, so the
+  // caller and the books cannot disagree about what was published.
+  repeated UsageWindowClosed windows = 1;
+}
+
+message EvaluateSlaRequest {
+  string customer_id = 1;
+  uint32 month = 2;
+  // Availability actually achieved, in basis points. An integer, never a
+  // percentage float: the credit is `numerator / denominator` against it, and
+  // a float has already lost the digits by the time it is multiplied.
+  int64 achieved_basis_points = 3;
+  // The commitment being measured against, in basis points.
+  int64 committed_basis_points = 4;
+  // The amount the credit may be taken from: commitment plus overage, not the
+  // commitment alone.
+  hewa.common.v1.Money creditable_basis = 5;
+}
+
+message EvaluateSlaResponse {
+  // Zero when the commitment was met.
+  hewa.common.v1.Money credit = 1;
+  bool breached = 2;
+}
+
+// Ingests meter readings and closes the monthly window.
+//
+// The window close is the one write here that is not idempotent by key, and it
+// is deliberately so: closing a month twice would publish two different sets of
+// totals for the same period, and a consumer that took the second would
+// overstate the month. It refuses instead.
+service MeteringService {
+  rpc IngestReading(IngestReadingRequest) returns (IngestReadingResponse);
+  rpc GetUsage(GetUsageRequest) returns (GetUsageResponse);
+  rpc CloseWindow(CloseWindowRequest) returns (CloseWindowResponse);
+  rpc EvaluateSla(EvaluateSlaRequest) returns (EvaluateSlaResponse);
 }
