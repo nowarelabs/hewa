@@ -22,6 +22,24 @@ export interface Metadata {
   occurredAt?: Date | undefined;
 }
 
+/**
+ * An amount in one currency, held in that currency's minor units.
+ *
+ * Minor units rather than a double. A `double` loses cents on a value large
+ * enough to matter and cannot be compared for equality once it has been through
+ * a JSON hop, and every amount in this system has to be summed, compared, and
+ * reconciled exactly.
+ */
+export interface Money {
+  /** ISO 4217 code, e.g. `USD`, `KES`, `USDC`. */
+  currency: string;
+  /**
+   * Value in the currency's smallest unit: cents for USD, micro-dollars for
+   * USDC. Signed, because a credit and a correction are both legitimate.
+   */
+  amountMinor: string;
+}
+
 function createBaseMetadata(): Metadata {
   return { requestId: "", actor: "", tenantId: "", occurredAt: undefined };
 }
@@ -147,6 +165,95 @@ export const Metadata: MessageFns<Metadata> = {
     message.actor = object.actor ?? "";
     message.tenantId = object.tenantId ?? "";
     message.occurredAt = object.occurredAt ?? undefined;
+    return message;
+  },
+};
+
+function createBaseMoney(): Money {
+  return { currency: "", amountMinor: "0" };
+}
+
+export const Money: MessageFns<Money> = {
+  encode(message: Money, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.currency !== "") {
+      writer.uint32(10).string(message.currency);
+    }
+    if (message.amountMinor !== "0") {
+      writer.uint32(16).int64(message.amountMinor);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): Money {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseMoney();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.currency = reader.string();
+            continue;
+          }
+          case 2: {
+            if (tag !== 16) {
+              break;
+            }
+
+            message.amountMinor = reader.int64().toString();
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): Money {
+    return {
+      currency: isSet(object.currency) ? globalThis.String(object.currency) : "",
+      amountMinor: isSet(object.amountMinor)
+        ? globalThis.String(object.amountMinor)
+        : isSet(object.amount_minor)
+        ? globalThis.String(object.amount_minor)
+        : "0",
+    };
+  },
+
+  toJSON(message: Money): unknown {
+    const obj: any = {};
+    if (message.currency !== "") {
+      obj.currency = message.currency;
+    }
+    if (message.amountMinor !== "0") {
+      obj.amountMinor = message.amountMinor;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<Money>, I>>(base?: I): Money {
+    return Money.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<Money>, I>>(object: I): Money {
+    const message = createBaseMoney();
+    message.currency = object.currency ?? "";
+    message.amountMinor = object.amountMinor ?? "0";
     return message;
   },
 };

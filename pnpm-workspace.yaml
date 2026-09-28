@@ -28,6 +28,7 @@ catalog:
   rxjs: ^7
 
   # Next.js apps
+  "@tanstack/react-query": ^5
   "@types/react": ^19
   "@types/react-dom": ^19
   next: ^16
@@ -46,6 +47,7 @@ catalog:
   # Infrastructure services
   "@aws-sdk/client-s3": ^3
   bullmq: ^6
+  ethers: ^6
   "@hono/node-server": ^1
   hono: ^4
   ioredis: ^6

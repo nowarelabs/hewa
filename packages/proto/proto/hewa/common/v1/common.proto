@@ -15,3 +15,17 @@ message Metadata {
   // RFC 3339 timestamp.
   google.protobuf.Timestamp occurred_at = 4;
 }
+
+// An amount in one currency, held in that currency's minor units.
+//
+// Minor units rather than a double. A `double` loses cents on a value large
+// enough to matter and cannot be compared for equality once it has been through
+// a JSON hop, and every amount in this system has to be summed, compared, and
+// reconciled exactly.
+message Money {
+  // ISO 4217 code, e.g. `USD`, `KES`, `USDC`.
+  string currency = 1;
+  // Value in the currency's smallest unit: cents for USD, micro-dollars for
+  // USDC. Signed, because a credit and a correction are both legitimate.
+  int64 amount_minor = 2;
+}

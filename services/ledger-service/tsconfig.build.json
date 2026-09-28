@@ -1,0 +1,19 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    // The base config allows `.ts` specifiers for type checking against sibling
+    // source, which emit does not. Emitted code uses `.js` specifiers instead.
+    "allowImportingTsExtensions": false,
+    // `paths` points type checking at sibling source. Emit must resolve shared
+    // packages through node_modules to their built `dist` instead, or it would
+    // try to compile them into this service's output.
+    "paths": {},
+    "outDir": "dist",
+    "rootDir": "src",
+    // A service ships runtime code, not a library surface.
+    "declaration": false,
+    "declarationMap": false
+  },
+  "include": ["src"]
+}

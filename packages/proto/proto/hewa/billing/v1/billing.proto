@@ -1,0 +1,92 @@
+syntax = "proto3";
+
+package hewa.billing.v1;
+
+import "google/protobuf/timestamp.proto";
+import "hewa/common/v1/common.proto";
+
+enum InvoiceStatus {
+  INVOICE_STATUS_UNSPECIFIED = 0;
+  INVOICE_STATUS_DRAFT = 1;
+  INVOICE_STATUS_ISSUED = 2;
+  INVOICE_STATUS_PAID = 3;
+  INVOICE_STATUS_OVERDUE = 4;
+  INVOICE_STATUS_DISPUTED = 5;
+  INVOICE_STATUS_VOID = 6;
+}
+
+enum DisputeStatus {
+  DISPUTE_STATUS_UNSPECIFIED = 0;
+  DISPUTE_STATUS_OPEN = 1;
+  DISPUTE_STATUS_UNDER_REVIEW = 2;
+  DISPUTE_STATUS_ACCEPTED = 3;
+  DISPUTE_STATUS_REJECTED = 4;
+  DISPUTE_STATUS_RESOLVED = 5;
+}
+
+// One rated line on an invoice.
+message InvoiceLine {
+  string line_id = 1;
+  string description = 2;
+  // `YYYY-MM` for a recurring charge.
+  string period = 3;
+  hewa.common.v1.Money amount = 4;
+  // Portion of `amount` that is an SLA credit rather than a charge.
+  hewa.common.v1.Money credit = 5;
+}
+
+message Invoice {
+  string invoice_id = 1;
+  string customer_id = 2;
+  string isp_id = 3;
+  InvoiceStatus status = 4;
+  repeated InvoiceLine lines = 5;
+  hewa.common.v1.Money subtotal = 6;
+  hewa.common.v1.Money tax = 7;
+  hewa.common.v1.Money total = 8;
+  // Outstanding balance, which is not the same as the total once a payment
+  // has been partially applied.
+  hewa.common.v1.Money amount_due = 9;
+  google.protobuf.Timestamp issued_at = 10;
+  google.protobuf.Timestamp due_at = 11;
+}
+
+message InvoiceIssued {
+  string invoice_id = 1;
+  string customer_id = 2;
+  hewa.common.v1.Money total = 3;
+  google.protobuf.Timestamp due_at = 4;
+}
+
+message PaymentReceived {
+  string payment_id = 1;
+  string invoice_id = 2;
+  string customer_id = 3;
+  hewa.common.v1.Money amount = 4;
+  // Gateway the money actually came in through, e.g. `mpesa`, `card`.
+  string method = 5;
+  string gateway_reference = 6;
+  google.protobuf.Timestamp received_at = 7;
+}
+
+// An invoice line did not match what the customer was charged.
+message InvoiceDisputed {
+  string dispute_id = 1;
+  string invoice_id = 2;
+  string line_id = 3;
+  string customer_id = 4;
+  DisputeStatus status = 5;
+  string reason = 6;
+  // Difference between what was billed and what the customer says is owed.
+  hewa.common.v1.Money amount_in_question = 7;
+  google.protobuf.Timestamp raised_at = 8;
+}
+
+message DisputeResolved {
+  string dispute_id = 1;
+  string invoice_id = 2;
+  DisputeStatus status = 3;
+  // Credit issued against the invoice, if the dispute was upheld.
+  hewa.common.v1.Money adjustment = 4;
+  google.protobuf.Timestamp resolved_at = 5;
+}

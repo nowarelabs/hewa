@@ -1,0 +1,7 @@
+{
+  "extends": "@hewa/tsconfig/library.json",
+  "compilerOptions": {
+    "noEmit": true
+  },
+  "include": ["src", "tests"]
+}

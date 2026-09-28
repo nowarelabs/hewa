@@ -1,0 +1,58 @@
+syntax = "proto3";
+
+package hewa.provisioning.v1;
+
+import "google/protobuf/timestamp.proto";
+
+enum ProvisioningStatus {
+  PROVISIONING_STATUS_UNSPECIFIED = 0;
+  PROVISIONING_STATUS_PENDING = 1;
+  PROVISIONING_STATUS_ACTIVATING = 2;
+  PROVISIONING_STATUS_ACTIVE = 3;
+  PROVISIONING_STATUS_FAILED = 4;
+}
+
+// The suite an ISP's records came from, e.g. `Openet`, `Amdocs`, `Custom`.
+enum BssOssSystem {
+  BSS_OSS_SYSTEM_UNSPECIFIED = 0;
+  BSS_OSS_SYSTEM_OPENET = 1;
+  BSS_OSS_SYSTEM_AMDOCS = 2;
+  BSS_OSS_SYSTEM_CUSTOM = 3;
+}
+
+message CustomerOrder {
+  string external_id = 1;
+  string isp_id = 2;
+  string customer_name = 3;
+  int32 committed_mbps = 4;
+  int32 burst_mbps = 5;
+  BssOssSystem source_system = 6;
+  google.protobuf.Timestamp synced_at = 7;
+}
+
+// A customer order was picked up from the ISP's own system.
+message OrderSynced {
+  string external_id = 1;
+  string isp_id = 2;
+  BssOssSystem source_system = 3;
+  int32 committed_mbps = 4;
+  google.protobuf.Timestamp synced_at = 5;
+}
+
+message SubscriberActivated {
+  string subscriber_id = 1;
+  string external_id = 2;
+  string isp_id = 3;
+  int32 committed_mbps = 4;
+  google.protobuf.Timestamp activated_at = 5;
+}
+
+message ProvisioningFailed {
+  string subscriber_id = 1;
+  string external_id = 2;
+  string isp_id = 3;
+  string reason = 4;
+  // Whether the ISP's system was told, so a failure is not invisible to them.
+  bool reported_upstream = 5;
+  google.protobuf.Timestamp failed_at = 6;
+}

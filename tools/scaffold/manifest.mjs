@@ -65,6 +65,34 @@ export const INSTANCES = [
     // Astro cannot share the Next.js template, but it is still one shell.
     template: "astro-app",
   },
+  {
+    kind: "app",
+    name: "isp-partner-portal",
+    title: "ISP Partner Portal",
+    description: "Where ISPs track their own subscriber base, usage, and payouts.",
+    port: 3007,
+  },
+  {
+    kind: "app",
+    name: "supplier-dashboard",
+    title: "Supplier Dashboard",
+    description: "Supply-side view of fulfilment, capacity, and settlement.",
+    port: 3008,
+  },
+  {
+    kind: "app",
+    name: "financial-dashboard",
+    title: "Financial Dashboard",
+    description: "Revenue, receivables, and balance reporting for the finance team.",
+    port: 3009,
+  },
+  {
+    kind: "app",
+    name: "billing-reconciliation-ui",
+    title: "Billing Reconciliation UI",
+    description: "Breaks, discrepancies, and one-click matching for disputed invoices.",
+    port: 3010,
+  },
 
   // NestJS services. All of these come from the same service template.
   {
@@ -102,6 +130,65 @@ export const INSTANCES = [
     description: "Geocoding, routing, and live position history.",
     port: 4004,
   },
+  {
+    kind: "service",
+    name: "revenue-service",
+    title: "Revenue Service",
+    description: "Accrues revenue from usage events and ratings.",
+    port: 4005,
+    dependencies: {
+      "@hewa/billing-domain": "workspace:*",
+      "@hewa/marketplace-types": "workspace:*",
+    },
+  },
+  {
+    kind: "service",
+    name: "settlement-service",
+    title: "Settlement Service",
+    description: "Turns revenue obligations into ISP payouts and stablecoin transfers.",
+    port: 4006,
+    dependencies: { "@hewa/settlement-domain": "workspace:*", "@hewa/crypto": "workspace:*" },
+  },
+  {
+    kind: "service",
+    name: "metering-service",
+    title: "Metering Service",
+    description: "Ingests meter data, aggregates usage windows, and rates against commitments.",
+    port: 4007,
+    dependencies: { "@hewa/marketplace-types": "workspace:*" },
+  },
+  {
+    kind: "service",
+    name: "provisioning-service",
+    title: "Provisioning Service",
+    description: "Drives subscriber activation across ISP and OSS systems.",
+    port: 4008,
+    dependencies: { "@hewa/telco-integrations": "workspace:*" },
+  },
+  {
+    kind: "service",
+    name: "invoicing-service",
+    title: "Invoicing Service",
+    description: "Builds invoices from rated usage and applies SLA credits.",
+    port: 4009,
+    dependencies: { "@hewa/billing-domain": "workspace:*" },
+  },
+  {
+    kind: "service",
+    name: "reconciliation-service",
+    title: "Reconciliation Service",
+    description: "Matches invoices against payments and raises discrepancies.",
+    port: 4010,
+    dependencies: { "@hewa/billing-domain": "workspace:*" },
+  },
+  {
+    kind: "service",
+    name: "ledger-service",
+    title: "Ledger Service",
+    description: "Double-entry postings, trial balances, and period close.",
+    port: 4011,
+    dependencies: { "@hewa/ledger-accounting": "workspace:*" },
+  },
 
   // Infrastructure processes. All of these come from the same infra template.
   {
@@ -134,6 +221,42 @@ export const INSTANCES = [
     dependencies: {
       bullmq: "catalog:",
       ioredis: "catalog:",
+    },
+  },
+  {
+    kind: "infra",
+    name: "metrics-ingestion",
+    title: "Metrics Ingestion",
+    description: "Takes meter and network telemetry in and puts it on Kafka.",
+    port: 4103,
+    dependencies: { "@hewa/proto": "workspace:*", kafkajs: "catalog:" },
+  },
+  {
+    kind: "infra",
+    name: "payment-gateway-adapter",
+    title: "Payment Gateway Adapter",
+    description: "One interface over every payment gateway, so billing never branches on provider.",
+    port: 4104,
+    dependencies: { "@hewa/proto": "workspace:*", kafkajs: "catalog:" },
+  },
+  {
+    kind: "infra",
+    name: "webhook-engine",
+    title: "Webhook Engine",
+    description: "Signed, retried, replayable outbound webhooks for integrator events.",
+    port: 4105,
+    dependencies: { "@hewa/proto": "workspace:*", kafkajs: "catalog:" },
+  },
+  {
+    kind: "infra",
+    name: "bss-oss-sync",
+    title: "BSS OSS Sync",
+    description: "Reconciles our catalog against ISP billing and OSS systems.",
+    port: 4106,
+    dependencies: {
+      "@hewa/proto": "workspace:*",
+      kafkajs: "catalog:",
+      "@hewa/telco-integrations": "workspace:*",
     },
   },
 ];

@@ -1,0 +1,35 @@
+{
+  "name": "@hewa/settlement-domain",
+  "version": "0.0.0",
+  "description": "Hewa settlement domain: payout obligations, FX conversion, and stablecoin settlement.",
+  "license": "MIT",
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": "./dist/index.mjs",
+    "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "vp pack",
+    "dev": "vp pack --watch",
+    "test": "vp test",
+    "check": "vp check"
+  },
+  "dependencies": {
+    "@hewa/crypto": "workspace:*",
+    "@hewa/errors": "workspace:*",
+    "@hewa/marketplace-types": "workspace:*"
+  },
+  "devDependencies": {
+    "@hewa/tsconfig": "workspace:*",
+    "@types/node": "catalog:",
+    "typescript": "catalog:",
+    "vite-plus": "catalog:"
+  }
+}

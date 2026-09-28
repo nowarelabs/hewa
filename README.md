@@ -16,6 +16,10 @@ hewa/
 │   ├── customer-service-portal/      — Next.js
 │   ├── developer-portal/             — Next.js
 │   ├── admin-dashboard/              — Next.js
+│   ├── isp-partner-portal/           — Next.js
+│   ├── supplier-dashboard/           — Next.js
+│   ├── financial-dashboard/          — Next.js
+│   ├── billing-reconciliation-ui/    — Next.js
 │   └── blog/           @hewa/blog     — Astro
 ├── packages/                         — shared libraries
 │   ├── tsconfig/       @hewa/tsconfig — base tsconfigs every package extends
@@ -23,17 +27,34 @@ hewa/
 │   ├── errors/         @hewa/errors   — typed application errors
 │   ├── observability/  @hewa/observability — logging, request context, metrics
 │   ├── proto/          @hewa/proto    — protobuf schemas + buf-generated code
-│   └── utils/          @hewa/utils    — published library (vp pack)
+│   ├── utils/          @hewa/utils    — published library (vp pack)
+│   ├── marketplace-types/ @hewa/marketplace-types — money, SLA, capacity, transactions
+│   ├── billing-domain/ @hewa/billing-domain — commitments, overage, SLA credits
+│   ├── settlement-domain/ @hewa/settlement-domain — payout obligations and FX
+│   ├── crypto/         @hewa/crypto  — stablecoin quotes and Ethers wrappers
+│   ├── ledger-accounting/ @hewa/ledger-accounting — double-entry postings
+│   └── telco-integrations/ @hewa/telco-integrations — BSS/OSS adapters
 ├── services/                         — NestJS services
 │   ├── central-api/    @hewa/central-api — public entry point
 │   ├── billing-service/
 │   ├── delivery-service/
 │   ├── matching-service/
-│   └── location-service/
+│   ├── location-service/
+│   ├── revenue-service/      — accrues revenue from usage
+│   ├── settlement-service/   — pays ISPs out, on or off chain
+│   ├── metering-service/     — meter ingestion and rating windows
+│   ├── provisioning-service/ — subscriber activation
+│   ├── invoicing-service/    — builds invoices, applies SLA credits
+│   ├── reconciliation-service/ — matches invoices to payments
+│   └── ledger-service/       — postings, trial balances, period close
 ├── infra-services/                   — long-running processes
 │   ├── event-gateway/  @hewa/event-gateway  — Kafka, speaking @hewa/proto
 │   ├── document-vault/ @hewa/document-vault — S3
-│   └── system-queue/   @hewa/system-queue   — Redis + BullMQ
+│   ├── system-queue/   @hewa/system-queue   — Redis + BullMQ
+│   ├── metrics-ingestion/ @hewa/metrics-ingestion — telemetry onto Kafka
+│   ├── payment-gateway-adapter/ @hewa/payment-gateway-adapter — one payment interface
+│   ├── webhook-engine/ @hewa/webhook-engine — signed, retried webhooks
+│   └── bss-oss-sync/   @hewa/bss-oss-sync  — reconciles ISP billing systems
 ├── tools/
 │   └── scaffold/       @hewa/scaffold — generates the shells above
 ├── .changeset/                       — release metadata
@@ -48,7 +69,7 @@ so `vite`, `typescript`, and `vite-plus` are bumped in one place.
 
 ## Generating shells
 
-The fourteen apps, services, and infrastructure processes are generated from
+The twenty-nine apps, services, and infrastructure processes are generated from
 four templates. `tools/scaffold/manifest.mjs` is the single place to add, remove,
 or rename one:
 
@@ -157,6 +178,28 @@ CENTRAL_API_LOG_LEVEL=debug pnpm --filter @hewa/central-api dev
 `infra-services/event-gateway/.env.example` shows the two variables each process
 accepts. A port outside 1–65535 is rejected at startup rather than passed to the
 runtime.
+
+## Money
+
+Every amount in the billing, settlement, and ledger packages is a `Money`: an
+integer count of the currency's minor units, plus its currency. There is no
+`float` anywhere in a money path, and no price is ever parsed as one.
+
+```ts
+money(3_000, "USD"); // $30.00
+money(1_250_000, "USDC"); // 1.25 USDC — six decimals, not two
+```
+
+The reason is that these amounts get summed across millions of usage windows,
+compared for equality, and written into a ledger that has to balance to the cent.
+A binary float cannot do any of those three things without drifting. Where a rate
+has to be a fraction — an FX quote, a credit rate — it is carried as an exact
+`numerator / denominator` pair rather than as a decimal.
+
+`formatMoney` and `priceFromDecimal` are the only places that convert between a
+human string and a `Money`. A price with more precision than its currency carries
+is rejected rather than rounded, so a rate card is always reconcilable against the
+quote it came from.
 
 ## Releasing
 
