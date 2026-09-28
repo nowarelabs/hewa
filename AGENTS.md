@@ -135,9 +135,16 @@ Rules for working on the generator:
   amounts are summed, compared for equality, and written to a ledger that has to
   balance, and a binary float fails at all three. A price with more precision
   than its currency carries is rejected, not rounded.
-- A float must not decide a boundary. `creditablePoints` adds a small epsilon
-  before flooring, because `(1 - 0.9) * 100` is `9.999999999999998` and would
-  otherwise understate a credit by a whole point on the cleanest possible case.
+- A float must not decide a boundary, and the fix is never an epsilon. `(1 - 0.9) * 100`
+  is `9.999999999999998`, and the old fix added `1e-9` before flooring, which
+  traded a wrong answer for a wrong answer that only looks right. An availability
+  target is now an integer in **basis points** and a credit is an exact
+  `numerator / denominator`, so the shortfall is a `BigInt` division that is
+  exact by construction. Rounding happens once, explicitly, half away from zero,
+  and the credit is capped so it can never exceed the bill. `creditablePoints` in
+  `@hewa/marketplace-types` computes a whole number of points from basis points;
+  if a calculation needs a fudge factor to produce a clean result, the input
+  representation is wrong.
 - A third-party integration takes its dependencies through an interface, not an
   import: a `HttpClient` or a `StablecoinWallet` is passed in, so the adapter is
   a pure translation layer and its tests run with no network and no credentials.
@@ -190,3 +197,33 @@ pnpm run ci:publish   # build everything, then publish bumped packages
 Commit the generated `.changeset/*.md` file with the change itself. The release
 workflow takes over from there. `@hewa/website` is private and listed in `ignore`
 in `.changeset/config.json`.
+
+## On-chain amounts and signatures
+
+- A token amount crossing a contract boundary is a `bigint` in that token's base
+  units, never a `number` and never a `float`. USDC has 6 decimals, so
+  `$6,700` is `6_700_000_000n`, and `6700 * 1e18` is wrong twice over: it is
+  the wrong token and it is not a safe integer. `assertTokenAmount` rejects a
+  `number` on purpose — by the time a figure arrives as a float, the precision is
+  already gone and no later check can recover it.
+- A hash is 32 bytes and an EIP-191 signature is 65. They are separate types
+  (`Hex32`, `Signature`) with separate assertions because one predicate for both
+  would either reject every real signature or accept a bare digest as one.
+- Sign the raw digest bytes, not the hex string. Ethers treats a `string`
+  argument to `signMessage` as UTF-8 text, so signing `"0xabc…"` covers 66
+  characters where a contract's `ECDSA.toEthSignedMessageHash(bytes32)` covers 32.
+  `signDigest` and `recoverDigestSigner` in `@hewa/crypto` do this, and the
+  Solidity and TypeScript suites assert the same vectors.
+- EIP-712 digests are built by `TypedDataEncoder`, not assembled by hand. A
+  hand-written EIP-712 encoder is a second implementation of a spec whose only
+  correctness criterion is agreeing with the contract, and a mistake in it
+  produces signatures that recover to nobody — with no local symptom until the
+  transaction is sent.
+- The domain must include the chain and the contract. Without the contract, a
+  signature authorises revenue on whichever deployment presents it; without the
+  chain, it is valid on every chain that key has ever touched.
+- A signature proves _attribution_, not truth. A commitment is worth exactly what
+  the signer's key is worth, and the same key could sign anything. Data that has
+  to be believable is believed because independent sources agree: the Merkle
+  root, the ledger, and the monthly comparison all have to line up, and
+  `checkTotals` failing by one base unit is a failed report.

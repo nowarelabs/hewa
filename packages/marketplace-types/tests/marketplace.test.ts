@@ -1,5 +1,11 @@
 import { describe, expect, test } from "vite-plus/test";
-import { creditablePoints, money, slaCommitment } from "../src/index.ts";
+import {
+  creditablePoints,
+  formatBps,
+  money,
+  slaCommitment,
+  slaShortfallBps,
+} from "../src/index.ts";
 import {
   assertBandwidth,
   availableCapacity,
@@ -17,7 +23,7 @@ const listing: Bandwidth = {
   burstMbps: 200,
   location: "Nairobi",
   price: money(30_000, "USD"),
-  sla: slaCommitment(0.995, 1, 0.1),
+  sla: slaCommitment(9_995, 10_000, 1, 10),
 };
 
 const isp: Isp = {
@@ -90,20 +96,41 @@ describe("ISP", () => {
 
 describe("creditable points", () => {
   test("credits a whole-number shortfall in full", () => {
-    // `(1 - 0.9) * 100` is 9.999999999999998, so flooring it unaided reports 9
-    // points and understates the credit on the cleanest possible case.
-    expect(creditablePoints(slaCommitment(1, 0.9, 0.05))).toBe(10);
-    expect(creditablePoints(slaCommitment(0.995, 0.9, 0.05))).toBe(9);
-    expect(creditablePoints(slaCommitment(0.99, 0.9, 0.05))).toBe(9);
+    // As fractions this is `(1 - 0.9) * 100`, which is 9.999999999999998, so
+    // flooring it unaided reports 9 points on the cleanest possible case.
+    expect(creditablePoints(slaCommitment(10_000, 9_000, 1, 20))).toBe(10);
+    expect(creditablePoints(slaCommitment(9_950, 9_000, 1, 20))).toBe(9);
+    expect(creditablePoints(slaCommitment(9_900, 9_000, 1, 20))).toBe(9);
   });
 
   test("still credits nothing for a genuine sub-point shortfall", () => {
-    // 0.2 points is not a point; the epsilon must not promote it to one.
-    expect(creditablePoints(slaCommitment(0.997, 0.995, 0.1))).toBe(0);
-    expect(creditablePoints(slaCommitment(1, 0.999_999, 0.1))).toBe(0);
+    // 20 bps is not a point, and no tolerance may promote it to one.
+    expect(creditablePoints(slaCommitment(9_970, 9_950, 1, 10))).toBe(0);
+    expect(creditablePoints(slaCommitment(10_000, 9_999, 1, 10))).toBe(0);
   });
 
-  test("credits nothing when the target was met", () => {
-    expect(creditablePoints(slaCommitment(0.995, 0.996, 0.1))).toBe(0);
+  test("credits nothing when the target was met or exceeded", () => {
+    expect(creditablePoints(slaCommitment(9_950, 9_950, 1, 10))).toBe(0);
+    expect(creditablePoints(slaCommitment(9_950, 9_990, 1, 10))).toBe(0);
+  });
+
+  test("reports the shortfall exactly, in basis points", () => {
+    // 99.95% against 98.20% is 175 bps. As fractions the same subtraction is
+    // subject to representation error; as integers it is not.
+    expect(slaShortfallBps(slaCommitment(9_995, 9_820, 1, 20))).toBe(175);
+  });
+
+  test("rejects an availability that is not a whole number of bps", () => {
+    // 9995.5 is inside the range and is not a representable availability.
+    expect(() => slaCommitment(9_995.5, 9_800, 1, 20)).toThrow(/whole number of basis points/);
+    expect(() => slaCommitment(-1, 9_800, 1, 20)).toThrow(/whole number of basis points/);
+    expect(() => slaCommitment(10_001, 9_800, 1, 20)).toThrow(/whole number of basis points/);
+  });
+
+  test("formats bps the way a counterparty reads them", () => {
+    expect(formatBps(9_995)).toBe("99.95%");
+    expect(formatBps(10_000)).toBe("100.00%");
+    expect(formatBps(5)).toBe("0.05%");
+    expect(formatBps(0)).toBe("0.00%");
   });
 });

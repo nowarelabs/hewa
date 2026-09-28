@@ -73,13 +73,14 @@ describe("overage charge", () => {
 });
 
 describe("SLA credit", () => {
-  const sla = slaCommitment(0.995, 0.98, 0.1);
+  // 99.5% target, 98.0% delivered, one twentieth of the charge per point.
+  const sla = slaCommitment(9_995, 9_800, 1, 20);
 
   test("credits whole points missed, on the pre-credit charge", () => {
     // 99.5% against 98.0% is 1.5 points, so one point bills. The basis is
     // commitment plus overage, not the total after the credit.
     const credit = calculateSlaCredit(money(373_000, "USD"), sla);
-    expect(credit.amountMinor).toBe(-37_300);
+    expect(credit.amountMinor).toBe(-18_650);
   });
 
   test("is a negative amount, so it nets off rather than adding", () => {
@@ -88,23 +89,30 @@ describe("SLA credit", () => {
 
   test("credits nothing when delivery met the target", () => {
     expect(
-      calculateSlaCredit(money(100_000, "USD"), slaCommitment(0.995, 0.9999, 0.1)).amountMinor,
+      calculateSlaCredit(money(100_000, "USD"), slaCommitment(9_995, 9_999, 1, 20)).amountMinor,
     ).toBe(0);
   });
 
   test("credits nothing for a sub-point shortfall", () => {
     // 99.7% against a 99.5% target is a real miss but bills at zero. The
-    // residual stays visible in slaShortfallPoints for reporting.
+    // residual stays visible in slaShortfallBps for reporting.
     expect(
-      calculateSlaCredit(money(100_000, "USD"), slaCommitment(0.995, 0.997, 0.1)).amountMinor,
+      calculateSlaCredit(money(100_000, "USD"), slaCommitment(9_995, 9_970, 1, 20)).amountMinor,
     ).toBe(0);
   });
 
+  test("credits a whole-point shortfall exactly, with no float epsilon", () => {
+    // 10 points on a 99% target. As fractions this is `(1 - 0.9) * 100`, which
+    // is 9.999999999999998 and would bill nine points.
+    const tenPoints = slaCommitment(9_900, 8_900, 1, 20);
+    expect(calculateSlaCredit(money(100_000, "USD"), tenPoints).amountMinor).toBe(-50_000);
+  });
+
   test("does not shrink its own basis and cascade", () => {
-    // 10 points missed at 5% of the charge per point is half the basis. If the
-    // credit were assessed against the post-credit total, a second pass would
-    // find a 50,000 basis and shave off another 2,500.
-    const brutal = slaCommitment(1.0, 0.9, 0.05);
+    // 10 points at a twentieth per point is half the basis. If the credit were
+    // assessed against the post-credit total, a second pass would find a 50,000
+    // basis and shave off another 2,500.
+    const brutal = slaCommitment(10_000, 9_000, 1, 20);
     const breakdown = buildBreakdown(money(100_000, "USD"), money(0, "USD"), brutal);
     expect(breakdown.slaCredit.amountMinor).toBe(-50_000);
     expect(breakdown.netTotal.amountMinor).toBe(50_000);
@@ -116,10 +124,42 @@ describe("SLA credit", () => {
     const breakdown = buildBreakdown(
       money(100_000, "USD"),
       money(40_000, "USD"),
-      slaCommitment(1.0, 0.9, 0.05),
+      slaCommitment(10_000, 9_000, 1, 20),
     );
     expect(breakdown.slaCredit.amountMinor).toBe(-70_000);
     expect(breakdown.netTotal.amountMinor).toBe(70_000);
+  });
+
+  test("caps the credit at the charge it reduces", () => {
+    // A 100-point miss at half the charge per point is 50x the basis. Uncapped,
+    // that turns a $1,000 invoice into a $49,000 payable, which inverts the
+    // commercial relationship and belongs on a refund claim instead.
+    const ruinous = slaCommitment(10_000, 0, 1, 2);
+    const breakdown = buildBreakdown(money(100_000, "USD"), money(0, "USD"), ruinous);
+    expect(breakdown.slaCredit.amountMinor).toBe(-100_000);
+    expect(breakdown.netTotal.amountMinor).toBe(0);
+  });
+
+  test("never lets a bill total less than zero", () => {
+    const breakdown = buildBreakdown(
+      money(100_000, "USD"),
+      money(50_000, "USD"),
+      slaCommitment(10_000, 0, 1, 2),
+    );
+    expect(breakdown.netTotal.amountMinor).toBe(0);
+  });
+
+  test("rounds a half-cent credit away from zero, once", () => {
+    // 7,000 x 1 x 1 / 2 = 3,500 exactly; nudge the basis so the quotient is odd
+    // and the remainder is exactly one half of the divisor.
+    expect(
+      calculateSlaCredit(money(1, "USD"), slaCommitment(10_000, 9_000, 1, 2)).amountMinor,
+    ).toBe(-1);
+  });
+
+  test("refuses an unpriceable credit rate", () => {
+    expect(() => slaCommitment(9_995, 9_800, 1, 0)).toThrow(/positive integer/);
+    expect(() => slaCommitment(9_995, 9_800, -1, 20)).toThrow(/non-negative integer/);
   });
 });
 
@@ -130,7 +170,7 @@ describe("monthly bill", () => {
       month: "2026-10",
       committedMbps: 100,
       averageMbps: 120,
-      sla: slaCommitment(0.995, 0.98, 0.1),
+      sla: slaCommitment(9_995, 9_800, 1, 10),
     },
     plan,
   );
@@ -164,7 +204,7 @@ describe("monthly bill", () => {
         month: "2026-10",
         committedMbps: 100,
         averageMbps: 120,
-        sla: slaCommitment(0.995, 0.9999, 0.1),
+        sla: slaCommitment(9_995, 9_999, 1, 10),
       },
       plan,
     );

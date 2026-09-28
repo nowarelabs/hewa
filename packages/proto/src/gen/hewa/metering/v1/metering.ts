@@ -53,8 +53,8 @@ export interface UsageWindowClosed {
   /** Highest sustained throughput in the period, in Mbps. */
   peakMbps: number;
   totalBytes: string;
-  /** Availability actually delivered in the period, as a fraction. */
-  slaActual: number;
+  /** Availability actually delivered, in basis points: 9995 is 99.95%. */
+  slaActualBps: number;
   closedAt?: Date | undefined;
 }
 
@@ -63,11 +63,12 @@ export interface SlaBreached {
   subscriberId: string;
   ispId: string;
   period: string;
-  /** Committed availability, as a fraction. */
-  slaCommitted: number;
-  slaActual: number;
-  /** Fraction of the month's charge owed back as a credit. */
-  creditRate: number;
+  /** Committed and delivered availability, in basis points. */
+  slaCommittedBps: number;
+  slaActualBps: number;
+  /** Credit per whole point missed, as an exact fraction of the month's charge. */
+  creditNumerator: number;
+  creditDenominator: number;
   detectedAt?: Date | undefined;
 }
 
@@ -434,7 +435,7 @@ function createBaseUsageWindowClosed(): UsageWindowClosed {
     averageMbps: 0,
     peakMbps: 0,
     totalBytes: "0",
-    slaActual: 0,
+    slaActualBps: 0,
     closedAt: undefined,
   };
 }
@@ -459,8 +460,8 @@ export const UsageWindowClosed: MessageFns<UsageWindowClosed> = {
     if (message.totalBytes !== "0") {
       writer.uint32(48).int64(message.totalBytes);
     }
-    if (message.slaActual !== 0) {
-      writer.uint32(57).double(message.slaActual);
+    if (message.slaActualBps !== 0) {
+      writer.uint32(56).uint32(message.slaActualBps);
     }
     if (message.closedAt !== undefined) {
       Timestamp.encode(toTimestamp(message.closedAt), writer.uint32(66).fork()).join();
@@ -530,11 +531,11 @@ export const UsageWindowClosed: MessageFns<UsageWindowClosed> = {
             continue;
           }
           case 7: {
-            if (tag !== 57) {
+            if (tag !== 56) {
               break;
             }
 
-            message.slaActual = reader.double();
+            message.slaActualBps = reader.uint32();
             continue;
           }
           case 8: {
@@ -585,10 +586,10 @@ export const UsageWindowClosed: MessageFns<UsageWindowClosed> = {
         : isSet(object.total_bytes)
         ? globalThis.String(object.total_bytes)
         : "0",
-      slaActual: isSet(object.slaActual)
-        ? globalThis.Number(object.slaActual)
-        : isSet(object.sla_actual)
-        ? globalThis.Number(object.sla_actual)
+      slaActualBps: isSet(object.slaActualBps)
+        ? globalThis.Number(object.slaActualBps)
+        : isSet(object.sla_actual_bps)
+        ? globalThis.Number(object.sla_actual_bps)
         : 0,
       closedAt: isSet(object.closedAt)
         ? fromJsonTimestamp(object.closedAt)
@@ -618,8 +619,8 @@ export const UsageWindowClosed: MessageFns<UsageWindowClosed> = {
     if (message.totalBytes !== "0") {
       obj.totalBytes = message.totalBytes;
     }
-    if (message.slaActual !== 0) {
-      obj.slaActual = message.slaActual;
+    if (message.slaActualBps !== 0) {
+      obj.slaActualBps = Math.round(message.slaActualBps);
     }
     if (message.closedAt !== undefined) {
       obj.closedAt = message.closedAt.toISOString();
@@ -638,7 +639,7 @@ export const UsageWindowClosed: MessageFns<UsageWindowClosed> = {
     message.averageMbps = object.averageMbps ?? 0;
     message.peakMbps = object.peakMbps ?? 0;
     message.totalBytes = object.totalBytes ?? "0";
-    message.slaActual = object.slaActual ?? 0;
+    message.slaActualBps = object.slaActualBps ?? 0;
     message.closedAt = object.closedAt ?? undefined;
     return message;
   },
@@ -649,9 +650,10 @@ function createBaseSlaBreached(): SlaBreached {
     subscriberId: "",
     ispId: "",
     period: "",
-    slaCommitted: 0,
-    slaActual: 0,
-    creditRate: 0,
+    slaCommittedBps: 0,
+    slaActualBps: 0,
+    creditNumerator: 0,
+    creditDenominator: 0,
     detectedAt: undefined,
   };
 }
@@ -667,17 +669,20 @@ export const SlaBreached: MessageFns<SlaBreached> = {
     if (message.period !== "") {
       writer.uint32(26).string(message.period);
     }
-    if (message.slaCommitted !== 0) {
-      writer.uint32(33).double(message.slaCommitted);
+    if (message.slaCommittedBps !== 0) {
+      writer.uint32(32).uint32(message.slaCommittedBps);
     }
-    if (message.slaActual !== 0) {
-      writer.uint32(41).double(message.slaActual);
+    if (message.slaActualBps !== 0) {
+      writer.uint32(40).uint32(message.slaActualBps);
     }
-    if (message.creditRate !== 0) {
-      writer.uint32(49).double(message.creditRate);
+    if (message.creditNumerator !== 0) {
+      writer.uint32(48).uint32(message.creditNumerator);
+    }
+    if (message.creditDenominator !== 0) {
+      writer.uint32(56).uint32(message.creditDenominator);
     }
     if (message.detectedAt !== undefined) {
-      Timestamp.encode(toTimestamp(message.detectedAt), writer.uint32(58).fork()).join();
+      Timestamp.encode(toTimestamp(message.detectedAt), writer.uint32(66).fork()).join();
     }
     return writer;
   },
@@ -720,31 +725,39 @@ export const SlaBreached: MessageFns<SlaBreached> = {
             continue;
           }
           case 4: {
-            if (tag !== 33) {
+            if (tag !== 32) {
               break;
             }
 
-            message.slaCommitted = reader.double();
+            message.slaCommittedBps = reader.uint32();
             continue;
           }
           case 5: {
-            if (tag !== 41) {
+            if (tag !== 40) {
               break;
             }
 
-            message.slaActual = reader.double();
+            message.slaActualBps = reader.uint32();
             continue;
           }
           case 6: {
-            if (tag !== 49) {
+            if (tag !== 48) {
               break;
             }
 
-            message.creditRate = reader.double();
+            message.creditNumerator = reader.uint32();
             continue;
           }
           case 7: {
-            if (tag !== 58) {
+            if (tag !== 56) {
+              break;
+            }
+
+            message.creditDenominator = reader.uint32();
+            continue;
+          }
+          case 8: {
+            if (tag !== 66) {
               break;
             }
 
@@ -776,20 +789,25 @@ export const SlaBreached: MessageFns<SlaBreached> = {
         ? globalThis.String(object.isp_id)
         : "",
       period: isSet(object.period) ? globalThis.String(object.period) : "",
-      slaCommitted: isSet(object.slaCommitted)
-        ? globalThis.Number(object.slaCommitted)
-        : isSet(object.sla_committed)
-        ? globalThis.Number(object.sla_committed)
+      slaCommittedBps: isSet(object.slaCommittedBps)
+        ? globalThis.Number(object.slaCommittedBps)
+        : isSet(object.sla_committed_bps)
+        ? globalThis.Number(object.sla_committed_bps)
         : 0,
-      slaActual: isSet(object.slaActual)
-        ? globalThis.Number(object.slaActual)
-        : isSet(object.sla_actual)
-        ? globalThis.Number(object.sla_actual)
+      slaActualBps: isSet(object.slaActualBps)
+        ? globalThis.Number(object.slaActualBps)
+        : isSet(object.sla_actual_bps)
+        ? globalThis.Number(object.sla_actual_bps)
         : 0,
-      creditRate: isSet(object.creditRate)
-        ? globalThis.Number(object.creditRate)
-        : isSet(object.credit_rate)
-        ? globalThis.Number(object.credit_rate)
+      creditNumerator: isSet(object.creditNumerator)
+        ? globalThis.Number(object.creditNumerator)
+        : isSet(object.credit_numerator)
+        ? globalThis.Number(object.credit_numerator)
+        : 0,
+      creditDenominator: isSet(object.creditDenominator)
+        ? globalThis.Number(object.creditDenominator)
+        : isSet(object.credit_denominator)
+        ? globalThis.Number(object.credit_denominator)
         : 0,
       detectedAt: isSet(object.detectedAt)
         ? fromJsonTimestamp(object.detectedAt)
@@ -810,14 +828,17 @@ export const SlaBreached: MessageFns<SlaBreached> = {
     if (message.period !== "") {
       obj.period = message.period;
     }
-    if (message.slaCommitted !== 0) {
-      obj.slaCommitted = message.slaCommitted;
+    if (message.slaCommittedBps !== 0) {
+      obj.slaCommittedBps = Math.round(message.slaCommittedBps);
     }
-    if (message.slaActual !== 0) {
-      obj.slaActual = message.slaActual;
+    if (message.slaActualBps !== 0) {
+      obj.slaActualBps = Math.round(message.slaActualBps);
     }
-    if (message.creditRate !== 0) {
-      obj.creditRate = message.creditRate;
+    if (message.creditNumerator !== 0) {
+      obj.creditNumerator = Math.round(message.creditNumerator);
+    }
+    if (message.creditDenominator !== 0) {
+      obj.creditDenominator = Math.round(message.creditDenominator);
     }
     if (message.detectedAt !== undefined) {
       obj.detectedAt = message.detectedAt.toISOString();
@@ -833,9 +854,10 @@ export const SlaBreached: MessageFns<SlaBreached> = {
     message.subscriberId = object.subscriberId ?? "";
     message.ispId = object.ispId ?? "";
     message.period = object.period ?? "";
-    message.slaCommitted = object.slaCommitted ?? 0;
-    message.slaActual = object.slaActual ?? 0;
-    message.creditRate = object.creditRate ?? 0;
+    message.slaCommittedBps = object.slaCommittedBps ?? 0;
+    message.slaActualBps = object.slaActualBps ?? 0;
+    message.creditNumerator = object.creditNumerator ?? 0;
+    message.creditDenominator = object.creditDenominator ?? 0;
     message.detectedAt = object.detectedAt ?? undefined;
     return message;
   },

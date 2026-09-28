@@ -43,8 +43,8 @@ message UsageWindowClosed {
   // Highest sustained throughput in the period, in Mbps.
   double peak_mbps = 5;
   int64 total_bytes = 6;
-  // Availability actually delivered in the period, as a fraction.
-  double sla_actual = 7;
+  // Availability actually delivered, in basis points: 9995 is 99.95%.
+  uint32 sla_actual_bps = 7;
   google.protobuf.Timestamp closed_at = 8;
 }
 
@@ -53,10 +53,11 @@ message SlaBreached {
   string subscriber_id = 1;
   string isp_id = 2;
   string period = 3;
-  // Committed availability, as a fraction.
-  double sla_committed = 4;
-  double sla_actual = 5;
-  // Fraction of the month's charge owed back as a credit.
-  double credit_rate = 6;
-  google.protobuf.Timestamp detected_at = 7;
+  // Committed and delivered availability, in basis points.
+  uint32 sla_committed_bps = 4;
+  uint32 sla_actual_bps = 5;
+  // Credit per whole point missed, as an exact fraction of the month's charge.
+  uint32 credit_numerator = 6;
+  uint32 credit_denominator = 7;
+  google.protobuf.Timestamp detected_at = 8;
 }

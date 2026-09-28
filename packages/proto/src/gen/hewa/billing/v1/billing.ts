@@ -140,7 +140,10 @@ export interface InvoiceLine {
   amount?:
     | Money
     | undefined;
-  /** Portion of `amount` that is an SLA credit rather than a charge. */
+  /**
+   * Portion of `amount` that is an SLA credit rather than a charge. A credit
+   * never exceeds the line it reduces.
+   */
   credit?: Money | undefined;
 }
 

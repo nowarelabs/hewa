@@ -1,0 +1,36 @@
+{
+  "name": "@hewa/revenue-proof-protocol",
+  "version": "0.0.0",
+  "description": "Merkle commitments and signatures over daily revenue for hewa, so a bondholder can verify a figure without trusting the database it came from.",
+  "license": "MIT",
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": "./dist/index.mjs",
+    "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "vp pack",
+    "dev": "vp pack --watch",
+    "test": "vp test",
+    "check": "vp check"
+  },
+  "dependencies": {
+    "@hewa/blockchain-types": "workspace:*",
+    "@hewa/crypto": "workspace:*",
+    "@hewa/errors": "workspace:*"
+  },
+  "devDependencies": {
+    "@hewa/tsconfig": "workspace:*",
+    "@types/node": "catalog:",
+    "ethers": "catalog:",
+    "typescript": "catalog:",
+    "vite-plus": "catalog:"
+  }
+}

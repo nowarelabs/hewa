@@ -117,19 +117,49 @@ export function calculateOverageCharge(
 /**
  * Credit for an SLA shortfall, as a negative amount.
  *
- * Charged on whole percentage points missed, which is why a sub-point
- * shortfall credits nothing. `rate` is a fraction of the monthly charge per
- * point, so `0.1` means a tenth of the charge per point.
+ * Charged on whole percentage points missed, so a sub-point shortfall credits
+ * nothing. The rate is an exact `numerator / denominator` fraction of the charge
+ * per point, and the whole calculation is integer arithmetic: the basis, the
+ * points, the numerator and the denominator are all integers, and the division
+ * is done in `BigInt` and rounded once, half away from zero. Nothing here is a
+ * `float`, because a credit that is off by a cent is a credit the counterparty
+ * can refuse to pay.
  */
-export function calculateSlaCredit(monthlyCharge: Money, sla: SlaCommitment): Money {
+export function calculateSlaCredit(basis: Money, sla: SlaCommitment): Money {
   const points = creditablePoints(sla);
-  if (points === 0) return zero(monthlyCharge.currency);
-  // scaleMoney already rounds symmetrically, and the negation puts the credit
-  // on the negative side without touching the rate's sign convention.
-  return {
-    amountMinor: -scaleMoney(monthlyCharge, points * sla.creditRatePerPoint).amountMinor,
-    currency: monthlyCharge.currency,
-  };
+  if (points === 0) return zero(basis.currency);
+  const divisor = BigInt(sla.creditDenominator);
+  const scaled = divideRoundHalfAwayFromZero(
+    BigInt(basis.amountMinor) * BigInt(points) * BigInt(sla.creditNumerator),
+    divisor,
+  );
+  // A credit reduces what was charged. It cannot exceed the charge it reduces,
+  // because a credit larger than the bill is not a credit, it is a payable: it
+  // inverts the sign of the commercial relationship and belongs on a separate
+  // refund claim that a person authorises, not on a line of a recurring invoice.
+  const capped = scaled > BigInt(basis.amountMinor) ? BigInt(basis.amountMinor) : scaled;
+  return { amountMinor: Number(-capped), currency: basis.currency };
+}
+
+/**
+ * Integer division rounded half away from zero.
+ *
+ * `BigInt` division truncates toward zero, so a half rounds down for positive
+ * values and up for negative ones unless it is corrected. `Number` division has
+ * the same asymmetry plus a precision ceiling, which is why this is done here
+ * rather than with either operator.
+ */
+function divideRoundHalfAwayFromZero(dividend: bigint, divisor: bigint): bigint {
+  if (divisor === 0n) {
+    throw new ValidationError("Cannot divide by a zero credit rate", {});
+  }
+  const negative = dividend < 0n !== divisor < 0n;
+  const magnitude = dividend < 0n ? -dividend : dividend;
+  const magnitudeDivisor = divisor < 0n ? -divisor : divisor;
+  const quotient = magnitude / magnitudeDivisor;
+  const remainder = magnitude % magnitudeDivisor;
+  const rounded = remainder * 2n >= magnitudeDivisor ? quotient + 1n : quotient;
+  return negative ? -rounded : rounded;
 }
 
 /**
@@ -165,7 +195,9 @@ export function calculateBill(
  * Combine the components of a bill.
  *
  * Exposed so a mid-period proration can reuse the same arithmetic, and so the
- * credit basis is provably the commitment plus overage.
+ * credit basis is provably the commitment plus overage. The credit is computed
+ * against `commitment + overage` and then capped at that same figure, so the net
+ * total can reach zero but never below it.
  */
 export function buildBreakdown(
   commitmentCharge: Money,

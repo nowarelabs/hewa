@@ -31,7 +31,8 @@ message InvoiceLine {
   // `YYYY-MM` for a recurring charge.
   string period = 3;
   hewa.common.v1.Money amount = 4;
-  // Portion of `amount` that is an SLA credit rather than a charge.
+  // Portion of `amount` that is an SLA credit rather than a charge. A credit
+  // never exceeds the line it reduces.
   hewa.common.v1.Money credit = 5;
 }
 

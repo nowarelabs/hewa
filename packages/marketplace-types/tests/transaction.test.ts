@@ -8,34 +8,44 @@ import {
   isTerminal,
   money,
   slaCommitment,
-  slaShortfallPoints,
+  slaShortfallBps,
   type Transaction,
 } from "../src/index.ts";
 
-const sla = (target: number, actual: number, rate = 0.1) => slaCommitment(target, actual, rate);
+const sla = (targetBps: number, actualBps: number) => slaCommitment(targetBps, actualBps, 1, 10);
 
 describe("SLA", () => {
-  test("rejects percentages that are not fractions", () => {
-    // 99.5 and 0.995 are the same number to a human and wildly different to a
-    // comparison, so the type only accepts the fraction.
-    expect(() => sla(99.5, 98.2)).toThrow(/fraction between 0 and 1/);
+  test("rejects a percentage that was entered as a percentage, not bps", () => {
+    // 99.5 and 9_950 are the same availability to a human and wildly different
+    // to a comparison, and only the second is a valid basis point count. A
+    // percentage typed where bps belong has to be rejected loudly, because
+    // accepted silently it would read as 0.995%.
+    expect(() => sla(99.5, 98.2)).toThrow(/whole number of basis points/);
+    expect(() => sla(9_995, 9_995.5)).toThrow(/whole number of basis points/);
   });
 
   test("detects a breach", () => {
-    expect(hasSlaBreach(sla(0.995, 0.98))).toBe(true);
-    expect(hasSlaBreach(sla(0.995, 0.9999))).toBe(false);
+    expect(hasSlaBreach(sla(9_995, 9_800))).toBe(true);
+    expect(hasSlaBreach(sla(9_995, 9_999))).toBe(false);
   });
 
-  test("measures the shortfall in percentage points", () => {
-    expect(slaShortfallPoints(sla(0.995, 0.982))).toBeCloseTo(1.3, 10);
-    expect(slaShortfallPoints(sla(0.995, 1))).toBe(0);
+  test("measures the shortfall in basis points, exactly", () => {
+    // 99.5% against 98.2% is 175 bps. As fractions the same subtraction is
+    // 1.2999999999999545, and a comparison against a whole point is a coin flip.
+    expect(slaShortfallBps(sla(9_995, 9_820))).toBe(175);
+    expect(slaShortfallBps(sla(9_995, 10_000))).toBe(0);
   });
 
   test("credits only whole points", () => {
-    expect(creditablePoints(sla(0.995, 0.982))).toBe(1);
-    // A shortfall under a whole point is real but bills at zero, which is why
-    // the residual still shows up in the shortfall figure above.
-    expect(creditablePoints(sla(0.995, 0.997))).toBe(0);
+    expect(creditablePoints(sla(9_995, 9_820))).toBe(1);
+    // 20 bps is a real shortfall that bills at zero, which is why the residual
+    // still shows up in the bps figure above.
+    expect(creditablePoints(sla(9_995, 9_975))).toBe(0);
+  });
+
+  test("credits a whole-point shortfall with no float tolerance", () => {
+    // The case an epsilon had to paper over: exactly ten points.
+    expect(creditablePoints(sla(10_000, 9_000))).toBe(10);
   });
 });
 
