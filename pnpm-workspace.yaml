@@ -9,8 +9,8 @@ catalog:
   "@changesets/cli": ^3
   "@types/node": ^26
   typescript: ^6
-  vite: npm:@voidzero-dev/vite-plus-core@1.0.0
-  vite-plus: 1.0.0
+  vite: npm:@voidzero-dev/vite-plus-core@^1
+  vite-plus: ^1
 
 overrides:
   vite@*: "catalog:"
@@ -25,7 +25,14 @@ peerDependencyRules:
   allowedVersions:
     vite: "*"
 
+# Deliberate, one-time exception: Vite+ 1.0.0 was published hours before this
+# workspace was created, so pnpm's minimum release age would hold the install at
+# 0.3.x. pnpm only accepts exact versions here, hence the platform list. Delete
+# this block once 1.0.0 has aged past the gate; the catalog range keeps tracking
+# 1.x either way.
 minimumReleaseAgeExclude:
+  - vite-plus@1.0.0
+  - "@voidzero-dev/vite-plus-core@1.0.0"
   - "@voidzero-dev/vite-plus-darwin-arm64@1.0.0"
   - "@voidzero-dev/vite-plus-darwin-x64@1.0.0"
   - "@voidzero-dev/vite-plus-linux-arm64-gnu@1.0.0"
@@ -34,5 +41,3 @@ minimumReleaseAgeExclude:
   - "@voidzero-dev/vite-plus-linux-x64-musl@1.0.0"
   - "@voidzero-dev/vite-plus-win32-arm64-msvc@1.0.0"
   - "@voidzero-dev/vite-plus-win32-x64-msvc@1.0.0"
-  - vite-plus@1.0.0
-  - "@voidzero-dev/vite-plus-core@1.0.0"

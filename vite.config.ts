@@ -16,14 +16,11 @@ export default defineConfig({
     },
   },
   run: {
+    // Task definitions live in package.json scripts so that `pnpm run <name>`,
+    // `vp run <name>`, and package-level invocation all reach the same command.
     cache: {
       scripts: false,
       tasks: true,
-    },
-    tasks: {
-      verify: {
-        command: ["vp check", "vp run -r test", "vp run -r build"],
-      },
     },
   },
 });

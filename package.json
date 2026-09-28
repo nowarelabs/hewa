@@ -7,10 +7,20 @@
   "type": "module",
   "scripts": {
     "dev": "vp run @hewa/website#dev",
-    "prepare": "vp config",
+    "build": "vp run -r build",
+    "test": "vp run -r test",
+    "check": "vp check",
+    "check:fix": "vp check --fix",
+    "lint": "vp lint",
+    "lint:fix": "vp lint --fix",
+    "format": "vp fmt --check",
+    "format:fix": "vp fmt --write",
+    "verify": "vp check && vp run -r test && vp run -r build",
+    "cache:clean": "vp cache clean",
     "changeset": "vp exec changeset",
     "release": "vp exec changeset version && vp install",
-    "ci:publish": "vp run -r build && vp pm publish -r"
+    "ci:publish": "vp run -r build && vp pm publish -r",
+    "prepare": "vp config"
   },
   "devDependencies": {
     "@changesets/cli": "catalog:",
