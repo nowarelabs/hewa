@@ -2,11 +2,13 @@
   "$schema": "https://json.schemastore.org/tsconfig",
   "display": "hewa node service",
   "extends": "./base.json",
+  // `rootDir`, `outDir`, and `include` are deliberately absent: all three
+  // resolve relative to the file that declares them, so inheriting them from
+  // here would point them at packages/tsconfig. An infrastructure process
+  // sets them in tsconfig.build.json, where emitting actually happens.
   "compilerOptions": {
-    "declaration": true,
-    "sourceMap": true,
-    "outDir": "dist",
-    "rootDir": "src",
-    "types": ["node"]
+    "types": ["node"],
+    "declaration": false,
+    "sourceMap": true
   }
 }

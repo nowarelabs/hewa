@@ -1,0 +1,34 @@
+{
+  "name": "@hewa/location-service",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Geocoding, routing, and live position history.",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "dev": "vp exec nest start --watch",
+    "build": "vp exec tsc -p tsconfig.build.json",
+    "start": "vp exec node dist/main.js",
+    "test": "vp test",
+    "check": "vp check"
+  },
+  "dependencies": {
+    "@hewa/errors": "workspace:*",
+    "@hewa/observability": "workspace:*",
+    "@hewa/response-codes": "workspace:*",
+    "@nestjs/common": "catalog:",
+    "@nestjs/core": "catalog:",
+    "@nestjs/platform-express": "catalog:",
+    "reflect-metadata": "catalog:",
+    "rxjs": "catalog:"
+  },
+  "devDependencies": {
+    "@hewa/tsconfig": "workspace:*",
+    "@nestjs/cli": "catalog:",
+    "@nestjs/testing": "catalog:",
+    "@types/express": "catalog:",
+    "@types/node": "catalog:",
+    "typescript": "catalog:",
+    "vite-plus": "catalog:"
+  }
+}

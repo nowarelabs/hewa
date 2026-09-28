@@ -1,0 +1,29 @@
+---
+import { getCollection } from "astro:content";
+import Base from "../layouts/Base.astro";
+
+const posts = (await getCollection("blog")).sort((a, b) =>
+  b.data.publishedAt.localeCompare(a.data.publishedAt),
+);
+---
+
+<Base title="Hewa Blog" description="The public engineering and product blog, built with Astro.">
+  <h1>Hewa Blog</h1>
+  <p class="subtitle">The public engineering and product blog, built with Astro.</p>
+
+  {posts.length === 0 ? <p>No posts yet.</p> : null}
+
+  {
+    posts.map((post) => (
+      <article>
+        <h2>
+          <a href={`/blog/${post.id}/`}>{post.data.title}</a>
+        </h2>
+        <p class="tagline">
+          {new Date(post.data.publishedAt).toISOString().slice(0, 10)}
+          {post.data.description ? ` — ${post.data.description}` : null}
+        </p>
+      </article>
+    ))
+  }
+</Base>

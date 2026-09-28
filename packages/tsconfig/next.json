@@ -1,6 +1,9 @@
 {
   "$schema": "https://json.schemastore.org/tsconfig",
   "display": "hewa next app",
+  // `include`, `exclude`, and `paths` are deliberately absent: every one of
+  // them resolves relative to the file that declares it, so inheriting them
+  // from here would point them at packages/tsconfig instead of the app.
   "compilerOptions": {
     "target": "es2022",
     "lib": ["es2023", "dom", "dom.iterable"],
@@ -11,17 +14,11 @@
     "jsx": "preserve",
     "strict": true,
     "noEmit": true,
-    "incremental": true,
     "esModuleInterop": true,
     "isolatedModules": true,
     "skipLibCheck": true,
     "resolveJsonModule": true,
     "forceConsistentCasingInFileNames": true,
-    "plugins": [{ "name": "next" }],
-    "paths": {
-      "@/*": ["./src/*"]
-    }
-  },
-  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
-  "exclude": ["node_modules", ".next"]
+    "plugins": [{ "name": "next" }]
+  }
 }

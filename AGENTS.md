@@ -29,21 +29,62 @@ release. Add a tool name to select part of the graph. For example, run
 # hewa
 
 A pnpm workspace monorepo. `pnpm-workspace.yaml` owns the workspace globs
-(`apps/*`, `packages/*`, `tools/*`), the shared-version catalog, and the pnpm
-overrides. `vite.config.ts` at the root owns the shared Oxfmt/Oxlint config, the
-staged check, and the task definitions.
+(`apps/*`, `packages/*`, `services/*`, `infra-services/*`, `tools/*`), the
+shared-version catalog, the pnpm overrides, and the `allowBuilds` allowlist.
+`vite.config.ts` at the root owns the shared Oxfmt/Oxlint config and the staged
+check.
 
 ## Packages
 
-| Package                | Path                      | Visibility |
-| ---------------------- | ------------------------- | ---------- |
-| `@hewa/website`        | `apps/website`            | private    |
-| `@hewa/utils`          | `packages/utils`          | published  |
-| `@hewa/tsconfig`       | `packages/tsconfig`       | private    |
-| `@hewa/response-codes` | `packages/response-codes` | published  |
-| `@hewa/errors`         | `packages/errors`         | published  |
-| `@hewa/observability`  | `packages/observability`  | published  |
-| `@hewa/proto`          | `packages/proto`          | published  |
+| Package                         | Path                           | Visibility |
+| ------------------------------- | ------------------------------ | ---------- |
+| `@hewa/website`                 | `apps/website`                 | private    |
+| `@hewa/customer-app`            | `apps/customer-app`            | private    |
+| `@hewa/customer-billing-portal` | `apps/customer-billing-portal` | private    |
+| `@hewa/customer-service-portal` | `apps/customer-service-portal` | private    |
+| `@hewa/developer-portal`        | `apps/developer-portal`        | private    |
+| `@hewa/admin-dashboard`         | `apps/admin-dashboard`         | private    |
+| `@hewa/blog`                    | `apps/blog`                    | private    |
+| `@hewa/utils`                   | `packages/utils`               | published  |
+| `@hewa/tsconfig`                | `packages/tsconfig`            | private    |
+| `@hewa/response-codes`          | `packages/response-codes`      | published  |
+| `@hewa/errors`                  | `packages/errors`              | published  |
+| `@hewa/observability`           | `packages/observability`       | published  |
+| `@hewa/proto`                   | `packages/proto`               | published  |
+| `@hewa/scaffold`                | `tools/scaffold`               | private    |
+| `@hewa/central-api` …           | `services/*`                   | private    |
+| `@hewa/event-gateway` …         | `infra-services/*`             | private    |
+
+## Generated shells
+
+The six apps, five services, and three infrastructure processes come from four
+templates in `tools/scaffold/templates`. Edit a template, then regenerate; edit
+`tools/scaffold/manifest.mjs` to add, remove, or rename an instance.
+
+```bash
+pnpm run scaffold -- --list          # what would be generated
+pnpm run scaffold -- central-api     # just one
+pnpm run scaffold -- --force         # overwrite existing files
+```
+
+Rules for working on the generator:
+
+- Never hand-edit a generated shell to fix something the template gets wrong.
+  The same file exists in fourteen places, and the next `--force` wins.
+- Generation skips existing files unless `--force` is passed, so hand edits
+  survive a normal run. That is a safety net, not an invitation.
+- Placeholders are `__NAME__`, `__CLASS__`, `__PACKAGE__`, `__TITLE__`,
+  `__DESCRIPTION__`, `__PORT__`, `__ENV_PREFIX__`, and `__TITLE_LOWER__`. A
+  token may run straight into more identifier characters, as
+  `__ENV_PREFIX___PORT` does; `substitute` matches lazily so the suffix
+  survives.
+- `tests/templates.test.mjs` fails if any placeholder survives substitution for
+  any instance. An unresolved token compiles and only breaks at runtime.
+- An instance that needs more than its template provides declares
+  `dependencies` in the manifest. Do not fork the template to add one library.
+- Templates are excluded from root `lint` and `typecheck` but **not** from
+  `fmt`, so a generated shell is born formatted. Run `vp fmt` on
+  `tools/scaffold/templates` after editing one.
 
 ## Rules
 
@@ -60,7 +101,16 @@ staged check, and the task definitions.
   `src`, but Vite and Vitest resolve through `node_modules`. Build a shared
   package before testing anything that depends on it; `build:shared` in the
   root `package.json` does this in dependency order, and `verify` runs it
-  before `test:shared` rather than relying on `vp run -r` ordering.
+  before the tests.
+- A package that emits must clear `paths` in its `tsconfig.build.json`. The
+  `paths` entry pulls sibling **source** into the program, and tsc then tries to
+  compile it into the emitter's output. It must also set
+  `allowImportingTsExtensions: false`, since the base config enables it for
+  type checking only.
+- Shared tsconfigs in `packages/tsconfig` must not declare `include`, `exclude`,
+  `paths`, `rootDir`, or `outDir`. All of those resolve relative to the file
+  that declares them, so inheriting them from a shared config points them at
+  `packages/tsconfig`. A package sets them in its own configs.
 - `vp pack` emits declarations with `isolatedDeclarations`. Exported `const`
   objects that reference another inferred binding need an explicit type
   annotation, and lookup tables must be keyed by the **value** consumers pass,
@@ -68,24 +118,39 @@ staged check, and the task definitions.
 - `packages/proto/src/gen` is generated by `buf`. It is committed so consumers
   do not need the `buf` binary, and it is excluded from `fmt` and `lint` in the
   root `vite.config.ts`. Edit `proto/`, then run `pnpm run proto:generate`.
+- Never leave a build artifact in a `src` or `tests` directory. `dist` is
+  ignored; `packages/*/src/*.js` is not, and it will be committed.
 - Put shared `lint` and `fmt` settings in the **root** `vite.config.ts`.
   Package-level `lint`/`fmt` blocks do not override the root for `vp check`.
 - Tasks live in `package.json` scripts, not in `vite.config.ts`, so that
   `pnpm run <name>`, `vp run <name>`, and `npx <name>` all reach the same
   command. Every script delegates to `vp`; do not call `pnpm` or `npx` directly.
+- `vp run --filter=<glob>` is recursive by itself and cannot be combined with
+  `-r`. Its value must be attached with `=`, because `--filter` is variadic and
+  would otherwise swallow the task name. The root package is `hewa`, so
+  `build:all` filters with `--filter=!hewa`; `-r build` would re-enter the
+  root's own `build` script and recurse.
 - The catalog tracks Vite+ `^1` as a deliberate one-time exception, via the
   commented `minimumReleaseAgeExclude` block in `pnpm-workspace.yaml`. Leave the
   global `vp` CLI alone.
+- `allowBuilds` in `pnpm-workspace.yaml` is an explicit supply-chain
+  allowlist, and pnpm 12 fails the install on any unlisted build script. Set an
+  entry to `false` to acknowledge and deny one — `msgpackr-extract` is a
+  BullMQ transitive whose native build buys nothing here.
 
 ## Validation
 
 ```bash
-pnpm run verify       # check, then build shared packages, then their tests
+pnpm run verify       # check, build shared, then test everything
 pnpm run check:fix    # format, lint, and type check with autofix
 ```
 
 `verify` is the gate to run before handing work back. `pnpm run` with no
 arguments lists every script; `vp run` also lists per-package tasks.
+
+Every shell takes its port from `<SCREAMING_SNAKE_NAME>_PORT` and its verbosity
+from `<SCREAMING_SNAKE_NAME>_LOG_LEVEL`, defaulting to the manifest value. See
+`infra-services/event-gateway/.env.example`.
 
 ## Releasing
 

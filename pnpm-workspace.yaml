@@ -46,6 +46,7 @@ catalog:
   # Infrastructure services
   "@aws-sdk/client-s3": ^3
   bullmq: ^6
+  "@hono/node-server": ^1
   hono: ^4
   ioredis: ^6
   kafkajs: ^2
@@ -53,11 +54,16 @@ catalog:
 overrides:
   vite@*: "catalog:"
 
-# @bufbuild/buf resolves its platform binary from a postinstall script, so it
-# cannot be opted out of the way the WASM build could. Anything added here is
-# an explicit supply-chain decision, which is the point of the allowlist.
+# Packages that need a postinstall to work at all. @bufbuild/buf resolves its
+# platform binary there; esbuild installs its own. Anything listed is an
+# explicit supply-chain decision, which is the point of the allowlist.
 allowBuilds:
   "@bufbuild/buf": true
+  esbuild: true
+  # BullMQ pulls in msgpackr, which offers a native extractor as a pure
+  # speed-up. msgpackr falls back to its own JavaScript codec, so the build
+  # script buys nothing here and is denied rather than trusted.
+  msgpackr-extract: false
 
 # Keep injected workspace dependencies in sync after a package is built.
 syncInjectedDepsAfterScripts:

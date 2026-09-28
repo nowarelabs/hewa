@@ -2,14 +2,15 @@
   "$schema": "https://json.schemastore.org/tsconfig",
   "display": "hewa nest service",
   "extends": "./base.json",
+  // `rootDir`, `outDir`, and `include` are deliberately absent: all three
+  // resolve relative to the file that declares them, so inheriting them from
+  // here would point them at packages/tsconfig. A service sets them in
+  // tsconfig.build.json, where emitting actually happens.
   "compilerOptions": {
     "types": ["node"],
-    "outDir": "dist",
-    "rootDir": "src",
+    "declaration": false,
     "sourceMap": true,
-    "declaration": true,
     "experimentalDecorators": true,
     "emitDecoratorMetadata": true
-  },
-  "include": ["src"]
+  }
 }

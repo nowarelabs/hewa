@@ -1,0 +1,19 @@
+{
+  "name": "@hewa/scaffold",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Generates the app, service, and infrastructure shells from shared templates.",
+  "license": "MIT",
+  "bin": {
+    "hewa-scaffold": "./index.mjs"
+  },
+  "type": "module",
+  "scripts": {
+    "scaffold": "vp exec node index.mjs",
+    "test": "vp test",
+    "check": "vp check"
+  },
+  "devDependencies": {
+    "vite-plus": "catalog:"
+  }
+}

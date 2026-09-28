@@ -1,0 +1,28 @@
+{
+  "name": "@hewa/customer-service-portal",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Support tickets and order enquiries for customers.",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "dev": "vp exec next dev --port 3003",
+    "build": "vp exec next build",
+    "start": "vp exec next start --port 3003",
+    "test": "vp test",
+    "check": "vp check"
+  },
+  "dependencies": {
+    "@hewa/response-codes": "workspace:*",
+    "next": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:"
+  },
+  "devDependencies": {
+    "@hewa/tsconfig": "workspace:*",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "typescript": "catalog:",
+    "vite-plus": "catalog:"
+  }
+}

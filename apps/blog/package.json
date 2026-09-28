@@ -1,0 +1,25 @@
+{
+  "name": "@hewa/blog",
+  "version": "0.0.0",
+  "private": true,
+  "description": "The public engineering and product blog, built with Astro.",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "dev": "vp exec astro dev --port 3006",
+    "build": "vp exec astro build",
+    "preview": "vp exec astro preview --port 3006",
+    "test": "vp test",
+    "check": "vp check"
+  },
+  "dependencies": {
+    "@astrojs/node": "catalog:",
+    "@hewa/response-codes": "workspace:*",
+    "astro": "catalog:"
+  },
+  "devDependencies": {
+    "@hewa/tsconfig": "workspace:*",
+    "typescript": "catalog:",
+    "vite-plus": "catalog:"
+  }
+}

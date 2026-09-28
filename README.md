@@ -9,8 +9,14 @@ library packer, and the monorepo task runner behind a single `vp` command.
 
 ```
 hewa/
-├── apps/                             — customer, admin, and portal front ends
-│   └── website/        @hewa/website  — Vite app (private)
+├── apps/                             — front ends
+│   ├── website/        @hewa/website  — Vite app (private)
+│   ├── customer-app/   @hewa/customer-app — Next.js
+│   ├── customer-billing-portal/      — Next.js
+│   ├── customer-service-portal/      — Next.js
+│   ├── developer-portal/             — Next.js
+│   ├── admin-dashboard/              — Next.js
+│   └── blog/           @hewa/blog     — Astro
 ├── packages/                         — shared libraries
 │   ├── tsconfig/       @hewa/tsconfig — base tsconfigs every package extends
 │   ├── response-codes/ @hewa/response-codes — canonical API response codes
@@ -19,8 +25,17 @@ hewa/
 │   ├── proto/          @hewa/proto    — protobuf schemas + buf-generated code
 │   └── utils/          @hewa/utils    — published library (vp pack)
 ├── services/                         — NestJS services
-├── infra-services/                   — Kafka, S3, and queue processes
-├── tools/                            — workspace for code generators
+│   ├── central-api/    @hewa/central-api — public entry point
+│   ├── billing-service/
+│   ├── delivery-service/
+│   ├── matching-service/
+│   └── location-service/
+├── infra-services/                   — long-running processes
+│   ├── event-gateway/  @hewa/event-gateway  — Kafka, speaking @hewa/proto
+│   ├── document-vault/ @hewa/document-vault — S3
+│   └── system-queue/   @hewa/system-queue   — Redis + BullMQ
+├── tools/
+│   └── scaffold/       @hewa/scaffold — generates the shells above
 ├── .changeset/                       — release metadata
 ├── .github/workflows/                — CI and the changesets release flow
 ├── Dockerfile                        — pnpm deploy image for @hewa/website
@@ -30,6 +45,37 @@ hewa/
 
 Every workspace member depends on shared versions through the pnpm **catalog**,
 so `vite`, `typescript`, and `vite-plus` are bumped in one place.
+
+## Generating shells
+
+The fourteen apps, services, and infrastructure processes are generated from
+four templates. `tools/scaffold/manifest.mjs` is the single place to add, remove,
+or rename one:
+
+```bash
+pnpm run scaffold -- --list               # what would be generated
+pnpm run scaffold -- central-api          # just one
+pnpm run scaffold -- --force              # overwrite files that already exist
+```
+
+Generation never clobbers an existing file unless you pass `--force`, so a shell
+can be edited by hand without losing work. Two things keep the templates honest:
+
+- `tests/templates.test.mjs` fails if any placeholder survives substitution.
+  An unresolved `__TOKEN__` compiles fine and only breaks at runtime.
+- The templates are excluded from `vp check` but **not** from `vp fmt`, so a
+  generated shell is born formatted and never needs a reformat commit.
+
+A template is shared by a whole kind. An instance that needs more than the
+template provides says so in the manifest rather than forking the template:
+
+```js
+{
+  kind: "infra",
+  name: "event-gateway",
+  dependencies: { kafkajs: "catalog:", "@hewa/proto": "workspace:*" },
+}
+```
 
 ## Requirements
 
@@ -48,9 +94,20 @@ left alone. The exception lives in a single commented block in
 ## Getting started
 
 ```bash
-vp install        # install with pnpm (Node and pnpm versions are managed by vp)
-pnpm run verify   # check + test + build
-pnpm run dev      # start the website dev server
+vp install           # install with pnpm (Node and pnpm versions are managed by vp)
+pnpm run verify      # the gate: check, then build, then test everything
+pnpm run dev         # start the website dev server
+```
+
+`verify` runs in dependency order, because shared packages are consumed through
+their built `dist` at runtime and by the tests of everything downstream:
+
+```
+check:workspace   format, lint, type check, and buf on the schemas
+build:shared      the shared libraries, in dependency order
+test:shared       52 tests across the five shared packages
+test:tools        the generator's own tests
+test:kinds        apps, then services, then infrastructure
 ```
 
 ### Scripts
@@ -61,13 +118,14 @@ and `npx <name>` all reach the same command. They all delegate to Vite+.
 | Script              | What it does                                           |
 | ------------------- | ------------------------------------------------------ |
 | `dev`               | website dev server on port 5173                        |
-| `build`             | build every package, dependencies first                |
+| `build`             | build every package, shared dependencies first         |
 | `test`              | run the full test suite                                |
 | `check`             | format check, lint, and type check                     |
 | `check:fix`         | the same, repairing what it can                        |
 | `lint` / `lint:fix` | lint only, without the formatter                       |
 | `format`            | format check only                                      |
 | `format:fix`        | format in place                                        |
+| `scaffold`          | generate the app, service, and infra shells            |
 | `verify`            | `check` + `test` + `build`, the gate before committing |
 | `cache:clean`       | drop the Vite Task cache                               |
 | `changeset`         | describe a change for the next release                 |
@@ -82,8 +140,23 @@ pnpm --filter @hewa/utils test
 pnpm --filter @hewa/utils build
 ```
 
-`tools/*` is a workspace for code generators. Run `vp run` with no arguments to
-list every task, including per-package ones.
+`pnpm run` with no arguments lists every script; `vp run` also lists
+per-package tasks.
+
+## Ports
+
+Every shell takes its port from the environment, defaulting to the value in its
+manifest entry. The variable is the screaming-snake form of the package name, so
+there is one rule to remember:
+
+```bash
+CENTRAL_API_PORT=4321 pnpm --filter @hewa/central-api dev
+CENTRAL_API_LOG_LEVEL=debug pnpm --filter @hewa/central-api dev
+```
+
+`infra-services/event-gateway/.env.example` shows the two variables each process
+accepts. A port outside 1–65535 is rejected at startup rather than passed to the
+runtime.
 
 ## Releasing
 

@@ -1,0 +1,25 @@
+{
+  "name": "__PACKAGE__",
+  "version": "0.0.0",
+  "private": true,
+  "description": "__DESCRIPTION__",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "dev": "vp exec astro dev --port __PORT__",
+    "build": "vp exec astro build",
+    "preview": "vp exec astro preview --port __PORT__",
+    "test": "vp test",
+    "check": "vp check"
+  },
+  "dependencies": {
+    "@astrojs/node": "catalog:",
+    "@hewa/response-codes": "workspace:*",
+    "astro": "catalog:"
+  },
+  "devDependencies": {
+    "@hewa/tsconfig": "workspace:*",
+    "typescript": "catalog:",
+    "vite-plus": "catalog:"
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "name": "@hewa/admin-dashboard",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Internal operations console for hewa staff.",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "dev": "vp exec next dev --port 3005",
+    "build": "vp exec next build",
+    "start": "vp exec next start --port 3005",
+    "test": "vp test",
+    "check": "vp check"
+  },
+  "dependencies": {
+    "@hewa/response-codes": "workspace:*",
+    "next": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:"
+  },
+  "devDependencies": {
+    "@hewa/tsconfig": "workspace:*",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "typescript": "catalog:",
+    "vite-plus": "catalog:"
+  }
+}

@@ -1,0 +1,70 @@
+/* Minimal reset only; the blog ships no CSS framework. */
+:root {
+  color-scheme: light dark;
+  --surface: Canvas;
+  --ink: CanvasText;
+  --muted: color-mix(in oklab, CanvasText 60%, Canvas);
+  --line: color-mix(in oklab, CanvasText 15%, Canvas);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--surface);
+  color: var(--ink);
+  font:
+    16px/1.7 ui-serif,
+    Georgia,
+    serif;
+}
+
+main,
+footer {
+  max-width: 42rem;
+  margin: 0 auto;
+  padding: 3rem 1.5rem;
+}
+
+h1 {
+  font-size: 2.25rem;
+  line-height: 1.15;
+  margin: 0 0 0.5rem;
+}
+
+h2 {
+  font-size: 1.25rem;
+  margin: 2.5rem 0 0.5rem;
+}
+
+a {
+  color: inherit;
+}
+
+.subtitle {
+  color: var(--muted);
+  margin: 0 0 2.5rem;
+}
+
+.tagline {
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
+article {
+  padding: 1.5rem 0;
+  border-top: 1px solid var(--line);
+}
+
+article h2 {
+  margin: 0 0 0.25rem;
+  font-size: 1.375rem;
+}
+
+footer {
+  color: var(--muted);
+  font-size: 0.875rem;
+  border-top: 1px solid var(--line);
+}

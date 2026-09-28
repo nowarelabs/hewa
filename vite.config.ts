@@ -5,6 +5,9 @@ export default defineConfig({
     "*": "vp check --fix",
   },
   fmt: {
+    // buf owns the formatting of generated proto code. Templates *are* formatted
+    // here, so a generated shell is born formatted and never needs a reformat
+    // commit.
     ignorePatterns: ["packages/proto/src/gen/**"],
   },
   lint: {
@@ -16,9 +19,7 @@ export default defineConfig({
       typeAware: true,
       typeCheck: true,
     },
-    // buf owns the formatting and linting of `proto/`; the code it emits is
-    // regenerated verbatim, so reformatting or relinting it is churn.
-    ignorePatterns: ["packages/proto/src/gen/**"],
+    ignorePatterns: ["packages/proto/src/gen/**", "tools/scaffold/templates/**"],
   },
   run: {
     // Task definitions live in package.json scripts so that `pnpm run <name>`,
