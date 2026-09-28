@@ -6,11 +6,12 @@
   "license": "MIT",
   "type": "module",
   "scripts": {
+    "sync": "vp exec astro sync",
     "dev": "vp exec astro dev --port __PORT__",
     "build": "vp exec astro build",
     "preview": "vp exec astro preview --port __PORT__",
     "test": "vp test",
-    "check": "vp check"
+    "check": "vp exec astro sync && vp check"
   },
   "dependencies": {
     "@astrojs/node": "catalog:",
