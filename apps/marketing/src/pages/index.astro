@@ -7,9 +7,9 @@ const posts = (await getCollection("blog")).sort((a: { data: { publishedAt: any;
 );
 ---
 
-<Base title="Hewa Blog" description="The public engineering and product blog, built with Astro.">
-  <h1>Hewa Blog</h1>
-  <p class="subtitle">The public engineering and product blog, built with Astro.</p>
+<Base title="Hewa" description="The landing page, built with Astro.">
+  <h1>Hewa</h1>
+  <p class="subtitle">The landing page, built with Astro.</p>
 
   {posts.length === 0 ? <p>No posts yet.</p> : null}
 
