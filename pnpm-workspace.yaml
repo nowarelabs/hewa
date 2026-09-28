@@ -1,19 +1,63 @@
 packages:
   - apps/*
   - packages/*
+  - services/*
+  - infra-services/*
   - tools/*
 
 catalogMode: prefer
 
 catalog:
+  # Toolchain
   "@changesets/cli": ^3
   "@types/node": ^26
   typescript: ^6
   vite: npm:@voidzero-dev/vite-plus-core@^1
   vite-plus: ^1
 
+  # NestJS services
+  "@nestjs/cli": ^12
+  "@nestjs/common": ^12
+  "@nestjs/config": ^12
+  "@nestjs/core": ^12
+  "@nestjs/platform-express": ^12
+  "@nestjs/schematics": ^12
+  "@nestjs/testing": ^12
+  "@types/express": ^5
+  reflect-metadata: ^0.2
+  rxjs: ^7
+
+  # Next.js apps
+  "@types/react": ^19
+  "@types/react-dom": ^19
+  next: ^16
+  react: ^19
+  react-dom: ^19
+
+  # Astro blog
+  "@astrojs/node": ^11
+  astro: ^7
+
+  # Protobuf / buf
+  "@bufbuild/buf": ^1
+  "@bufbuild/protobuf": ^2
+  ts-proto: ^2
+
+  # Infrastructure services
+  "@aws-sdk/client-s3": ^3
+  bullmq: ^6
+  hono: ^4
+  ioredis: ^6
+  kafkajs: ^2
+
 overrides:
   vite@*: "catalog:"
+
+# @bufbuild/buf resolves its platform binary from a postinstall script, so it
+# cannot be opted out of the way the WASM build could. Anything added here is
+# an explicit supply-chain decision, which is the point of the allowlist.
+allowBuilds:
+  "@bufbuild/buf": true
 
 # Keep injected workspace dependencies in sync after a package is built.
 syncInjectedDepsAfterScripts:

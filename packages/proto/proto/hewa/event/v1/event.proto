@@ -1,0 +1,55 @@
+syntax = "proto3";
+
+package hewa.event.v1;
+
+import "google/protobuf/timestamp.proto";
+import "hewa/common/v1/common.proto";
+
+// Envelope for everything published to, and consumed from, the event gateway.
+message EventEnvelope {
+  // Stable, unique id of this event.
+  string event_id = 1;
+  // Fully qualified type name, e.g. `hewa.event.v1.OrderPlaced`.
+  string type = 2;
+  // Logical partition key; messages sharing a key keep their order.
+  string partition_key = 3;
+  // Schema version of the payload carried in `data`.
+  uint32 schema_version = 4;
+  hewa.common.v1.Metadata metadata = 5;
+  // Opaque, schema-encoded payload.
+  bytes data = 6;
+}
+
+// A domain event published onto a topic.
+message DomainEvent {
+  hewa.event.v1.EventEnvelope envelope = 1;
+}
+
+message EventGatewayServicePublishRequest {
+  hewa.event.v1.EventEnvelope envelope = 1;
+}
+
+message EventGatewayServicePublishResponse {
+  string event_id = 1;
+  string partition = 2;
+  int64 offset = 3;
+  // RFC 3339 timestamp.
+  google.protobuf.Timestamp accepted_at = 4;
+}
+
+message EventGatewayServiceSubscribeRequest {
+  string topic = 1;
+  string consumer_group = 2;
+  // Only deliver events at or after this offset.
+  int64 from_offset = 3;
+}
+
+message EventGatewayServiceSubscribeResponse {
+  hewa.event.v1.EventEnvelope envelope = 1;
+}
+
+// Contract implemented by the event gateway.
+service EventGatewayService {
+  rpc Publish(EventGatewayServicePublishRequest) returns (EventGatewayServicePublishResponse);
+  rpc Subscribe(EventGatewayServiceSubscribeRequest) returns (stream EventGatewayServiceSubscribeResponse);
+}

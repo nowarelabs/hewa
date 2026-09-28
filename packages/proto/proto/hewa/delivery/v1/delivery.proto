@@ -1,0 +1,39 @@
+syntax = "proto3";
+
+package hewa.delivery.v1;
+
+import "google/protobuf/timestamp.proto";
+import "hewa/common/v1/common.proto";
+
+// Status of a delivery attempt.
+enum DeliveryStatus {
+  DELIVERY_STATUS_UNSPECIFIED = 0;
+  DELIVERY_STATUS_PENDING = 1;
+  DELIVERY_STATUS_ASSIGNED = 2;
+  DELIVERY_STATUS_IN_TRANSIT = 3;
+  DELIVERY_STATUS_DELIVERED = 4;
+  DELIVERY_STATUS_FAILED = 5;
+}
+
+message Delivery {
+  string delivery_id = 1;
+  string order_id = 2;
+  DeliveryStatus status = 3;
+  string courier_id = 4;
+  // RFC 3339 timestamps.
+  google.protobuf.Timestamp picked_up_at = 5;
+  google.protobuf.Timestamp delivered_at = 6;
+}
+
+message DeliveryPlaced {
+  string delivery_id = 1;
+  string order_id = 2;
+  hewa.common.v1.Metadata metadata = 3;
+}
+
+message DeliveryStatusChanged {
+  string delivery_id = 1;
+  DeliveryStatus previous_status = 2;
+  DeliveryStatus status = 3;
+  hewa.common.v1.Metadata metadata = 4;
+}

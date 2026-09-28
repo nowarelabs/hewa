@@ -1,0 +1,13 @@
+version: v2
+managed:
+  enabled: false
+plugins:
+  - local: protoc-gen-ts_proto
+    out: src/gen
+    opt:
+      - esModuleInterop=true
+      - forceLong=string
+      - importSuffix=.js
+      - outputServices=generic-definitions
+      - snakeToCamel=true
+      - useOptionals=messages

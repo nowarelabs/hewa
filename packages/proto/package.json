@@ -1,0 +1,43 @@
+{
+  "name": "@hewa/proto",
+  "version": "0.0.0",
+  "description": "Protobuf schemas for hewa, and the TypeScript that buf generates from them.",
+  "license": "MIT",
+  "files": [
+    "proto",
+    "buf.yaml",
+    "buf.gen.yaml",
+    "dist"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": "./dist/index.mjs",
+    "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "vp pack",
+    "dev": "vp pack --watch",
+    "test": "vp test",
+    "check": "vp check",
+    "proto:format": "buf format -w",
+    "proto:lint": "buf lint",
+    "proto:check": "buf lint && buf format --diff --exit-code",
+    "proto:generate": "buf generate",
+    "proto:breaking": "buf breaking --against '.git#branch=main'"
+  },
+  "dependencies": {
+    "@bufbuild/protobuf": "catalog:"
+  },
+  "devDependencies": {
+    "@bufbuild/buf": "catalog:",
+    "@hewa/tsconfig": "workspace:*",
+    "@types/node": "catalog:",
+    "ts-proto": "catalog:",
+    "typescript": "catalog:",
+    "vite-plus": "catalog:"
+  }
+}

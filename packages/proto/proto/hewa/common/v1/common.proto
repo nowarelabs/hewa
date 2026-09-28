@@ -1,0 +1,17 @@
+syntax = "proto3";
+
+package hewa.common.v1;
+
+import "google/protobuf/timestamp.proto";
+
+// Metadata attached to every message that crosses the event gateway.
+message Metadata {
+  // Correlation id, propagated as the `x-request-id` header.
+  string request_id = 1;
+  // Authenticated principal that caused the message.
+  string actor = 2;
+  // Tenant the message belongs to.
+  string tenant_id = 3;
+  // RFC 3339 timestamp.
+  google.protobuf.Timestamp occurred_at = 4;
+}

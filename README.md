@@ -9,10 +9,17 @@ library packer, and the monorepo task runner behind a single `vp` command.
 
 ```
 hewa/
-├── apps/
+├── apps/                             — customer, admin, and portal front ends
 │   └── website/        @hewa/website  — Vite app (private)
-├── packages/
-│   └── utils/          @hewa/utils    — published library (tsdown)
+├── packages/                         — shared libraries
+│   ├── tsconfig/       @hewa/tsconfig — base tsconfigs every package extends
+│   ├── response-codes/ @hewa/response-codes — canonical API response codes
+│   ├── errors/         @hewa/errors   — typed application errors
+│   ├── observability/  @hewa/observability — logging, request context, metrics
+│   ├── proto/          @hewa/proto    — protobuf schemas + buf-generated code
+│   └── utils/          @hewa/utils    — published library (vp pack)
+├── services/                         — NestJS services
+├── infra-services/                   — Kafka, S3, and queue processes
 ├── tools/                            — workspace for code generators
 ├── .changeset/                       — release metadata
 ├── .github/workflows/                — CI and the changesets release flow
