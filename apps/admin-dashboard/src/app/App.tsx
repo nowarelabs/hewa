@@ -1,34 +1,19 @@
 "use client";
 
-import { useState } from "react";
+import type { ReactElement } from "react";
+import { AppShell } from "@hewa/app-shell";
 
-import { AppLayout, MainPanel } from "./components";
-import type { ViewMode } from "./components";
+import { config } from "./shell.config";
 
-interface AppProps {
-  theme?: "light" | "dark";
-  onThemeChange?: (theme: "light" | "dark") => void;
-}
-
-export default function App({ theme = "dark", onThemeChange }: AppProps = {}) {
-  const [currentTheme, setCurrentTheme] = useState<"light" | "dark">(theme);
-  const [currentViewMode, setCurrentViewMode] = useState<ViewMode>("flights");
-
-  const handleThemeChange = (newTheme: "light" | "dark") => {
-    setCurrentTheme(newTheme);
-    onThemeChange?.(newTheme);
-  };
-
-  return (
-    <div className={currentTheme}>
-      <AppLayout
-        theme={currentTheme}
-        onThemeChange={handleThemeChange}
-        viewMode={currentViewMode}
-        onSelectViewMode={setCurrentViewMode}
-      >
-        <MainPanel mode={currentViewMode} theme={currentTheme} />
-      </AppLayout>
-    </div>
-  );
+/**
+ * The app is a configuration object and this component, which is the point of
+ * the refactor. It used to hold the current theme in state, hold the current
+ * view in state, hand both to a layout component that kept them in a third and
+ * fourth piece of state, and render a `MainPanel` that switched over the view to
+ * find a panel. The shell owns all of that now, and the URL keeps the view, the
+ * rail selection and the panel collapse state so a link reopens the console where
+ * you left it.
+ */
+export default function App(): ReactElement {
+  return <AppShell config={config} />;
 }

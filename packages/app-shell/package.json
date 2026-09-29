@@ -1,0 +1,44 @@
+{
+  "name": "@hewa/app-shell",
+  "version": "0.0.0",
+  "private": true,
+  "description": "The shared application shell: title bar, view tabs, icon rail, and side panels.",
+  "license": "MIT",
+  "files": [
+    "dist",
+    "src/styles.css"
+  ],
+  "type": "module",
+  "sideEffects": [
+    "**/*.css"
+  ],
+  "exports": {
+    ".": "./dist/index.mjs",
+    "./package.json": "./package.json",
+    "./styles.css": {
+      "style": "./src/styles.css",
+      "default": "./src/styles.css"
+    }
+  },
+  "scripts": {
+    "build": "vp pack",
+    "dev": "vp pack --watch",
+    "test": "vp test",
+    "check": "vp check"
+  },
+  "dependencies": {
+    "nuqs": "catalog:"
+  },
+  "devDependencies": {
+    "@hewa/tsconfig": "workspace:*",
+    "@types/react": "catalog:",
+    "react": "catalog:",
+    "typescript": "catalog:",
+    "vite-plus": "catalog:"
+  },
+  "peerDependencies": {
+    "lucide-react": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:"
+  }
+}

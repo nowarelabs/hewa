@@ -1,3 +1,13 @@
-export { useFlights, useAllFlights, useAirportFlights, useAirlineFlights } from "./useFlights";
+"use client";
 
-export type { FlightData, FlightsResponse } from "./useFlights";
+export {
+  ALL_FLIGHTS_ENDPOINT,
+  airlineFlightsEndpoint,
+  airportFlightsEndpoint,
+  useAirportFlights,
+  useAirlineFlights,
+  useAllFlights,
+  useFlights,
+} from "./useFlights";
+
+export type { FlightData, FlightsResponse, FlightsState } from "./useFlights";

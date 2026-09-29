@@ -13,6 +13,7 @@
     "check": "vp check"
   },
   "dependencies": {
+    "@hewa/app-shell": "workspace:*",
     "@hewa/response-codes": "workspace:*",
     "@tailwindcss/vite": "catalog:",
     "@tanstack/react-query": "catalog:",

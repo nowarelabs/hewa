@@ -1,0 +1,25 @@
+{
+  "extends": "@hewa/tsconfig/library.json",
+  "compilerOptions": {
+    // `jsx` and the DOM lib are absent from the shared library config on
+    // purpose: this package renders React, and the config is also used by
+    // packages that must not pull in a DOM.
+    "jsx": "react-jsx",
+    "lib": ["es2023", "dom", "dom.iterable"],
+    // Bundler resolution rather than the shared config's `nodenext`, and
+    // extensionless relative imports as a consequence.
+    //
+    // This is not a style preference. A consuming app type-checks this package
+    // through a `paths` entry pointing at `src`, which puts these files in the
+    // *app's* program under the *app's* options. `nodenext` demands a `.ts` or
+    // `.tsx` extension on every relative import, so the same import that passes
+    // here fails in the app with TS5097 the moment the app forgets
+    // `allowImportingTsExtensions`; and the app's config has no reason to carry a
+    // flag that only exists to satisfy a library's imports. Extensionless imports
+    // are correct under bundler resolution, and rolldown resolves them too.
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "noEmit": true
+  },
+  "include": ["src", "tests"]
+}

@@ -60,6 +60,7 @@ check.
 | `@hewa/crypto`                    | `packages/crypto`                | published  |
 | `@hewa/ledger-accounting`         | `packages/ledger-accounting`     | published  |
 | `@hewa/telco-integrations`        | `packages/telco-integrations`    | published  |
+| `@hewa/app-shell`                 | `packages/app-shell`             | private    |
 | `@hewa/scaffold`                  | `tools/scaffold`                 | private    |
 | `@hewa/central-api` …             | `services/*`                     | private    |
 | `@hewa/event-gateway` …           | `infra-services/*`               | private    |
@@ -97,6 +98,21 @@ Rules for working on the generator:
 
 ## Rules
 
+- An app that has a title bar, a view list and side panels renders
+  `@hewa/app-shell` and declares its views as a `ShellConfig`. Do not hand-roll
+  that chrome a second time: the first copy was 300 lines of layout, a `ViewMode`
+  union duplicated in five files, and a `JSON.parse` on an unguarded query
+  parameter. `apps/admin-dashboard` is the reference, and
+  `packages/app-shell/README.md` is the contract.
+- A shell panel takes a **component**, not an element. An element built once by
+  the config is hoisted out of the render cycle, so a collapsed panel keeps its
+  poller running and two panels that both want live data each start their own.
+  Shared live data goes through one store.
+- App and panel classes use the shell's tokens — `bg-surface`, `text-ink`,
+  `border-line`, `text-accent` — and not Tailwind's greys. A `neutral-900` does
+  not follow the `.dark` class the shell toggles, which is how one UI ends up
+  with a light mode it never drew. Colour belongs in `src/styles.css` of the
+  package, once.
 - Add shared dependencies to the **catalog** in `pnpm-workspace.yaml` and
   reference them as `catalog:` from each package. Never pin versions directly in
   a workspace package.

@@ -1,0 +1,77 @@
+/*
+ * The shell's colour contract.
+ *
+ * Every colour the shell paints is one of these variables. An app opts in with
+ * a single `@import "@hewa/app-shell/styles.css"` after `@import "tailwindcss"`
+ * plus one `@source` line pointing at this package, and it inherits the whole
+ * palette. A component in this package never writes a `neutral-900` or a
+ * `gray-700`: it writes `bg-surface` or `text-ink`, and both themes follow from
+ * the `.dark` class the shell puts on its own root.
+ *
+ * The variable names are deliberately short. They appear in every class in this
+ * package, and `bg-surface-raised` is already the longest name Tailwind can be
+ * asked to generate here without the stylesheet becoming unreadable.
+ */
+
+:root {
+  color-scheme: light;
+
+  --shell-canvas: #ffffff;
+  --shell-surface: #ffffff;
+  --shell-surface-raised: #f7fafc;
+  --shell-surface-sunken: #edf2f7;
+  --shell-line: #e2e8f0;
+  --shell-line-strong: #cbd5e1;
+  --shell-ink: #1a202c;
+  --shell-ink-muted: #718096;
+  --shell-ink-faint: #a0aec0;
+  --shell-accent: #1a365d;
+  --shell-accent-hover: #234a7d;
+  --shell-accent-ink: #ffffff;
+}
+
+.dark {
+  color-scheme: dark;
+
+  --shell-canvas: #0a0f1a;
+  --shell-surface: #111827;
+  --shell-surface-raised: #1f2937;
+  --shell-surface-sunken: #0f172a;
+  --shell-line: #1f2937;
+  --shell-line-strong: #374151;
+  --shell-ink: #f1f5f9;
+  --shell-ink-muted: #94a3b8;
+  --shell-ink-faint: #64748b;
+  --shell-accent: #3b82f6;
+  --shell-accent-hover: #60a5fa;
+  --shell-accent-ink: #0a0f1a;
+}
+
+@theme inline {
+  --color-canvas: var(--shell-canvas);
+  --color-surface: var(--shell-surface);
+  --color-surface-raised: var(--shell-surface-raised);
+  --color-surface-sunken: var(--shell-surface-sunken);
+  --color-line: var(--shell-line);
+  --color-line-strong: var(--shell-line-strong);
+  --color-ink: var(--shell-ink);
+  --color-ink-muted: var(--shell-ink-muted);
+  --color-ink-faint: var(--shell-ink-faint);
+  --color-accent: var(--shell-accent);
+  --color-accent-hover: var(--shell-accent-hover);
+  --color-accent-ink: var(--shell-accent-ink);
+}
+
+/*
+ * The shell is a fixed-viewport application, not a scrolling document. The
+ * panels and the main column own their own overflow, so letting the document
+ * scroll would give the whole chrome a second scrollbar.
+ */
+@layer base {
+  html,
+  body {
+    height: 100%;
+    margin: 0;
+    overflow: hidden;
+  }
+}

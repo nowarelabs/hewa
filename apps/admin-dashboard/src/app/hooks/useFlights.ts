@@ -1,4 +1,6 @@
-import { useState, useEffect } from "react";
+"use client";
+
+import { useEffect, useState } from "react";
 
 export interface FlightData {
   icao24: string;
@@ -19,78 +21,106 @@ export interface FlightsResponse {
   flights: FlightData[];
 }
 
-const WORKER_URL = "http://localhost:8787";
-const POLL_INTERVAL_MS = 60000;
+/**
+ * The OpenSky mirror. It is a local worker rather than an API this app owns,
+ * so the origin and the interval are both named here and nowhere else.
+ */
+const WORKER_URL = process.env.NEXT_PUBLIC_FLIGHTS_WORKER_URL ?? "http://localhost:8787";
+const POLL_INTERVAL_MS = 60_000;
 
-export function useFlights(endpoint: string) {
-  const [flights, setFlights] = useState<FlightData[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
+export interface FlightsState {
+  flights: FlightData[];
+  loading: boolean;
+  error: string | null;
+  lastUpdate: Date | null;
+}
+
+const EMPTY: FlightsState = { flights: [], loading: true, error: null, lastUpdate: null };
+
+/**
+ * Polls one flights endpoint and re-polls on an interval.
+ *
+ * The main flight table and the left panel both need this data, and each used
+ * to carry its own copy of the fetch loop. Two copies meant two pollers, and
+ * the table's copy could not be given the loading state the panel already had.
+ */
+export function useFlights(endpoint: string): FlightsState {
+  const [state, setState] = useState<FlightsState>(EMPTY);
 
   useEffect(() => {
-    let mounted = true;
-    let timeoutId: ReturnType<typeof setTimeout>;
+    let active = true;
+    let timer: ReturnType<typeof setTimeout> | undefined;
     const controller = new AbortController();
 
-    // Endpoint changed: drop the old data and show the loading state again
-    setFlights([]);
-    setLoading(true);
-    setError(null);
+    // The endpoint changed, so what is on screen describes the previous one.
+    setState(EMPTY);
 
-    async function fetchFlights() {
+    async function poll(): Promise<void> {
       try {
-        const response = await fetch(`${WORKER_URL}${endpoint}`, {
-          signal: controller.signal,
-        });
+        const response = await fetch(`${WORKER_URL}${endpoint}`, { signal: controller.signal });
         if (!response.ok) {
-          throw new Error(`Failed to fetch: ${response.status}`);
+          throw new Error(`The flights worker answered ${String(response.status)}.`);
         }
         const data: FlightsResponse = await response.json();
-        if (mounted) {
-          setFlights(data.flights);
-          setLastUpdate(new Date());
-          setError(null);
+        if (active) {
+          setState({ flights: data.flights, loading: false, error: null, lastUpdate: new Date() });
         }
-      } catch (err) {
-        if ((err as Error).name === "AbortError") return;
-        if (mounted) {
-          setError((err as Error).message);
+      } catch (cause) {
+        // An abort is this hook cleaning up, not a failure to report.
+        if (cause instanceof DOMException && cause.name === "AbortError") {
+          return;
+        }
+        if (active) {
+          setState((previous) => ({
+            ...previous,
+            loading: false,
+            error: cause instanceof Error ? cause.message : String(cause),
+          }));
         }
       } finally {
-        if (mounted) {
-          setLoading(false);
+        if (active) {
+          timer = setTimeout(() => void poll(), POLL_INTERVAL_MS);
         }
-      }
-    }
-
-    async function poll() {
-      await fetchFlights();
-      if (mounted) {
-        timeoutId = setTimeout(() => void poll(), POLL_INTERVAL_MS);
       }
     }
 
     void poll();
 
     return () => {
-      mounted = false;
-      clearTimeout(timeoutId);
+      active = false;
+      if (timer !== undefined) {
+        clearTimeout(timer);
+      }
       controller.abort();
     };
   }, [endpoint]);
 
-  return { flights, loading, error, lastUpdate };
+  return state;
 }
 
-export function useAllFlights() {
-  return useFlights("/api/flights/all");
+/**
+ * Endpoint builders, exported because a panel that selects its own endpoint has
+ * to name the same paths the wrappers below do. Two spellings of one route is
+ * the kind of duplication that survives a route rename on the worker.
+ */
+export const ALL_FLIGHTS_ENDPOINT = "/api/flights/all";
+
+export function airlineFlightsEndpoint(airlineCode: string): string {
+  return `/api/flights/airline/${encodeURIComponent(airlineCode)}`;
 }
 
-export function useAirportFlights(airportCode: string) {
-  return useFlights(`/api/flights/airport/${encodeURIComponent(airportCode)}`);
+export function airportFlightsEndpoint(airportCode: string): string {
+  return `/api/flights/airport/${encodeURIComponent(airportCode)}`;
 }
 
-export function useAirlineFlights(airlineCode: string) {
-  return useFlights(`/api/flights/airline/${encodeURIComponent(airlineCode)}`);
+export function useAllFlights(): FlightsState {
+  return useFlights(ALL_FLIGHTS_ENDPOINT);
+}
+
+export function useAirportFlights(airportCode: string): FlightsState {
+  return useFlights(airportFlightsEndpoint(airportCode));
+}
+
+export function useAirlineFlights(airlineCode: string): FlightsState {
+  return useFlights(airlineFlightsEndpoint(airlineCode));
 }

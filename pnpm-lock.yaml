@@ -320,6 +320,9 @@ importers:
 
   apps/admin-dashboard:
     dependencies:
+      '@hewa/app-shell':
+        specifier: workspace:*
+        version: link:../../packages/app-shell
       '@hewa/response-codes':
         specifier: workspace:*
         version: link:../../packages/response-codes
@@ -938,6 +941,34 @@ importers:
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.3
+      typescript:
+        specifier: 'catalog:'
+        version: 6.0.3
+      vite-plus:
+        specifier: 'catalog:'
+        version: 1.0.0(@types/node@26.6.3)(@vitest/ui@5.0.1)(esbuild@0.28.2)(jiti@2.7.0)(typescript@6.0.3)(yaml@2.9.1)
+
+  packages/app-shell:
+    dependencies:
+      lucide-react:
+        specifier: 'catalog:'
+        version: 1.48.0(react@19.3.0)
+      nuqs:
+        specifier: 'catalog:'
+        version: 2.10.1(next@16.3.6(@types/node@26.6.3)(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(react@19.3.0)
+      react-dom:
+        specifier: 'catalog:'
+        version: 19.3.0(react@19.3.0)
+    devDependencies:
+      '@hewa/tsconfig':
+        specifier: workspace:*
+        version: link:../tsconfig
+      '@types/react':
+        specifier: 'catalog:'
+        version: 19.3.0
+      react:
+        specifier: 'catalog:'
+        version: 19.3.0
       typescript:
         specifier: 'catalog:'
         version: 6.0.3
