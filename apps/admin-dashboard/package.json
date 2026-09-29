@@ -14,13 +14,19 @@
   },
   "dependencies": {
     "@hewa/response-codes": "workspace:*",
+    "@tailwindcss/vite": "catalog:",
     "@tanstack/react-query": "catalog:",
+    "lucide-react": "catalog:",
     "next": "catalog:",
+    "nuqs": "catalog:",
     "react": "catalog:",
-    "react-dom": "catalog:"
+    "react-dom": "catalog:",
+    "recharts": "catalog:",
+    "tailwindcss": "catalog:"
   },
   "devDependencies": {
     "@hewa/tsconfig": "workspace:*",
+    "@tailwindcss/postcss": "catalog:",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
     "typescript": "catalog:",

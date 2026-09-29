@@ -1,0 +1,66 @@
+@host = http://localhost:5173
+@email = newtest@example.com
+
+### Health Check
+GET {{host}}/api/health
+
+# ==================== USERS ====================
+
+### List Users
+GET {{host}}/api/users
+
+### Create User
+# @name createUser
+POST {{host}}/api/users
+Content-Type: application/json
+
+{
+  "email": "{{email}}",
+  "name": "Test User",
+  "avatarUrl": "https://example.com/avatar.png"
+}
+
+### Get User
+GET {{host}}/api/users/{{email}}
+
+### Update User
+PATCH {{host}}/api/users/{{email}}
+Content-Type: application/json
+
+{
+  "name": "Updated Test User"
+}
+
+### Delete User
+# @name deleteUser
+DELETE {{host}}/api/users/{{email}}
+
+# ==================== POSTS ====================
+
+### List Posts (must have user first)
+GET {{host}}/api/users/{{email}}/posts
+
+### Create Post (uses user from createUser)
+# @name createPost
+POST {{host}}/api/users/{{email}}/posts
+Content-Type: application/json
+
+{
+  "content": "Hello from httpyac! {{$timestamp}}"
+}
+
+@postId = {{createPost.post.id}}
+
+### Get Post
+GET {{host}}/api/users/{{email}}/posts/{{postId}}
+
+### Update Post
+PATCH {{host}}/api/users/{{email}}/posts/{{postId}}
+Content-Type: application/json
+
+{
+  "content": "Updated content at {{$timestamp}}"
+}
+
+### Delete Post
+DELETE {{host}}/api/users/{{email}}/posts/{{postId}}
