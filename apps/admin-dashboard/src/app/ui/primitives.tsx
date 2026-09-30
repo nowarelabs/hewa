@@ -1,4 +1,6 @@
 import type { ReactElement, ReactNode } from "react";
+import { FilterBar, FilterToggle, SearchField } from "./controls";
+import type { SearchFieldProps } from "./controls";
 
 /**
  * The two shapes most of this console's panels take.
@@ -78,14 +80,76 @@ export function Empty({ children }: { children: ReactNode }): ReactElement {
 /**
  * One chip in a {@link SummaryBar}.
  *
- * `label` is also the chip's key, so the groups a view counts must have
- * distinct names. They are distinct groups, so they do.
+ * `key` is the value a filter toggles on, which is not always the label: the
+ * osint view upper-cases its categories, and a filter that toggled on "CIA"
+ * would be toggling on a string the caller has to keep in step with the display
+ * by hand. `label` is only a fallback, for the views that pass items inline.
  */
 export interface SummaryItem {
   label: string;
   value: ReactNode;
   /** Replaces the neutral chip colour, usually with the view's own tint. */
   tint?: string;
+  /** The group's own value, as the data spells it. */
+  key?: string;
+}
+
+/**
+ * The rows a filter leaves, for a bar that is a breakdown of them.
+ *
+ * Shared because the one rule worth getting right here is that no selection
+ * means everything. Written five times, one of them is `[selected].length > 0
+ * && selected.includes(...)` and that view filters to an empty list the moment
+ * its last chip is turned off, with no error and no empty state to explain it.
+ */
+export function visibleBy<T, K extends string>(
+  items: readonly T[],
+  of: (item: T) => K,
+  selected: readonly K[],
+): T[] {
+  if (selected.length === 0) {
+    return [...items];
+  }
+  return items.filter((item) => selected.includes(of(item)));
+}
+
+/**
+ * What a summary bar filters on, when it filters.
+ *
+ * A list of keys rather than a list of booleans, because "which groups are in
+ * force" is the question and an array of booleans indexed by category is a
+ * second, parallel way of asking it. Empty means everything, which is why
+ * turning the last filter off is the same as never having turned one on.
+ */
+export interface SummaryFilter {
+  /** Names the group of toggles: "Filter by severity". */
+  label: string;
+  selected: readonly string[];
+  onToggle: (key: string) => void;
+}
+
+export interface SummaryBarProps {
+  items: SummaryItem[];
+  /**
+   * Given, each chip becomes a toggle and the strip becomes a filter bar.
+   *
+   * This is the morph. The bar already says "there are three high alerts", and
+   * the only reason to read that sentence is to go and look at the three high
+   * alerts, so the number that answers the question is made into the control that
+   * asks it. A view whose bar is a breakdown of the rows beneath it should pass
+   * this; a view whose bar is not one should not, and there is no way to
+   * discover that by reading the component — it is per view and the choice is
+   * recorded in each view's module.
+   */
+  filter?: SummaryFilter;
+  /**
+   * A search field in the same strip, for a list that is keyed by text.
+   *
+   * Not a substitute for `filter`: a search finds one of eight hundred rows and
+   * a filter says how many of everything there are. The one view that has both
+   * is flights, which is a live feed looked up by callsign.
+   */
+  search?: SearchFieldProps;
 }
 
 /**
@@ -96,24 +160,60 @@ export interface SummaryItem {
  * summary or had no way to say what it was showing before you scrolled. This is
  * that strip, and the counts are the view's own: a breakdown of the rows below
  * it, grouped the way its rail groups them. The economy view has no rows to
- * count, so it puts its headline figures in the same place.
+ * count, so it puts its headline figures in the same place — and passes no
+ * `filter`, because a figure is not a group and a filter that hides nothing is a
+ * control that lies.
  */
-export function SummaryBar({ items }: { items: SummaryItem[] }): ReactElement | null {
+export function SummaryBar({ items, filter, search }: SummaryBarProps): ReactElement | null {
   if (items.length === 0) {
     return null;
   }
+
   return (
-    <div data-summary-bar="" className="flex flex-wrap gap-2 border-b border-line p-3">
-      {items.map((item) => (
-        <span
-          key={item.label}
-          className={`rounded border px-2 py-1 text-xs ${
-            item.tint ?? "border-line bg-surface-raised text-ink-muted"
-          }`}
-        >
-          {item.label}: {item.value}
-        </span>
-      ))}
+    <div
+      data-summary-bar=""
+      data-filterable={filter === undefined ? undefined : ""}
+      className="flex flex-wrap items-center gap-2 border-b border-line p-3"
+    >
+      {search === undefined ? null : (
+        <div className="min-w-40 flex-1">
+          <SearchField {...search} />
+        </div>
+      )}
+
+      {filter === undefined ? (
+        items.map((item) => (
+          <span
+            key={item.label}
+            data-summary-item={item.key}
+            className={`rounded border px-2 py-1 text-xs ${
+              item.tint ?? "border-line bg-surface-raised text-ink-muted"
+            }`}
+          >
+            {item.label}: {item.value}
+          </span>
+        ))
+      ) : (
+        <FilterBar label={filter.label} className="flex-1">
+          {items.map((item) => {
+            const key = item.key ?? item.label;
+            return (
+              <FilterToggle
+                key={key}
+                group={key}
+                label={item.label}
+                // Only a count belongs on a toggle. A bar that mixes figures in
+                // with counts is a bar that has nothing to filter on, and
+                // `Number("NBO")` is a number with no rows behind it.
+                count={typeof item.value === "number" ? item.value : undefined}
+                tint={item.tint}
+                pressed={filter.selected.includes(key)}
+                onToggle={() => filter.onToggle(key)}
+              />
+            );
+          })}
+        </FilterBar>
+      )}
     </div>
   );
 }
@@ -144,6 +244,7 @@ export function summaryCounts<T, K extends string>(
   const found = items.map(of);
   const keys = options.keys === undefined ? found : [...new Set([...options.keys, ...found])];
   return [...new Set(keys)].map((key) => ({
+    key,
     label: options.label?.(key) ?? key.charAt(0).toUpperCase() + key.slice(1),
     value: found.filter((value) => value === key).length,
     tint: options.tint?.(key),

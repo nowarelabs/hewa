@@ -7,7 +7,9 @@ import { Plane, RefreshCw } from "lucide-react";
 import { ALL_FLIGHTS_ENDPOINT, airlineFlightsEndpoint, useAllFlights, useFlights } from "../hooks";
 import type { FlightData } from "../hooks";
 import type { PanelProps } from "@hewa/app-shell";
-import { CardList, Empty, Panel, SummaryBar, summaryCounts } from "../ui/primitives";
+import { CardList, Empty, Panel, SummaryBar, summaryCounts, visibleBy } from "../ui/primitives";
+import { matchesQuery } from "../ui/controls";
+import { useFilterParam, useSearchParam } from "../state/filter";
 
 /**
  * The `flights` view: every panel the Flights tab can show.
@@ -108,9 +110,34 @@ function toCard(flight: FlightData): {
   };
 }
 
-/** The main column: every aircraft currently reporting, as a table. */
+/**
+ * The main column: every flight, narrowed by carrier and looked up by text.
+ *
+ * The only view that gets both controls, and the reason it is the only one is
+ * that the two answer different questions about a different shape of data. A
+ * carrier says how many there are; a callsign says which one you meant. The
+ * other four views have a handful of rows and a category, which is one control.
+ */
 export function FlightTable(): ReactElement {
   const { flights, loading, error, lastUpdate } = useAllFlights();
+  const carriers = useFilterParam("flights");
+  const search = useSearchParam("flightsQ");
+
+  const narrowed = visibleBy(flights, (flight) => airlineFor(flight.callsign), carriers.selected);
+  const shown = useMemo(
+    () =>
+      search.query.trim() === ""
+        ? narrowed
+        : narrowed.filter((flight) =>
+            matchesQuery(
+              search.query,
+              flight.callsign,
+              airlineFor(flight.callsign),
+              flight.originCountry,
+            ),
+          ),
+    [narrowed, search.query],
+  );
 
   return (
     <div className="flex h-full flex-col bg-surface">
@@ -146,6 +173,18 @@ export function FlightTable(): ReactElement {
             value: new Set(flights.map((flight) => flight.originCountry)).size,
           },
         ]}
+        filter={{
+          label: "Filter by carrier",
+          selected: carriers.selected,
+          onToggle: carriers.toggle,
+        }}
+        search={{
+          value: search.query,
+          onChange: search.set,
+          label: "Search flights by callsign, carrier or country",
+          placeholder: "Callsign, carrier, country",
+          hint: `${shown.length} of ${flights.length}`,
+        }}
       />
 
       {error !== null ? (
@@ -159,6 +198,10 @@ export function FlightTable(): ReactElement {
       ) : flights.length === 0 ? (
         <Body>
           <Empty>No flights detected</Empty>
+        </Body>
+      ) : shown.length === 0 ? (
+        <Body>
+          <Empty>No flights match this carrier or search</Empty>
         </Body>
       ) : (
         <Body>
@@ -174,8 +217,12 @@ export function FlightTable(): ReactElement {
               </tr>
             </thead>
             <tbody>
-              {flights.map((flight) => (
-                <tr key={flight.icao24} className="border-b border-line hover:bg-surface-raised">
+              {shown.map((flight) => (
+                <tr
+                  key={flight.icao24}
+                  data-row={flight.icao24}
+                  className="border-b border-line hover:bg-surface-raised"
+                >
                   <Td className="font-medium text-accent">{flight.callsign}</Td>
                   <Td>{airlineFor(flight.callsign)}</Td>
                   <Td>{flight.originCountry}</Td>

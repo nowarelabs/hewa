@@ -4,7 +4,16 @@ import type { ReactElement } from "react";
 import { Clock, FileText, Globe, Shield, TrendingUp, Users } from "lucide-react";
 
 import type { PanelProps, ShellIcon } from "@hewa/app-shell";
-import { CardList, Empty, KeyValues, Panel, SummaryBar, summaryCounts } from "../ui/primitives";
+import {
+  CardList,
+  Empty,
+  KeyValues,
+  Panel,
+  SummaryBar,
+  summaryCounts,
+  visibleBy,
+} from "../ui/primitives";
+import { useFilterParam } from "../state/filter";
 
 /**
  * The `osint` view: every panel the OSINT tab can show.
@@ -172,7 +181,16 @@ export function ReportRailPanel({ item }: PanelProps): ReactElement {
   );
 }
 
+/**
+ * The main column: every report, filtered by category.
+ *
+ * The category a report belongs to is the first thing the bar tells you and the
+ * one thing you act on, so the chip that says it is the chip that sets it.
+ */
 export function ReportFeed(): ReactElement {
+  const categories = useFilterParam("osint");
+  const shown = visibleBy(REPORTS, (report) => report.category, categories.selected);
+
   return (
     <div className="flex h-full flex-col bg-surface">
       <header className="flex items-center gap-2 border-b border-line p-4">
@@ -189,13 +207,20 @@ export function ReportFeed(): ReactElement {
           label: (category) => category.toUpperCase(),
           tint: (category) => CATEGORY_TINT[category],
         })}
+        filter={{
+          label: "Filter by category",
+          selected: categories.selected,
+          onToggle: categories.toggle,
+        }}
       />
 
       <div className="min-h-0 flex-1 space-y-3 overflow-auto p-4">
-        {REPORTS.map((report) => {
+        {shown.length === 0 ? <Empty>No reports match these categories</Empty> : null}
+        {shown.map((report) => {
           const CategoryIcon = CATEGORY_ICON[report.category];
           return (
             <article
+              data-row={report.id}
               key={report.id}
               className="rounded-lg border border-line bg-surface-raised p-4"
             >

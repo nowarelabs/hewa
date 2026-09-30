@@ -4,7 +4,16 @@ import type { ReactElement } from "react";
 import { AlertCircle, Clock, Crosshair, MapPin, Shield, UserCheck } from "lucide-react";
 
 import type { PanelProps } from "@hewa/app-shell";
-import { CardList, Empty, KeyValues, Panel, SummaryBar, summaryCounts } from "../ui/primitives";
+import {
+  CardList,
+  Empty,
+  KeyValues,
+  Panel,
+  SummaryBar,
+  summaryCounts,
+  visibleBy,
+} from "../ui/primitives";
+import { useFilterParam } from "../state/filter";
 
 /**
  * The `conflicts` view: every panel the Conflicts tab can show.
@@ -148,7 +157,16 @@ export function IncidentRailPanel({ item }: PanelProps): ReactElement {
   );
 }
 
+/**
+ * The main column: every incident, filtered by kind.
+ *
+ * The bar counted the incidents per kind and the list below ignored it. A count
+ * of "protest: 2" is a pointer at two rows.
+ */
 export function ConflictStream(): ReactElement {
+  const kinds = useFilterParam("conflicts");
+  const shown = visibleBy(INCIDENTS, (incident) => incident.kind, kinds.selected);
+
   return (
     <div className="flex h-full flex-col bg-surface">
       <header className="flex items-center gap-2 border-b border-line p-4">
@@ -164,12 +182,19 @@ export function ConflictStream(): ReactElement {
           keys: INCIDENT_KINDS,
           tint: (kind) => KIND_TINT[kind],
         })}
+        filter={{
+          label: "Filter by kind",
+          selected: kinds.selected,
+          onToggle: kinds.toggle,
+        }}
       />
 
       <div className="min-h-0 flex-1 space-y-3 overflow-auto p-4">
-        {INCIDENTS.map((incident) => (
+        {shown.length === 0 ? <Empty>No incidents match these kinds</Empty> : null}
+        {shown.map((incident) => (
           <article
             key={incident.id}
+            data-row={incident.id}
             className="rounded-lg border border-line bg-surface-raised p-4"
           >
             <div className="mb-2 flex items-start justify-between gap-2">

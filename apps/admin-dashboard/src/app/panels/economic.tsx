@@ -154,6 +154,12 @@ export function EconomicIndicators(): ReactElement {
         <h1 className="text-lg font-semibold text-ink">Economic indicators</h1>
       </header>
 
+      {/* No `filter`: these are figures, not groups. A chip per figure with a
+          toggle on it would hide half the economy on a click and leave an
+          operator wondering which half, so the bar stays what the other views'
+          bars were before they became controls. The list below it is the same
+          figures at more length, and a search over five of them is a keyboard
+          shortcut for scrolling. */}
       <SummaryBar
         items={INDICATORS.map((indicator) => ({
           label: indicator.label,

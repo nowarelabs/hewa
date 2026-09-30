@@ -4,7 +4,8 @@ import type { ReactElement } from "react";
 import { RefreshCw, Satellite } from "lucide-react";
 
 import type { PanelProps } from "@hewa/app-shell";
-import { CardList, Empty, Panel, SummaryBar, summaryCounts } from "../ui/primitives";
+import { CardList, Empty, Panel, SummaryBar, summaryCounts, visibleBy } from "../ui/primitives";
+import { useFilterParam } from "../state/filter";
 import { createTickingStore, useStore } from "../state/store";
 
 /**
@@ -166,8 +167,18 @@ export function SatelliteListPanel({ item }: PanelProps): ReactElement {
   );
 }
 
+/**
+ * The main column: every satellite, filtered by kind.
+ *
+ * This is the one view whose rows move while you look at them, so the selection
+ * is plain component state and not part of the ticking store: the catalogue
+ * advances and the filter stays where the operator put it, and a filter that
+ * reset itself on every tick would be unusable.
+ */
 export function SatelliteTable(): ReactElement {
   const { satellites, lastUpdate } = useCatalog();
+  const kinds = useFilterParam("satellites");
+  const shown = visibleBy(satellites, (satellite) => satellite.kind, kinds.selected);
 
   return (
     <div className="flex h-full flex-col bg-surface">
@@ -193,6 +204,11 @@ export function SatelliteTable(): ReactElement {
             kind.charAt(0).toUpperCase() + kind.slice(1),
           tint: () => "border-purple-500/30 bg-purple-500/15 text-purple-400",
         })}
+        filter={{
+          label: "Filter by kind",
+          selected: kinds.selected,
+          onToggle: kinds.toggle,
+        }}
       />
 
       <div className="min-h-0 flex-1 overflow-auto">
@@ -207,8 +223,19 @@ export function SatelliteTable(): ReactElement {
             </tr>
           </thead>
           <tbody>
-            {satellites.map((satellite) => (
-              <tr key={satellite.id} className="border-b border-line hover:bg-surface-raised">
+            {shown.length === 0 ? (
+              <tr>
+                <td colSpan={5} className="px-4 py-3">
+                  <Empty>No satellites match these kinds</Empty>
+                </td>
+              </tr>
+            ) : null}
+            {shown.map((satellite) => (
+              <tr
+                key={satellite.id}
+                data-row={satellite.id}
+                className="border-b border-line hover:bg-surface-raised"
+              >
                 <td className="px-4 py-3 font-medium text-purple-400">{satellite.name}</td>
                 <td className="px-4 py-3">
                   <span className={`rounded px-2 py-1 text-xs ${TINT[satellite.kind]}`}>

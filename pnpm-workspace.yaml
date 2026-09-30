@@ -60,6 +60,10 @@ catalog:
   ioredis: ^6
   kafkajs: ^2
   recharts: ^3.10.1
+  # A DOM for the tests that need one. Scoped to the files that ask for it
+  # with a `@vitest-environment` docblock, so the rest of the suite stays in
+  # node and a control primitive's keyboard behaviour is testable at all.
+  happy-dom: ^20
 
 overrides:
   vite@*: "catalog:"

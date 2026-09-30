@@ -113,6 +113,12 @@ export function LiveStreams(): ReactElement {
         </div>
       </header>
 
+      {/* No `filter` here, and deliberately. This bar is not a breakdown of the
+          list beneath it: "On screen" is the selection and "Rail entries" is a
+          count of the rail, and a toggle over either would either do nothing or
+          filter the list by something the list is not grouped by. The two views
+          that would be lying — this one and the economy view — are the two that
+          pass no filter, so the bar is honest wherever it cannot act. */}
       <SummaryBar
         items={[
           { label: "On screen", value: current?.title ?? "None" },

@@ -4,7 +4,16 @@ import type { ReactElement } from "react";
 import { AlertTriangle, Car, Clock, Cloud, DollarSign, Heart, MapPin, Shield } from "lucide-react";
 
 import type { PanelProps, ShellIcon } from "@hewa/app-shell";
-import { CardList, Empty, KeyValues, Panel, SummaryBar } from "../ui/primitives";
+import {
+  CardList,
+  Empty,
+  KeyValues,
+  Panel,
+  SummaryBar,
+  summaryCounts,
+  visibleBy,
+} from "../ui/primitives";
+import { useFilterParam } from "../state/filter";
 
 /**
  * The `alerts` view: every panel the Alerts tab can show.
@@ -157,10 +166,6 @@ const CATEGORY_TINT: Record<Category, string> = {
   traffic: "text-purple-400",
 };
 
-function countBy(severity: Severity): number {
-  return ALERTS.filter((alert) => alert.severity === severity).length;
-}
-
 export function AlertRailPanel({ item }: PanelProps): ReactElement {
   const severity = SEVERITIES.find((entry) => entry === item) ?? null;
   const shown = severity === null ? ALERTS : ALERTS.filter((alert) => alert.severity === severity);
@@ -186,7 +191,17 @@ export function AlertRailPanel({ item }: PanelProps): ReactElement {
   );
 }
 
+/**
+ * The main column: every alert, filtered by severity.
+ *
+ * The bar above this counted the alerts per severity and did nothing with the
+ * count. It is the same chips now, as toggles, because the only reason to read
+ * "High: 3" is to go and look at the three high alerts.
+ */
 export function AlertsFeed(): ReactElement {
+  const severities = useFilterParam("alerts");
+  const shown = visibleBy(ALERTS, (alert) => alert.severity, severities.selected);
+
   return (
     <div className="flex h-full flex-col bg-surface">
       <header className="flex items-center gap-2 border-b border-line p-4">
@@ -198,19 +213,30 @@ export function AlertsFeed(): ReactElement {
       </header>
 
       <SummaryBar
-        items={SEVERITIES.map((severity) => ({
-          label: severity.charAt(0).toUpperCase() + severity.slice(1),
-          value: countBy(severity),
-          tint: SEVERITY_TINT[severity],
-        }))}
+        items={summaryCounts(ALERTS, (alert) => alert.severity, {
+          keys: SEVERITIES,
+          tint: (severity) => SEVERITY_TINT[severity],
+        })}
+        filter={{
+          label: "Filter by severity",
+          selected: severities.selected,
+          onToggle: severities.toggle,
+        }}
       />
 
       <div className="min-h-0 flex-1 space-y-3 overflow-auto p-4">
-        {ALERTS.map((alert) => {
+        {shown.length === 0 ? (
+          // A filter can exclude everything, and a panel that renders an empty
+          // scroll area gives the operator nothing to tell that from a feed
+          // that failed.
+          <Empty>No alerts match these severities</Empty>
+        ) : null}
+        {shown.map((alert) => {
           const CategoryIcon = CATEGORY_ICON[alert.category];
           return (
             <article
               key={alert.id}
+              data-row={alert.id}
               className={`rounded-lg border p-4 ${SEVERITY_TINT[alert.severity]}`}
             >
               <div className="flex items-start gap-3">
