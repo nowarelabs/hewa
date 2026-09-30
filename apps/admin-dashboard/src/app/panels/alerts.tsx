@@ -4,7 +4,7 @@ import type { ReactElement } from "react";
 import { AlertTriangle, Car, Clock, Cloud, DollarSign, Heart, MapPin, Shield } from "lucide-react";
 
 import type { PanelProps, ShellIcon } from "@hewa/app-shell";
-import { CardList, Empty, KeyValues, Panel } from "../ui/primitives";
+import { CardList, Empty, KeyValues, Panel, SummaryBar } from "../ui/primitives";
 
 /**
  * The `alerts` view: every panel the Alerts tab can show.
@@ -197,16 +197,13 @@ export function AlertsFeed(): ReactElement {
         </span>
       </header>
 
-      <div className="flex gap-2 border-b border-line p-3">
-        {SEVERITIES.map((severity) => (
-          <span
-            key={severity}
-            className={`rounded border px-2 py-1 text-xs ${SEVERITY_TINT[severity]}`}
-          >
-            {severity.charAt(0).toUpperCase() + severity.slice(1)}: {countBy(severity)}
-          </span>
-        ))}
-      </div>
+      <SummaryBar
+        items={SEVERITIES.map((severity) => ({
+          label: severity.charAt(0).toUpperCase() + severity.slice(1),
+          value: countBy(severity),
+          tint: SEVERITY_TINT[severity],
+        }))}
+      />
 
       <div className="min-h-0 flex-1 space-y-3 overflow-auto p-4">
         {ALERTS.map((alert) => {

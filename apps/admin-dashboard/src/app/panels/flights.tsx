@@ -7,7 +7,7 @@ import { Plane, RefreshCw } from "lucide-react";
 import { ALL_FLIGHTS_ENDPOINT, airlineFlightsEndpoint, useAllFlights, useFlights } from "../hooks";
 import type { FlightData } from "../hooks";
 import type { PanelProps } from "@hewa/app-shell";
-import { CardList, Empty, Panel } from "../ui/primitives";
+import { CardList, Empty, Panel, SummaryBar, summaryCounts } from "../ui/primitives";
 
 /**
  * The `flights` view: every panel the Flights tab can show.
@@ -36,6 +36,15 @@ const AIRLINES: Record<string, string> = {
 export function airlineFor(callsign: string): string {
   return AIRLINES[callsign.slice(0, 2).toUpperCase()] ?? "Unknown";
 }
+
+/**
+ * The carriers the summary bar names, in the order the table above them does.
+ *
+ * "Unknown" is in the list on purpose: `airlineFor` returns it for a prefix
+ * this table has never heard of, and a chip that reads "Unknown: 2" is how that
+ * shows up instead of two rows quietly claiming to be nobody's.
+ */
+const CARRIERS = [...new Set([...Object.values(AIRLINES), "Unknown"])];
 
 const AIRLINE_CODES: Record<string, string | undefined> = {
   kenya: "KQ",
@@ -122,6 +131,22 @@ export function FlightTable(): ReactElement {
               : `Updated ${lastUpdate.toLocaleTimeString()}`}
         </div>
       </header>
+
+      <SummaryBar
+        items={[
+          ...summaryCounts(flights, (flight) => airlineFor(flight.callsign), {
+            // Every carrier the callsign table knows, so the bar keeps its
+            // chips while the worker is loading and does not lose one to a
+            // prefix that arrived after this table was written.
+            keys: CARRIERS,
+            tint: () => "border-accent/30 bg-accent/15 text-accent",
+          }),
+          {
+            label: "Countries",
+            value: new Set(flights.map((flight) => flight.originCountry)).size,
+          },
+        ]}
+      />
 
       {error !== null ? (
         <p className="p-4 text-xs text-red-400">The flights worker is unreachable: {error}</p>

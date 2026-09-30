@@ -4,7 +4,7 @@ import type { ReactElement } from "react";
 import { AlertCircle, Clock, Crosshair, MapPin, Shield, UserCheck } from "lucide-react";
 
 import type { PanelProps } from "@hewa/app-shell";
-import { CardList, Empty, KeyValues, Panel } from "../ui/primitives";
+import { CardList, Empty, KeyValues, Panel, SummaryBar, summaryCounts } from "../ui/primitives";
 
 /**
  * The `conflicts` view: every panel the Conflicts tab can show.
@@ -117,6 +117,15 @@ const RAIL: Record<string, { title: string; kind: IncidentKind | null }> = {
   resource: { title: "Resource", kind: "resource" },
 };
 
+/**
+ * The kinds the stream can hold, which is one more than the rail lists.
+ *
+ * `IncidentKind` includes an election and no incident in the seed data is one,
+ * so the bar shows the chip at zero rather than pretending the kind does not
+ * exist, and any that arrives is counted.
+ */
+const INCIDENT_KINDS: IncidentKind[] = ["armed", "protest", "election", "resource", "tribal"];
+
 export function IncidentRailPanel({ item }: PanelProps): ReactElement {
   const entry = RAIL[item ?? "all"] ?? RAIL["all"];
   const kind = entry?.kind ?? null;
@@ -149,6 +158,13 @@ export function ConflictStream(): ReactElement {
           {INCIDENTS.length} incidents
         </span>
       </header>
+
+      <SummaryBar
+        items={summaryCounts(INCIDENTS, (incident) => incident.kind, {
+          keys: INCIDENT_KINDS,
+          tint: (kind) => KIND_TINT[kind],
+        })}
+      />
 
       <div className="min-h-0 flex-1 space-y-3 overflow-auto p-4">
         {INCIDENTS.map((incident) => (

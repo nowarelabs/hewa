@@ -4,7 +4,7 @@ import type { ReactElement } from "react";
 import { ExternalLink, Radio } from "lucide-react";
 
 import type { PanelProps } from "@hewa/app-shell";
-import { CardList, Empty, KeyValues, Panel } from "../ui/primitives";
+import { CardList, Empty, KeyValues, Panel, SummaryBar } from "../ui/primitives";
 import { createStore, useStore } from "../state/store";
 
 /**
@@ -112,6 +112,17 @@ export function LiveStreams(): ReactElement {
           </span>
         </div>
       </header>
+
+      <SummaryBar
+        items={[
+          { label: "On screen", value: current?.title ?? "None" },
+          {
+            label: "Rail entries",
+            value: RAIL.length,
+            tint: "border-green-500/30 bg-green-500/15 text-green-400",
+          },
+        ]}
+      />
 
       <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-auto p-4 lg:grid-cols-3">
         {current === undefined ? (

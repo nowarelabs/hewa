@@ -4,7 +4,7 @@ import type { ReactElement } from "react";
 import { RefreshCw, Satellite } from "lucide-react";
 
 import type { PanelProps } from "@hewa/app-shell";
-import { CardList, Empty, Panel } from "../ui/primitives";
+import { CardList, Empty, Panel, SummaryBar, summaryCounts } from "../ui/primitives";
 import { createTickingStore, useStore } from "../state/store";
 
 /**
@@ -118,6 +118,22 @@ const RAIL: { id: string; label: string; kind: SatelliteKind | null }[] = [
   { id: "nav", label: "Navigation", kind: "navigation" },
 ];
 
+/**
+ * Every kind the catalogue can hold, which is one more than the rail lists.
+ *
+ * The rail has no entry for a scientific satellite because the air console does
+ * not track them, and a kind with no rail entry would otherwise be a row in
+ * the table that no chip accounts for. The bar counts the catalogue, not the
+ * rail.
+ */
+const KINDS: SatelliteKind[] = [
+  "reconnaissance",
+  "weather",
+  "communication",
+  "navigation",
+  "scientific",
+];
+
 const TINT: Record<SatelliteKind, string> = {
   reconnaissance: "text-purple-400 bg-purple-500/15",
   weather: "text-blue-400 bg-blue-500/15",
@@ -168,6 +184,16 @@ export function SatelliteTable(): ReactElement {
           Updated {lastUpdate.toLocaleTimeString()}
         </div>
       </header>
+
+      <SummaryBar
+        items={summaryCounts(satellites, (satellite) => satellite.kind, {
+          keys: KINDS,
+          label: (kind) =>
+            RAIL.find((entry) => entry.kind === kind)?.label ??
+            kind.charAt(0).toUpperCase() + kind.slice(1),
+          tint: () => "border-purple-500/30 bg-purple-500/15 text-purple-400",
+        })}
+      />
 
       <div className="min-h-0 flex-1 overflow-auto">
         <table className="w-full text-left text-sm">

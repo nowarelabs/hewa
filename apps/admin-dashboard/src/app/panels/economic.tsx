@@ -16,7 +16,7 @@ import {
 } from "recharts";
 
 import type { PanelProps } from "@hewa/app-shell";
-import { KeyValues, Panel } from "../ui/primitives";
+import { KeyValues, Panel, SummaryBar } from "../ui/primitives";
 
 /**
  * The `economic` view: every panel the Economic tab can show.
@@ -153,6 +153,14 @@ export function EconomicIndicators(): ReactElement {
         <BarChart className="h-5 w-5 text-cyan-400" />
         <h1 className="text-lg font-semibold text-ink">Economic indicators</h1>
       </header>
+
+      <SummaryBar
+        items={INDICATORS.map((indicator) => ({
+          label: indicator.label,
+          value: indicator.value,
+          tint: `border-line bg-surface-raised ${indicator.tint}`,
+        }))}
+      />
 
       <div className="p-4">
         <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">

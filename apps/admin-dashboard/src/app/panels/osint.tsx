@@ -4,7 +4,7 @@ import type { ReactElement } from "react";
 import { Clock, FileText, Globe, Shield, TrendingUp, Users } from "lucide-react";
 
 import type { PanelProps, ShellIcon } from "@hewa/app-shell";
-import { CardList, Empty, KeyValues, Panel } from "../ui/primitives";
+import { CardList, Empty, KeyValues, Panel, SummaryBar, summaryCounts } from "../ui/primitives";
 
 /**
  * The `osint` view: every panel the OSINT tab can show.
@@ -141,6 +141,14 @@ const RAIL: Record<string, { title: string; category: Category | null }> = {
   economic: { title: "Economic", category: "economic" },
 };
 
+/**
+ * Every category the feed can hold, which is one more than the rail lists.
+ *
+ * The rail has no social entry and two of the seeded reports are social, so a
+ * bar built from the rail alone would report fewer reports than the feed has.
+ */
+const REPORT_CATEGORIES: Category[] = ["cia", "military", "economic", "political", "social"];
+
 export function ReportRailPanel({ item }: PanelProps): ReactElement {
   const entry = RAIL[item ?? "all"] ?? RAIL["all"];
   const category = entry?.category ?? null;
@@ -174,6 +182,14 @@ export function ReportFeed(): ReactElement {
           {REPORTS.length} reports
         </span>
       </header>
+
+      <SummaryBar
+        items={summaryCounts(REPORTS, (report) => report.category, {
+          keys: REPORT_CATEGORIES,
+          label: (category) => category.toUpperCase(),
+          tint: (category) => CATEGORY_TINT[category],
+        })}
+      />
 
       <div className="min-h-0 flex-1 space-y-3 overflow-auto p-4">
         {REPORTS.map((report) => {

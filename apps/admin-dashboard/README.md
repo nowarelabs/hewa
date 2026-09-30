@@ -46,6 +46,32 @@ satellite catalogue is in `panels/satellites.tsx` and the selected channel in
 `panels/streams.tsx`, because both exist to keep two panels of one view in step.
 What is in `state/` is the mechanism, not the data.
 
+## The bar under the title
+
+Every main panel has a `SummaryBar` between its header and its contents, and
+each one says something different, because the views show different things:
+
+| View         | Bar                                                        |
+| ------------ | ---------------------------------------------------------- |
+| `alerts`     | a count per severity                                       |
+| `conflicts`  | a count per incident kind                                  |
+| `osint`      | a count per report category                                |
+| `flights`    | a count per carrier, and how many countries are in view    |
+| `satellites` | a count per satellite kind                                 |
+| `streams`    | what is on screen, and how many rail entries back the rail |
+| `economic`   | the headline figures, which have no rows to count          |
+
+The alerts view grew one of these by hand and the other six had nothing, so a
+view either had a summary or had no way to say what it was showing before you
+scrolled. `tests/summary.test.ts` asserts that all seven have one.
+
+Build the chips with `summaryCounts`, which counts out of the rows, and pass
+`keys` for the groups the view knows about so an empty group still gets a chip
+and the bar does not lose its contents while a feed is loading. Anything found
+in the data is counted whether or not it is in `keys`: the osint rail has no
+social entry and two of the seeded reports are social, and a bar built from the
+rail alone would have reported four reports fewer than the feed holds.
+
 `App.tsx` has no logic in it and is not supposed to grow any. Adding a view
 means adding an entry to `shell.config.tsx` and a module beside it; it does not
 mean editing a layout component or adding a `case` to a switch. The view id, the

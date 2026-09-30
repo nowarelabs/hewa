@@ -76,6 +76,81 @@ export function Empty({ children }: { children: ReactNode }): ReactElement {
 }
 
 /**
+ * One chip in a {@link SummaryBar}.
+ *
+ * `label` is also the chip's key, so the groups a view counts must have
+ * distinct names. They are distinct groups, so they do.
+ */
+export interface SummaryItem {
+  label: string;
+  value: ReactNode;
+  /** Replaces the neutral chip colour, usually with the view's own tint. */
+  tint?: string;
+}
+
+/**
+ * The strip between a main panel's title and its contents.
+ *
+ * The alerts view grew one of these by hand — four severity counts in a `<div>`
+ * written inline — and the other six mains had nothing, so a view either had a
+ * summary or had no way to say what it was showing before you scrolled. This is
+ * that strip, and the counts are the view's own: a breakdown of the rows below
+ * it, grouped the way its rail groups them. The economy view has no rows to
+ * count, so it puts its headline figures in the same place.
+ */
+export function SummaryBar({ items }: { items: SummaryItem[] }): ReactElement | null {
+  if (items.length === 0) {
+    return null;
+  }
+  return (
+    <div data-summary-bar="" className="flex flex-wrap gap-2 border-b border-line p-3">
+      {items.map((item) => (
+        <span
+          key={item.label}
+          className={`rounded border px-2 py-1 text-xs ${
+            item.tint ?? "border-line bg-surface-raised text-ink-muted"
+          }`}
+        >
+          {item.label}: {item.value}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * Counts a list by one of its fields, for a {@link SummaryBar}.
+ *
+ * Every list view wants the same strip: how many of each kind. The counts come
+ * from the rows rather than from a table of names, so a category someone adds
+ * to the data without adding to the rail is still counted — a hand-written list
+ * of categories is how a bar ends up quietly disagreeing with the list below
+ * it.
+ *
+ * `keys` is the other half of that. Pass a view's known categories and they are
+ * shown even at zero, which is what stops a bar losing chips while the flights
+ * worker is still loading, and what the alerts severities do. Anything found in
+ * the data is added to them, never dropped, so `keys` cannot hide a category.
+ */
+export function summaryCounts<T, K extends string>(
+  items: readonly T[],
+  of: (item: T) => K,
+  options: {
+    keys?: readonly K[];
+    label?: (key: K) => string;
+    tint?: (key: K) => string | undefined;
+  } = {},
+): SummaryItem[] {
+  const found = items.map(of);
+  const keys = options.keys === undefined ? found : [...new Set([...options.keys, ...found])];
+  return [...new Set(keys)].map((key) => ({
+    label: options.label?.(key) ?? key.charAt(0).toUpperCase() + key.slice(1),
+    value: found.filter((value) => value === key).length,
+    tint: options.tint?.(key),
+  }));
+}
+
+/**
  * The seven side panels that are waiting on a selection.
  *
  * Every one of these panels used to be its own file whose entire body was a
