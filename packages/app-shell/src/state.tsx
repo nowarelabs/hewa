@@ -2,8 +2,7 @@ import { createContext, useContext, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { useQueryState } from "nuqs";
 
-import { defaultItemFor } from "./resolve";
-import type { RailItem, ShellTheme } from "./types";
+import type { ShellTheme } from "./types";
 
 /**
  * The shell's mutable state: which view is open, which rail item is selected,
@@ -31,12 +30,6 @@ export interface ShellState {
   togglePanel: (panel: "left" | "right" | "assistant") => void;
   theme: ShellTheme;
   setTheme: (theme: ShellTheme) => void;
-  /**
-   * Switching views keeps `item` in the query string, and a rail id means
-   * nothing in a view that does not have it. The caller passes the new view's
-   * rail so the stored id can be replaced with one that resolves.
-   */
-  selectViewWithRail: (view: string, rail: RailItem[]) => void;
 }
 
 const ShellStateContext = createContext<ShellState | null>(null);
@@ -64,7 +57,6 @@ function decodeFlag(value: string | null, fallback: boolean): boolean {
 
 interface ShellStateOptions {
   defaultView: string;
-  defaultItem: string | null;
   defaultTheme: ShellTheme;
   hasAssistant: boolean;
   onThemeChange?: (theme: ShellTheme) => void;
@@ -91,14 +83,13 @@ export function ShellStateProvider(
  */
 function LocalShellState({
   defaultView,
-  defaultItem,
   defaultTheme,
   hasAssistant,
   onThemeChange,
   children,
 }: InternalStateOptions): ReactNode {
   const [view, setView] = useState(defaultView);
-  const [item, setItem] = useState(defaultItem);
+  const [items, setItems] = useState<Record<string, string>>({});
   const [left, setLeft] = useState(false);
   const [right, setRight] = useState(false);
   const [assistant, setAssistant] = useState(false);
@@ -108,12 +99,8 @@ function LocalShellState({
     () => ({
       view,
       selectView: setView,
-      selectViewWithRail: (next, rail) => {
-        setView(next);
-        setItem(defaultItemFor(rail, item));
-      },
-      item,
-      selectItem: setItem,
+      item: items[view] ?? null,
+      selectItem: (next) => setItems({ ...items, [view]: next }),
       panels: { left, right, assistant: hasAssistant && assistant },
       togglePanel: (panel) => {
         if (panel === "left") setLeft(!left);
@@ -126,23 +113,32 @@ function LocalShellState({
         onThemeChange?.(next);
       },
     }),
-    [view, item, left, right, assistant, dark, hasAssistant, onThemeChange],
+    [view, items, left, right, assistant, dark, hasAssistant, onThemeChange],
   );
 
   return <ShellStateContext.Provider value={value}>{children}</ShellStateContext.Provider>;
 }
 
-/** State mirrored into the query string, so a link reopens what you were looking at. */
+/**
+ * State mirrored into the query string, so a link reopens what you were looking
+ * at.
+ *
+ * The rail selection is keyed by view: `?item.flights=jambo`, `?item.alerts=high`.
+ * One `?item=` for the whole shell cannot hold where you were in two views at
+ * once, so leaving a view either wrote its first item over the one you came
+ * from — a tab you had put on the third button opening on the first — or carried
+ * an id across into a rail that had never heard of it.
+ */
 function UrlShellState({
   defaultView,
-  defaultItem,
   defaultTheme,
   hasAssistant,
   onThemeChange,
   children,
 }: InternalStateOptions): ReactNode {
   const [view, setView] = useQueryState("view", { defaultValue: defaultView });
-  const [item, setItem] = useQueryState("item", { defaultValue: defaultItem ?? EMPTY_ITEM });
+  const openView = view ?? defaultView;
+  const [item, setItem] = useQueryState(`item.${openView}`, { defaultValue: EMPTY_ITEM });
   const [left, setLeft] = useQueryState("left", { defaultValue: "0" });
   const [right, setRight] = useQueryState("right", { defaultValue: "0" });
   const [assistant, setAssistant] = useQueryState("assistant", { defaultValue: "0" });
@@ -152,16 +148,10 @@ function UrlShellState({
 
   const value = useMemo<ShellState>(
     () => ({
-      view: view ?? defaultView,
+      view: openView,
       selectView: (next) => void setView(next),
-      selectViewWithRail: (next, rail) => {
-        void setView(next);
-        const selected = item === EMPTY_ITEM || item === null ? null : item;
-        const resolved = defaultItemFor(rail, selected);
-        void setItem(resolved ?? EMPTY_ITEM);
-      },
       item: item === EMPTY_ITEM || item === null ? null : item,
-      selectItem: (next) => void setItem(next),
+      selectItem: (next) => void setItem(next === EMPTY_ITEM ? EMPTY_ITEM : next),
       panels: {
         left: decodeFlag(left, false),
         right: decodeFlag(right, false),
@@ -181,14 +171,12 @@ function UrlShellState({
       },
     }),
     [
-      view,
+      openView,
       item,
       left,
       right,
       assistant,
       dark,
-      defaultView,
-      defaultItem,
       defaultTheme,
       hasAssistant,
       setView,

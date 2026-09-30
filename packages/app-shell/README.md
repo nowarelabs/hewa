@@ -58,6 +58,13 @@ The app needs a `NuqsAdapter` above the shell, because the shell mirrors the
 open view, the selected rail item and the panel collapse state into the query
 string. Pass `syncUrl: false` to render without one.
 
+```
+?view=alerts&item.alerts=high&item.flights=jambo&left=1&dark=1
+```
+
+The rail item is keyed by view, one key each, so every view remembers where you
+left it and a link can describe more than one at a time.
+
 ## What a config declares
 
 ```ts

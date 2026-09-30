@@ -9,13 +9,16 @@ import { AppShell } from "@hewa/app-shell";
 import { config } from "../src/app/shell.config";
 
 /**
- * The rail, and the view switch that has to reset it.
+ * The rail, and the rail item each view remembers.
  *
- * `?item=` is one key for every view, and the admin dashboard reuses `all` as
- * the first rail item in five of them, so switching views carries an id across
- * into a rail that may not have it. When it does not, the left column falls back
- * to the first item while the rail compared against the carried-over id and lit
- * nothing: a view with a panel open and no button pressed.
+ * The item is keyed by view in the query string. One `?item=` for the whole
+ * shell cannot hold where you were in two views at once, so a tab you had put on
+ * the third button reopened on the first: the view you visited in between had
+ * overwritten the selection on the way out.
+ *
+ * The other half is that the lit button and the drawn panel are the same item.
+ * A stale id resolves to the first rail item, and if the rail compared against
+ * the raw id then the panel would draw one thing with nothing lit.
  */
 
 declare global {
@@ -72,6 +75,27 @@ const firstIn = (view: string): string => {
   return first.label;
 };
 
+/** nuqs writes the query string on a microtask, so a press needs an await. */
+const click = async (button: HTMLElement): Promise<void> => {
+  await act(async () => {
+    button.click();
+  });
+};
+
+const chooseTab = (root: ParentNode, label: string): Promise<void> => click(tab(root, label));
+
+const chooseRail = (root: ParentNode, label: string): Promise<void> => click(rail(root, label));
+
+const rail = (root: ParentNode, label: string): HTMLButtonElement => {
+  const found = root.querySelector<HTMLButtonElement>(
+    `nav[aria-label="Sections"] button[aria-label="${label}"]`,
+  );
+  if (found === null) {
+    throw new Error(`no rail button called ${label}`);
+  }
+  return found;
+};
+
 const tab = (root: ParentNode, label: string): HTMLButtonElement => {
   const found = [...root.querySelectorAll<HTMLButtonElement>("button")].find(
     (button) => button.textContent?.trim() === label,
@@ -83,34 +107,53 @@ const tab = (root: ParentNode, label: string): HTMLButtonElement => {
 };
 
 describe("the rail", () => {
-  test("presses nothing when no view is asked for and the url has no item", () => {
-    // Fresh load, no query string. Every view has a rail, so `all` is about to
-    // become the selected item rather than "nothing is selected".
-    expect(pressed(mount(""))).not.toBeNull();
-  });
-
   test("presses the item the url names", () => {
-    expect(pressed(mount("?view=alerts&item=high"))).toBe("High");
+    expect(pressed(mount("?view=alerts&item.alerts=high"))).toBe("High");
   });
 
   test("presses the first item for a url naming an item the view does not have", () => {
     // `safarilink` is a flights rail item. On alerts it resolves to `all`.
-    expect(pressed(mount("?view=alerts&item=safarilink"))).toBe(firstIn("alerts"));
+    expect(pressed(mount("?view=alerts&item.alerts=safarilink"))).toBe(firstIn("alerts"));
   });
 
-  test("presses the first item after a switch carries an id the new view does not have", () => {
-    const container = mount("?view=flights&item=safarilink");
-    act(() => {
-      tab(container, "Alerts").click();
-    });
-    expect(pressed(container)).toBe(firstIn("alerts"));
+  test("presses the first item when the view has nothing selected", () => {
+    expect(pressed(mount("?view=alerts"))).toBe(firstIn("alerts"));
   });
 
-  test("keeps a reused id selected across a switch, because it is the same item", () => {
-    const container = mount("?view=flights&item=all");
-    act(() => {
-      tab(container, "Alerts").click();
-    });
+  test("keeps each view's rail item, so leaving and coming back restores it", async () => {
+    // The bug: `?item=` was one key for every view, so a tab you had put on the
+    // third button reopened on the first because the view you visited in between
+    // had overwritten it.
+    const container = mount("");
+    await chooseRail(container, "Safarilink");
+    expect(pressed(container)).toBe("Safarilink");
+
+    await chooseTab(container, "Alerts");
     expect(pressed(container)).toBe(firstIn("alerts"));
+
+    await chooseTab(container, "Flights");
+    expect(pressed(container)).toBe("Safarilink");
+  });
+
+  test("two views can hold two different rail items at once", async () => {
+    const container = mount("");
+    await chooseRail(container, "Safarilink");
+    await chooseTab(container, "Alerts");
+    await chooseRail(container, "High");
+
+    await chooseTab(container, "Flights");
+    expect(pressed(container)).toBe("Safarilink");
+
+    await chooseTab(container, "Alerts");
+    expect(pressed(container)).toBe("High");
+  });
+
+  test("the url holds one key per view, so a link can reopen two of them", async () => {
+    // Both selections in one link is the point of keying by view. With a single
+    // `?item=` only one survives, so the link describes one view and not the other.
+    const container = mount("?view=alerts&item.alerts=high&item.flights=safarilink");
+    expect(pressed(container)).toBe("High");
+    await chooseTab(container, "Flights");
+    expect(pressed(container)).toBe("Safarilink");
   });
 });

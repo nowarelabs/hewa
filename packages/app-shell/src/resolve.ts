@@ -9,6 +9,10 @@ import type { RailItem, ShellConfig, ViewSpec } from "./types";
  * shell with no tabs lit and an empty main column looks like a broken app
  * rather than an out-of-date link.
  *
+ * The rail item is keyed by view in the query string, so `resolveItem` is only
+ * reached with an id the current view shares no key with: a stale one, from a
+ * rail entry that has since been renamed or removed.
+ *
  * These are plain functions with no React in them, which is what makes them
  * testable without a DOM.
  */
@@ -30,24 +34,6 @@ export function resolveItem(rail: RailItem[], itemId: string | null): RailItem |
   }
   const found = rail.find((entry) => entry.id === itemId);
   return found ?? rail[0] ?? null;
-}
-
-/**
- * The item a new view should open on, for the shell to write back when the view
- * changes.
- *
- * Switching views keeps `item` in the query string, and rail ids are reused
- * across views — `all` is the first item in five of them — so the carried-over
- * id either silently selects a different view's item or names nothing at all.
- * The latter is the worse case: `resolveItem` falls back to the first item for
- * the panel, and if the rail compared against the raw id then the panel would
- * draw one item while no button was lit.
- */
-export function defaultItemFor(rail: RailItem[], itemId: string | null): string | null {
-  if (rail.length === 0) {
-    return null;
-  }
-  return rail.some((entry) => entry.id === itemId) ? itemId : (rail[0]?.id ?? null);
 }
 
 /** Whether any view declares the outermost column, which is what earns it a toggle. */

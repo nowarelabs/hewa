@@ -30,7 +30,6 @@ export function AppShell({
     <ShellStateProvider
       syncUrl={config.syncUrl ?? false}
       defaultView={config.defaultView}
-      defaultItem={null}
       defaultTheme={config.theme ?? "dark"}
       hasAssistant={hasAssistant(config.views)}
       onThemeChange={onThemeChange}
