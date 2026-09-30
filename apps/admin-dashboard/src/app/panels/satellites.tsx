@@ -4,7 +4,7 @@ import type { ReactElement } from "react";
 import { RefreshCw, Satellite } from "lucide-react";
 
 import type { PanelProps } from "@hewa/app-shell";
-import { CardList, Empty, KeyValues, Panel } from "../ui/primitives";
+import { CardList, Empty, Panel } from "../ui/primitives";
 import { createTickingStore, useStore } from "../state/store";
 
 /**
@@ -200,19 +200,5 @@ export function SatelliteTable(): ReactElement {
         </table>
       </div>
     </div>
-  );
-}
-
-export function OrbitalPanel(): ReactElement {
-  const { satellites } = useCatalog();
-  return (
-    <Panel title="Orbital data">
-      <KeyValues
-        rows={satellites.slice(0, 6).map((satellite) => ({
-          label: satellite.name,
-          value: `${satellite.altitudeKm.toLocaleString()} km`,
-        }))}
-      />
-    </Panel>
   );
 }
