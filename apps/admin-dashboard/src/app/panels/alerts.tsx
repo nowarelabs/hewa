@@ -4,7 +4,15 @@ import type { ReactElement } from "react";
 import { AlertTriangle, Car, Clock, Cloud, DollarSign, Heart, MapPin, Shield } from "lucide-react";
 
 import type { PanelProps, ShellIcon } from "@hewa/app-shell";
-import { CardList, Empty, KeyValues, Panel } from "./primitives";
+import { CardList, Empty, KeyValues, Panel } from "../ui/primitives";
+
+/**
+ * The `alerts` view: every panel the Alerts tab can show.
+ *
+ * One view, one module, named for the key it is registered under in
+ * `shell.config.tsx`. The rail picks what the view is about, the middle
+ * column lists it, and the right column describes the selection.
+ */
 
 type Severity = "critical" | "high" | "medium" | "low";
 type Category = "security" | "conflict" | "economic" | "weather" | "health" | "traffic";

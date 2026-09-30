@@ -7,7 +7,15 @@ import { Plane, RefreshCw } from "lucide-react";
 import { ALL_FLIGHTS_ENDPOINT, airlineFlightsEndpoint, useAllFlights, useFlights } from "../hooks";
 import type { FlightData } from "../hooks";
 import type { PanelProps } from "@hewa/app-shell";
-import { CardList, Empty, Panel } from "./primitives";
+import { CardList, Empty, Panel } from "../ui/primitives";
+
+/**
+ * The `flights` view: every panel the Flights tab can show.
+ *
+ * One view, one module, named for the key it is registered under in
+ * `shell.config.tsx`. The rail picks what the view is about, the middle
+ * column lists it, and the right column describes the selection.
+ */
 
 /**
  * Callsign prefixes as they appear on Kenyan domestic services. The worker

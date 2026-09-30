@@ -4,7 +4,15 @@ import type { ReactElement } from "react";
 import { AlertCircle, Clock, Crosshair, MapPin, Shield, UserCheck } from "lucide-react";
 
 import type { PanelProps } from "@hewa/app-shell";
-import { CardList, Empty, KeyValues, Panel } from "./primitives";
+import { CardList, Empty, KeyValues, Panel } from "../ui/primitives";
+
+/**
+ * The `conflicts` view: every panel the Conflicts tab can show.
+ *
+ * One view, one module, named for the key it is registered under in
+ * `shell.config.tsx`. The rail picks what the view is about, the middle
+ * column lists it, and the right column describes the selection.
+ */
 
 type IncidentKind = "armed" | "protest" | "election" | "resource" | "tribal";
 type Severity = "critical" | "high" | "medium" | "low";

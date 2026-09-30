@@ -108,6 +108,18 @@ Rules for working on the generator:
   the config is hoisted out of the render cycle, so a collapsed panel keeps its
   poller running and two panels that both want live data each start their own.
   Shared live data goes through one store.
+- A view and its panel module are **one to one and share a name**: the `conflicts`
+  view is `panels/conflicts.tsx`, not `incidents.tsx`. A directory that holds one
+  module per view is a table of contents; one that also holds the shared store and
+  the shared primitives is not, and nothing fails when a view and its module
+  disagree. Assert the mapping in a test. State a single view owns stays in that
+  view's module; what several views share lives outside the directory — see
+  `apps/admin-dashboard/src/app/{ui,state}`.
+- A store that advances on a timer must notify the **same** listeners it
+  registered. Wrapping a store and handing out the inner `set` while keeping a
+  second listener set looks correct and notifies nobody: the value moves, the
+  panel does not, and there is no error. One value, one listener set, and a test
+  that subscribes and advances a fake clock.
 - App and panel classes use the shell's tokens — `bg-surface`, `text-ink`,
   `border-line`, `text-accent` — and not Tailwind's greys. A `neutral-900` does
   not follow the `.dark` class the shell toggles, which is how one UI ends up

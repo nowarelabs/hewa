@@ -16,7 +16,15 @@ import {
 } from "recharts";
 
 import type { PanelProps } from "@hewa/app-shell";
-import { KeyValues, Panel } from "./primitives";
+import { KeyValues, Panel } from "../ui/primitives";
+
+/**
+ * The `economic` view: every panel the Economic tab can show.
+ *
+ * One view, one module, named for the key it is registered under in
+ * `shell.config.tsx`. The rail picks what the view is about, the middle
+ * column lists it, and the right column describes the selection.
+ */
 
 interface Indicator {
   id: string;
@@ -114,7 +122,7 @@ const RAIL: Record<string, { title: string; rows: { label: string; value: string
   markets: { title: "Markets", rows: [{ label: "NSE 20", value: "1,842.15" }] },
 };
 
-export function EconomyRailPanel({ item }: PanelProps): ReactElement {
+export function EconomicRailPanel({ item }: PanelProps): ReactElement {
   const entry = RAIL[item ?? "overview"] ?? RAIL["overview"];
   return (
     <Panel title={entry?.title ?? "Economy"}>
@@ -230,19 +238,5 @@ function Chart({ title, children }: { title: string; children: ReactElement }): 
       <h2 className="mb-4 text-sm font-medium text-ink">{title}</h2>
       <div className="h-64">{children}</div>
     </article>
-  );
-}
-
-export function ForecastPanel(): ReactElement {
-  return (
-    <Panel title="Forecasts">
-      <KeyValues
-        rows={[
-          { label: "GDP growth 2026", value: "5.4%" },
-          { label: "Inflation 2026", value: "6.2%" },
-          { label: "KES/USD 2026", value: "156.00" },
-        ]}
-      />
-    </Panel>
   );
 }

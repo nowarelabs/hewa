@@ -32,13 +32,13 @@ import {
 import type { RailItem, ShellConfig, ViewSpec } from "@hewa/app-shell";
 
 import { AlertDetailsPanel, AlertRailPanel, AlertsFeed } from "./panels/alerts";
-import { EconomicIndicators, EconomyRailPanel } from "./panels/economy";
+import { ConflictStream, IncidentDetailsPanel, IncidentRailPanel } from "./panels/conflicts";
+import { EconomicIndicators, EconomicRailPanel } from "./panels/economic";
 import { FlightListPanel, FlightTable } from "./panels/flights";
-import { ConflictStream, IncidentDetailsPanel, IncidentRailPanel } from "./panels/incidents";
 import { ReportDetailsPanel, ReportFeed, ReportRailPanel } from "./panels/osint";
 import { SatelliteListPanel, SatelliteTable } from "./panels/satellites";
-import { Assistant, SelectPrompt } from "./panels/primitives";
 import { LiveStreams, StreamInfoPanel, StreamListPanel } from "./panels/streams";
+import { Assistant, SelectPrompt } from "./ui/primitives";
 
 /**
  * The app.
@@ -207,31 +207,31 @@ const views: Record<string, ViewSpec> = {
         id: "overview",
         label: "Overview",
         icon: BarChart,
-        panel: { title: "Overview", render: EconomyRailPanel },
+        panel: { title: "Overview", render: EconomicRailPanel },
       },
       {
         id: "currency",
         label: "Currency",
         icon: DollarSign,
-        panel: { title: "Currency", render: EconomyRailPanel },
+        panel: { title: "Currency", render: EconomicRailPanel },
       },
       {
         id: "gdp",
         label: "GDP",
         icon: TrendingUp,
-        panel: { title: "GDP", render: EconomyRailPanel },
+        panel: { title: "GDP", render: EconomicRailPanel },
       },
       {
         id: "trade",
         label: "Trade",
         icon: ArrowRight,
-        panel: { title: "Trade", render: EconomyRailPanel },
+        panel: { title: "Trade", render: EconomicRailPanel },
       },
       {
         id: "markets",
         label: "Markets",
         icon: Activity,
-        panel: { title: "Markets", render: EconomyRailPanel },
+        panel: { title: "Markets", render: EconomicRailPanel },
       },
     ],
     main: { render: EconomicIndicators },

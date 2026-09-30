@@ -4,7 +4,15 @@ import type { ReactElement } from "react";
 import { Clock, FileText, Globe, Shield, TrendingUp, Users } from "lucide-react";
 
 import type { PanelProps, ShellIcon } from "@hewa/app-shell";
-import { CardList, Empty, KeyValues, Panel } from "./primitives";
+import { CardList, Empty, KeyValues, Panel } from "../ui/primitives";
+
+/**
+ * The `osint` view: every panel the OSINT tab can show.
+ *
+ * One view, one module, named for the key it is registered under in
+ * `shell.config.tsx`. The rail picks what the view is about, the middle
+ * column lists it, and the right column describes the selection.
+ */
 
 type Category = "cia" | "military" | "economic" | "political" | "social";
 

@@ -27,15 +27,30 @@ object.
 
 ```
 src/app/shell.config.tsx   every view, rail item, panel and status line, as data
-src/app/panels/            the content each panel renders
+src/app/panels/            one module per view, named after its view id
+src/app/ui/                the panel shapes every view shares
+src/app/state/             the store two panels of one view agree through
 src/app/App.tsx            <AppShell config={config} />
 ```
 
+A view and its module are one to one and share a name: the `conflicts` view is
+served by `panels/conflicts.tsx`, and the `economic` view by
+`panels/economic.tsx`. The directory listing is therefore a table of contents
+for the console, which it was not when `panels/` also held a shared store and a
+set of primitives. `tests/views.test.ts` fails if a view has no module, a module
+has no view, or the two names drift apart.
+
+`ui/primitives.tsx` and `state/store.ts` are not views and are not in `panels/`
+for that reason. State a single view owns stays in that view's module: the
+satellite catalogue is in `panels/satellites.tsx` and the selected channel in
+`panels/streams.tsx`, because both exist to keep two panels of one view in step.
+What is in `state/` is the mechanism, not the data.
+
 `App.tsx` has no logic in it and is not supposed to grow any. Adding a view
-means adding an entry to `shell.config.tsx` and a panel module; it does not mean
-editing a layout component or adding a `case` to a switch. The view id, the rail
-item id and the panel collapse state are mirrored into the query string, so a
-link reopens the console on the panel it was copied from.
+means adding an entry to `shell.config.tsx` and a module beside it; it does not
+mean editing a layout component or adding a `case` to a switch. The view id, the
+rail item id and the panel collapse state are mirrored into the query string, so
+a link reopens the console on the panel it was copied from.
 
 This app was the shell's first consumer and it is the one that will break first
 if the two drift. `shell.config.tsx` should read as a description of the console,
@@ -48,6 +63,19 @@ The palette, the theme tokens and the fixed-viewport base come from
 stylesheet, and points `@source` at the shell's compiled output. No
 app-specific CSS remains, and none should be added for chrome: a colour defined
 here does not follow the theme the shell toggles.
+
+## Tests
+
+`vp test` runs against `vite.config.ts`, which exists only for the test runner.
+The app's tsconfig says `jsx: "preserve"` because Next compiles JSX with SWC,
+and Vite reads that same setting for its own transform, so a test importing a
+`.tsx` module would otherwise hand raw JSX to the SSR transform and fail with
+`Unexpected JSX expression`. The `oxc.jsx` override in the Vite config gives the
+runner the automatic runtime; `next build` is unaffected.
+
+Without it this app had no way to test a component at all, which is how a store
+that advanced its value without notifying one subscriber reached `main` with
+every test green. `tests/store.test.ts` now covers that path.
 
 ## Data
 

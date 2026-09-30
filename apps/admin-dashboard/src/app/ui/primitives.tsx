@@ -8,6 +8,10 @@ import type { ReactElement, ReactNode } from "react";
  * their own copy of the `FlightData` interface. The data is still per view and
  * still lives in a file, but a panel that is only a heading and a line of
  * placeholder text is now two calls in the shell config rather than a module.
+ *
+ * These are the parts every view shares, so they are not a view. A file in
+ * `panels/` is one view and is named after its key in `shell.config.tsx`; this
+ * one is a view's vocabulary and is named for that.
  */
 
 /** A panel heading, optionally with a supporting line under it. */

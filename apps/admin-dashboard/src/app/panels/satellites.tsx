@@ -4,8 +4,16 @@ import type { ReactElement } from "react";
 import { RefreshCw, Satellite } from "lucide-react";
 
 import type { PanelProps } from "@hewa/app-shell";
-import { CardList, Empty, KeyValues, Panel } from "./primitives";
-import { createTickingStore, useStore } from "./store";
+import { CardList, Empty, KeyValues, Panel } from "../ui/primitives";
+import { createTickingStore, useStore } from "../state/store";
+
+/**
+ * The `satellites` view: every panel the Satellites tab can show.
+ *
+ * One view, one module, named for the key it is registered under in
+ * `shell.config.tsx`. The rail picks what the view is about, the middle
+ * column lists it, and the right column describes the selection.
+ */
 
 type SatelliteKind = "reconnaissance" | "weather" | "communication" | "navigation" | "scientific";
 
