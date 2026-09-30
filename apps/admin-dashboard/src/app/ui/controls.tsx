@@ -70,12 +70,23 @@ export interface SearchFieldProps {
   onChange: (value: string) => void;
   /** Called on Enter. Omit it and Enter does nothing rather than submitting. */
   onSubmit?: (value: string) => void;
+  /**
+   * Called on Escape, instead of clearing.
+   *
+   * Clearing is the right answer for a field that stays on screen, and the wrong
+   * one for a field the summary bar morphs *into*: Escape there means "stop
+   * searching", which is clearing and unmounting, and the caller is the only
+   * thing that knows how to put the bar back. Omit it and Escape clears, which is
+   * what a field on its own wants.
+   */
+  onEscape?: () => void;
   placeholder?: string;
   /** Announced and shown. Always labelled, labelled or not. */
   label?: string;
   /** Text inside the field on the right: a result count, or "No matches". */
   hint?: ReactNode;
   disabled?: boolean;
+  autoFocus?: boolean;
   className?: string;
 }
 
@@ -91,10 +102,12 @@ export function SearchField({
   value,
   onChange,
   onSubmit,
+  onEscape,
   placeholder = "Search",
   label,
   hint,
   disabled = false,
+  autoFocus = false,
   className = "",
 }: SearchFieldProps): ReactElement {
   const inputId = useId();
@@ -117,11 +130,16 @@ export function SearchField({
         value={value}
         disabled={disabled}
         placeholder={placeholder}
+        autoFocus={autoFocus}
         onChange={(event) => onChange(event.target.value)}
         onKeyDown={(event) => {
-          if (event.key === "Escape" && value !== "") {
+          if (event.key === "Escape" && (value !== "" || onEscape !== undefined)) {
             event.preventDefault();
-            onChange("");
+            if (onEscape === undefined) {
+              onChange("");
+              return;
+            }
+            onEscape();
             return;
           }
           if (event.key === "Enter") {

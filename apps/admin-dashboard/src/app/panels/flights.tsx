@@ -109,6 +109,11 @@ export function FlightListPanel({ item }: PanelProps): ReactElement {
  * that the two answer different questions about a different shape of data. A
  * carrier says how many there are; a callsign says which one you meant. The
  * other four views have a handful of rows and a category, which is one control.
+ *
+ * They are not both on screen. `SummaryBar` morphs: the bar is the carrier
+ * breakdown, and asking turns it into the field with the filters it already has
+ * still in force and still removable. Five toggles and a text field in one strip
+ * is a bar with two jobs and no room for either.
  */
 export function FlightTable(): ReactElement {
   const { flights, lastUpdate } = useCatalog();

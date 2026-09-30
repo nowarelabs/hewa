@@ -54,6 +54,49 @@ describe("summary bars", () => {
     }
   });
 
+  /**
+   * The morph, and the rule it is for.
+   *
+   * A summary bar is a strip of chips for a list that is grouped. Flights is
+   * also a list looked up by callsign, and putting a text field in the same
+   * strip gave the bar two jobs and no room for either — five toggles wrapping
+   * onto a second line around a field that then had to shrink. So the bar is one
+   * thing at a time: it is the summary, and asking turns it into the field.
+   *
+   * Only flights passes `search`, so the other six render no trigger at all.
+   * Asserted here rather than left to reading the component, because a bar that
+   * grew a search button it did not need is not a bug anyone would report.
+   */
+  test("the flights bar is a summary that can be asked to become the field", () => {
+    const html = render("flights");
+    expect(html).toContain("data-open-search");
+    expect(html).not.toContain('role="searchbox"');
+  });
+
+  test("a link arriving searched arrives as the field", () => {
+    // Not as the summary: a narrowed table under a bar of carrier counts is the
+    // state that makes somebody type the query again because the console looks
+    // like it forgot. `tests/filters.test.ts` drives this one through the DOM.
+    const html = renderToStaticMarkup(
+      createElement(
+        NuqsTestingAdapter,
+        { searchParams: "?flightsQ=KQ" } as never,
+        createElement(config.views.flights?.main.render as never),
+      ),
+    );
+    expect(html).toContain('role="searchbox"');
+    expect(html).not.toContain("data-open-search");
+  });
+
+  test("no other bar grows a search trigger", () => {
+    for (const key of Object.keys(config.views)) {
+      if (key === "flights") {
+        continue;
+      }
+      expect(render(key), key).not.toContain("data-open-search");
+    }
+  });
+
   test("a bar survives data that has not arrived yet", () => {
     // The flights bar used to lose every chip but one over an empty list,
     // because the groups were counted out of the rows rather than the table.

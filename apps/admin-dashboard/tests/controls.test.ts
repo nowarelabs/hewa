@@ -1,6 +1,9 @@
-import { createElement } from "react";
+// @vitest-environment happy-dom
+
+import { act, createElement, type ReactElement } from "react";
+import { createRoot, type Root } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, test } from "vite-plus/test";
+import { afterEach, describe, expect, test } from "vite-plus/test";
 import {
   ActiveFilters,
   Dropdown,
@@ -20,7 +23,40 @@ import {
  * and one that is not, a dropdown that has chosen something. Those are all
  * strings, and asserting on strings is a test that cannot pass by accident when
  * a class name changes.
+ *
+ * The exceptions are the key handling, which is behaviour rather than a state and
+ * cannot be read off a string. Those mount for real; everything else here is
+ * markup.
  */
+
+declare global {
+  var IS_REACT_ACT_ENVIRONMENT: boolean;
+}
+
+globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+
+const roots: Root[] = [];
+
+afterEach(() => {
+  for (const root of roots.splice(0)) {
+    act(() => root.unmount());
+  }
+  document.body.replaceChildren();
+});
+
+const mount = (node: ReactElement): HTMLElement => {
+  const container = document.body.appendChild(document.createElement("div"));
+  const root = createRoot(container);
+  roots.push(root);
+  act(() => root.render(node));
+  return container;
+};
+
+const press = async (element: Element, key: string): Promise<void> => {
+  await act(async () => {
+    element.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true }));
+  });
+};
 
 const OPTIONS = [
   { value: "all", label: "All statuses" },
@@ -178,6 +214,73 @@ describe("SearchField", () => {
 
   test("a disabled field is disabled", () => {
     expect(render({ value: "", onChange: () => {}, disabled: true })).toContain("disabled");
+  });
+
+  /**
+   * Escape is the one key every search box is expected to answer to, and it has
+   * two meanings. On a field that stays on screen it clears the text. On a field
+   * the summary bar morphs *into*, "stop searching" means clearing and
+   * unmounting, and only the caller knows how to put the bar back.
+   */
+  describe("escape", () => {
+    const field = (container: HTMLElement): HTMLInputElement =>
+      container.querySelector<HTMLInputElement>('[role="searchbox"]') as HTMLInputElement;
+
+    test("with nothing to clear and nowhere to go, it does nothing", async () => {
+      const cleared: string[] = [];
+      const container = mount(
+        createElement(SearchField, { value: "", onChange: (v: string) => cleared.push(v) }),
+      );
+      await press(field(container), "Escape");
+      expect(cleared).toEqual([]);
+    });
+
+    test("a field that stays clears itself", async () => {
+      const cleared: string[] = [];
+      const container = mount(
+        createElement(SearchField, { value: "KQ", onChange: (v: string) => cleared.push(v) }),
+      );
+      await press(field(container), "Escape");
+      expect(cleared).toEqual([""]);
+    });
+
+    test("a field the bar morphs into hands Escape to the caller", async () => {
+      // The caller clears *and* unmounts, so it must not be told to clear as
+      // well: a field that clears itself and is then unmounted is one write to a
+      // query key for a view nobody is looking at.
+      const cleared: string[] = [];
+      let escaped = 0;
+      const container = mount(
+        createElement(SearchField, {
+          value: "KQ",
+          onChange: (v: string) => cleared.push(v),
+          onEscape: () => {
+            escaped += 1;
+          },
+        }),
+      );
+      await press(field(container), "Escape");
+      expect(escaped).toBe(1);
+      expect(cleared).toEqual([]);
+    });
+
+    test("an empty field still hands Escape over, because closing is not clearing", async () => {
+      // The summary bar's close button and Escape must behave the same way, or
+      // Escape does nothing on an empty field and the bar cannot be dismissed
+      // from the keyboard — the one case where somebody opened it and is done.
+      let escaped = 0;
+      const container = mount(
+        createElement(SearchField, {
+          value: "",
+          onChange: () => {},
+          onEscape: () => {
+            escaped += 1;
+          },
+        }),
+      );
+      await press(field(container), "Escape");
+      expect(escaped).toBe(1);
+    });
   });
 });
 
