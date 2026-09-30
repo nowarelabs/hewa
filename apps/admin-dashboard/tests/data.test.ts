@@ -4,7 +4,7 @@ import { config } from "../src/app/shell.config";
 import { ALERTS, SEVERITIES } from "../src/app/data/alerts";
 import { INCIDENTS, INCIDENT_KINDS } from "../src/app/data/conflicts";
 import { INDICATORS, SECTORS } from "../src/app/data/economic";
-import { AIRLINE_CODES, airlineFor, FLIGHTS, flightsFor } from "../src/app/data/flights";
+import { AIRLINE_CODES, airlineFor } from "../src/app/data/flights";
 import { REPORTS, REPORT_CATEGORIES } from "../src/app/data/osint";
 import { KINDS, SATELLITES } from "../src/app/data/satellites";
 import { STREAMS } from "../src/app/data/streams";
@@ -74,45 +74,6 @@ describe("data", () => {
     for (const code of Object.values(AIRLINE_CODES)) {
       expect(code, "a carrier panel has no code").toBeDefined();
       expect(airlineFor(code as string), `code ${code} resolves to Unknown`).not.toBe("Unknown");
-    }
-  });
-
-  // The table renders these with `Math.round` and a `°`, so a heading of 400
-  // is not a wrong number in a data file: it is `NaN°` on screen.
-  test("every flight carries values the table can render", () => {
-    for (const flight of FLIGHTS) {
-      const where = `${flight.callsign} (${flight.icao24})`;
-      expect(flight.icao24, `${where} is not an ICAO 24-bit address`).toMatch(/^[0-9a-f]{6}$/);
-      expect(flight.callsign.trim(), `${where} has no callsign`).not.toBe("");
-      expect(flight.originCountry.trim(), `${where} has no country`).not.toBe("");
-      expect(Math.abs(flight.latitude), `${where} latitude`).toBeLessThanOrEqual(90);
-      expect(Math.abs(flight.longitude), `${where} longitude`).toBeLessThanOrEqual(180);
-      expect(flight.altitude, `${where} altitude`).toBeGreaterThan(0);
-      expect(flight.velocity, `${where} velocity`).toBeGreaterThan(0);
-      expect(flight.heading, `${where} heading`).toBeGreaterThanOrEqual(0);
-      expect(flight.heading, `${where} heading`).toBeLessThan(360);
-      expect(Number.isFinite(flight.altitude + flight.velocity + flight.heading), where).toBe(true);
-    }
-  });
-
-  test("flight addresses are unique, or the table renders duplicate keys", () => {
-    const addresses = FLIGHTS.map((flight) => flight.icao24);
-    expect(new Set(addresses).size).toBe(addresses.length);
-  });
-
-  test("the carrier selector answers per carrier", () => {
-    expect(flightsFor(undefined)).toHaveLength(FLIGHTS.length);
-    for (const [item, code] of Object.entries(AIRLINE_CODES)) {
-      if (code === undefined) {
-        throw new Error(`AIRLINE_CODES.${item} has no callsign code`);
-      }
-      const rows = flightsFor(code);
-      expect(rows.length, `${item} has no rows`).toBeGreaterThan(0);
-      for (const flight of rows) {
-        expect(airlineFor(flight.callsign), `${flight.callsign} is not ${item}`).toBe(
-          airlineFor(code),
-        );
-      }
     }
   });
 

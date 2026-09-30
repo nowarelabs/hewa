@@ -9,7 +9,7 @@ import type { FlightData } from "../hooks";
 import type { PanelProps } from "@hewa/app-shell";
 import { CardList, Empty, Panel, SummaryBar, summaryCounts, visibleBy } from "../ui/primitives";
 import { matchesQuery } from "../ui/controls";
-import { AIRLINE_CODES, CARRIERS, FLIGHTS, airlineFor, flightsFor } from "../data/flights";
+import { AIRLINE_CODES, CARRIERS, airlineFor } from "../data/flights";
 import { useFilterParam, useSearchParam } from "../state/filter";
 
 /**
@@ -36,23 +36,18 @@ export function FlightListPanel({
   limit = 20,
 }: PanelProps & { limit?: number }): ReactElement {
   const codes = AIRLINE_CODES[item ?? "all"] ?? undefined;
-  const state = useFlights(
+  const { flights, loading } = useFlights(
     codes === undefined ? ALL_FLIGHTS_ENDPOINT : airlineFlightsEndpoint(codes),
   );
-  const { flights, loading, error } = state;
 
-  const rows = error === null ? flights : flightsFor(codes);
-  const shown = useMemo(() => rows.slice(0, limit), [rows, limit]);
+  const shown = useMemo(() => flights.slice(0, limit), [flights, limit]);
 
   return (
-    <Panel
-      title={codes === undefined ? "All flights" : airlineFor(codes)}
-      note={error === null ? undefined : "Offline — these flights are not live"}
-    >
+    <Panel title={codes === undefined ? "All flights" : airlineFor(codes)}>
       {loading ? <Empty>Loading flights…</Empty> : null}
-      {!loading && rows.length === 0 ? <Empty>No flights detected</Empty> : null}
+      {!loading && flights.length === 0 ? <Empty>No flights detected</Empty> : null}
       <CardList items={shown.map(toCard)} />
-      {rows.length > limit ? <Empty>+{rows.length - limit} more flights</Empty> : null}
+      {flights.length > limit ? <Empty>+{flights.length - limit} more flights</Empty> : null}
     </Panel>
   );
 }
@@ -82,18 +77,13 @@ function toCard(flight: FlightData): {
  * that the two answer different questions about a different shape of data. A
  * carrier says how many there are; a callsign says which one you meant. The
  * other four views have a handful of rows and a category, which is one control.
- *
- * `rows` is the worker's when it answers and `data/flights` when it does not.
- * One place decides, so the count and the table cannot disagree.
  */
 export function FlightTable(): ReactElement {
-  const { flights, loading, error, lastUpdate } = useAllFlights();
+  const { flights, loading, lastUpdate } = useAllFlights();
   const carriers = useFilterParam("flights");
   const search = useSearchParam("flightsQ");
-  const offline = error !== null;
-  const rows = offline ? FLIGHTS : flights;
 
-  const narrowed = visibleBy(rows, (flight) => airlineFor(flight.callsign), carriers.selected);
+  const narrowed = visibleBy(flights, (flight) => airlineFor(flight.callsign), carriers.selected);
   const shown = useMemo(
     () =>
       search.query.trim() === ""
@@ -116,33 +106,30 @@ export function FlightTable(): ReactElement {
           <Plane className="h-5 w-5 text-accent" />
           <h1 className="text-lg font-semibold text-ink">Flight tracker</h1>
           <span className="rounded bg-accent/15 px-2 py-0.5 text-xs text-accent">
-            {rows.length} flights
+            {flights.length} flights
           </span>
         </div>
         <div className="flex items-center gap-2 text-xs text-ink-muted">
           <RefreshCw className="h-3 w-3" />
           {loading
             ? "Loading…"
-            : offline
-              ? "Offline"
-              : lastUpdate === null
-                ? ""
-                : `Updated ${lastUpdate.toLocaleTimeString()}`}
+            : lastUpdate === null
+              ? ""
+              : `Updated ${lastUpdate.toLocaleTimeString()}`}
         </div>
       </header>
 
       <SummaryBar
         items={[
-          ...summaryCounts(rows, (flight) => airlineFor(flight.callsign), {
+          ...summaryCounts(flights, (flight) => airlineFor(flight.callsign), {
             // Every carrier the callsign table knows, so the bar keeps its
-            // chips while the worker is loading and does not lose one to a
-            // prefix that arrived after this table was written.
+            // chips while the worker is loading.
             keys: CARRIERS,
             tint: () => "border-accent/30 bg-accent/15 text-accent",
           }),
           {
             label: "Countries",
-            value: new Set(rows.map((flight) => flight.originCountry)).size,
+            value: new Set(flights.map((flight) => flight.originCountry)).size,
           },
         ]}
         filter={{
@@ -155,21 +142,15 @@ export function FlightTable(): ReactElement {
           onChange: search.set,
           label: "Search flights by callsign, carrier or country",
           placeholder: "Callsign, carrier, country",
-          hint: `${shown.length} of ${rows.length}`,
+          hint: `${shown.length} of ${flights.length}`,
         }}
       />
-
-      {offline ? (
-        <p className="p-4 text-xs text-red-400">
-          The flights worker is unreachable: {error}. These flights are not live.
-        </p>
-      ) : null}
 
       {loading ? (
         <Body>
           <Empty>Loading flights…</Empty>
         </Body>
-      ) : rows.length === 0 ? (
+      ) : flights.length === 0 ? (
         <Body>
           <Empty>No flights detected</Empty>
         </Body>

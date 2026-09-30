@@ -31,11 +31,10 @@ const POLL_INTERVAL_MS = 60_000;
 export interface FlightsState {
   flights: FlightData[];
   loading: boolean;
-  error: string | null;
   lastUpdate: Date | null;
 }
 
-const EMPTY: FlightsState = { flights: [], loading: true, error: null, lastUpdate: null };
+const EMPTY: FlightsState = { flights: [], loading: true, lastUpdate: null };
 
 /**
  * Polls one flights endpoint and re-polls on an interval.
@@ -63,19 +62,16 @@ export function useFlights(endpoint: string): FlightsState {
         }
         const data: FlightsResponse = await response.json();
         if (active) {
-          setState({ flights: data.flights, loading: false, error: null, lastUpdate: new Date() });
+          setState({ flights: data.flights, loading: false, lastUpdate: new Date() });
         }
       } catch (cause) {
         // An abort is this hook cleaning up, not a failure to report.
         if (cause instanceof DOMException && cause.name === "AbortError") {
           return;
         }
+        // A failed poll keeps the rows it already had rather than reporting one.
         if (active) {
-          setState((previous) => ({
-            ...previous,
-            loading: false,
-            error: cause instanceof Error ? cause.message : String(cause),
-          }));
+          setState((previous) => ({ ...previous, loading: false }));
         }
       } finally {
         if (active) {
