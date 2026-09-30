@@ -5,7 +5,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { NuqsTestingAdapter } from "nuqs/adapters/testing";
 import { afterEach, describe, expect, test } from "vite-plus/test";
 import { config } from "../src/app/shell.config";
-import type { FlightData } from "../src/app/hooks";
+import { FLIGHTS } from "../src/app/data/flights";
 import { visibleBy } from "../src/app/ui/primitives";
 
 /**
@@ -35,7 +35,6 @@ declare global {
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 const roots: Root[] = [];
-const realFetch = globalThis.fetch;
 
 /**
  * The query string each mount's adapter last wrote, keyed by its container.
@@ -325,75 +324,6 @@ describe("a filter that matches nothing", () => {
   }
 });
 
-/**
- * The flights worker's answer, shared by the two flights describes below.
- *
- * Four rows across three carriers, so a carrier chip and a callsign search can
- * be told apart: "KQ" is two rows, Safarilink is one, and the two have no
- * flight in common.
- */
-const ROWS: FlightData[] = [
-  {
-    icao24: "a1",
-    callsign: "KQ100",
-    originCountry: "Kenya",
-    latitude: 1,
-    longitude: 36,
-    altitude: 10_000,
-    velocity: 240,
-    heading: 90,
-    isArriving: false,
-    isDeparting: true,
-  },
-  {
-    icao24: "a2",
-    callsign: "KQ200",
-    originCountry: "Kenya",
-    latitude: 2,
-    longitude: 37,
-    altitude: 11_000,
-    velocity: 250,
-    heading: 91,
-    isArriving: false,
-    isDeparting: true,
-  },
-  {
-    icao24: "b1",
-    callsign: "FY300",
-    originCountry: "Kenya",
-    latitude: 3,
-    longitude: 38,
-    altitude: 9_000,
-    velocity: 230,
-    heading: 92,
-    isArriving: false,
-    isDeparting: true,
-  },
-  {
-    icao24: "c1",
-    callsign: "XK400",
-    originCountry: "Tanzania",
-    latitude: 4,
-    longitude: 39,
-    altitude: 8_000,
-    velocity: 220,
-    heading: 93,
-    isArriving: true,
-    isDeparting: false,
-  },
-];
-
-const stubWorker = async (searchParams = ""): Promise<HTMLElement> => {
-  globalThis.fetch = (async () =>
-    ({
-      ok: true,
-      json: async () => ({ timestamp: 0, total: ROWS.length, flights: ROWS }),
-    }) as unknown as Response) as typeof fetch;
-  const container = mount(view("flights"), searchParams);
-  await act(async () => {});
-  return container;
-};
-
 const field = (container: HTMLElement): HTMLInputElement =>
   query<HTMLInputElement>(container, '[role="searchbox"]');
 
@@ -420,25 +350,20 @@ const type = async (container: HTMLElement, value: string): Promise<void> => {
   });
 };
 
-afterEach(() => {
-  globalThis.fetch = realFetch;
-});
-
 describe("the flights bar", () => {
   /**
    * The one view with both controls, and the reason it is the one is that the
    * two answer different questions: a carrier says how many there are, a
    * callsign says which one you meant.
    */
-  test("it loads the worker's rows, so the counts below are about the filter", () => {
+  test("it draws the catalogue, so the counts below are about the filter", () => {
     // Without this the rest of these pass on an empty table.
-    return stubWorker().then((container) => {
-      expect(rows(container)).toBe(4);
-    });
+    const container = mount(view("flights"));
+    expect(rows(container)).toBe(FLIGHTS.length);
   });
 
-  test("it has a search field and a chip per carrier", async () => {
-    const container = await stubWorker();
+  test("it has a search field and a chip per carrier", () => {
+    const container = mount(view("flights"));
     expect(field(container)).not.toBeNull();
     for (const carrier of ["Kenya Airways", "Fly540", "Safarilink"]) {
       expect(query(container, `[data-summary-item="${carrier}"]`)).not.toBeNull();
@@ -446,62 +371,62 @@ describe("the flights bar", () => {
   });
 
   test("a carrier chip narrows the table", async () => {
-    const container = await stubWorker();
+    const container = mount(view("flights"));
     await click(chip(container, "Safarilink"));
-    expect(rows(container)).toBe(1);
+    expect(rows(container)).toBe(4);
   });
 
   test("the search field narrows the table by callsign", async () => {
-    const container = await stubWorker();
+    const container = mount(view("flights"));
     await type(container, "KQ");
-    expect(rows(container)).toBe(2);
+    expect(rows(container)).toBe(3);
   });
 
   test("a search that matches nothing says so", async () => {
-    const container = await stubWorker();
+    const container = mount(view("flights"));
     await type(container, "zzzz");
     expect(rows(container)).toBe(0);
     expect(container.textContent).toContain("No flights match this carrier or search");
   });
 
   test("the search reports how much of the table it left", async () => {
-    // "3 of 800" is the difference between a search and a disappearance.
-    const container = await stubWorker();
+    // "3 of 15" is the difference between a search and a disappearance.
+    const container = mount(view("flights"));
     await type(container, "KQ");
     expect(field(container).value).toBe("KQ");
-    expect(container.textContent).toContain("2 of 4");
+    expect(container.textContent).toContain(`3 of ${FLIGHTS.length}`);
   });
 
   test("the two controls compose, and the search cannot undo the chip", async () => {
     // Safarilink and "KQ" have no flight in common. A search that ran against
-    // the unfiltered table would report the two Kenya Airways rows, which is the
-    // one way this can be silently wrong.
-    const container = await stubWorker();
+    // the unfiltered table would report the three Kenya Airways rows, which is
+    // the one way this can be silently wrong.
+    const container = mount(view("flights"));
     await type(container, "KQ");
-    expect(rows(container)).toBe(2);
+    expect(rows(container)).toBe(3);
     await click(chip(container, "Safarilink"));
     expect(rows(container)).toBe(0);
   });
 
   test("clearing the search leaves the chip in force", async () => {
-    const container = await stubWorker();
+    const container = mount(view("flights"));
     await type(container, "KQ");
     await click(chip(container, "Safarilink"));
     expect(rows(container)).toBe(0);
     await type(container, "");
-    expect(rows(container)).toBe(1);
+    expect(rows(container)).toBe(4);
   });
 });
 
 describe("the flights search in the address bar", () => {
   test("what is typed reaches the query string", async () => {
-    const container = await stubWorker();
+    const container = mount(view("flights"));
     await type(container, "KQ");
     expect((await params(container)).get("flightsQ")).toBe("KQ");
   });
 
   test("a carrier and a search are two keys, and both survive", async () => {
-    const container = await stubWorker();
+    const container = mount(view("flights"));
     await type(container, "KQ");
     await click(chip(container, "Safarilink"));
     expect((await params(container)).get("flights")).toBe("Safarilink");
@@ -509,7 +434,7 @@ describe("the flights search in the address bar", () => {
   });
 
   test("clearing the search takes its key out and leaves the carrier's", async () => {
-    const container = await stubWorker();
+    const container = mount(view("flights"));
     await type(container, "KQ");
     await click(chip(container, "Safarilink"));
     await type(container, "");
@@ -521,8 +446,8 @@ describe("the flights search in the address bar", () => {
     // The field is populated from the URL and not left empty over a filtered
     // table, which is the state that makes an operator type the same query
     // again because the console has forgotten what they already said.
-    const container = await stubWorker("?flightsQ=KQ");
-    expect(rows(container)).toBe(2);
+    const container = mount(view("flights"), "?flightsQ=KQ");
+    expect(rows(container)).toBe(3);
     expect(field(container).value).toBe("KQ");
   });
 });

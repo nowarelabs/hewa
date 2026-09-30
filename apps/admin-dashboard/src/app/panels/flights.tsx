@@ -4,13 +4,12 @@ import { useMemo } from "react";
 import type { ReactElement, ReactNode } from "react";
 import { Plane, RefreshCw } from "lucide-react";
 
-import { ALL_FLIGHTS_ENDPOINT, airlineFlightsEndpoint, useAllFlights, useFlights } from "../hooks";
-import type { FlightData } from "../hooks";
 import type { PanelProps } from "@hewa/app-shell";
 import { CardList, Empty, Panel, SummaryBar, summaryCounts, visibleBy } from "../ui/primitives";
 import { matchesQuery } from "../ui/controls";
-import { AIRLINE_CODES, CARRIERS, airlineFor } from "../data/flights";
+import { CARRIERS, FLIGHTS, airlineFor, type Flight } from "../data/flights";
 import { useFilterParam, useSearchParam } from "../state/filter";
+import { createTickingStore, useStore } from "../state/store";
 
 /**
  * The `flights` view: every panel the Flights tab can show.
@@ -20,54 +19,87 @@ import { useFilterParam, useSearchParam } from "../state/filter";
  * column lists it, and the right column describes the selection.
  */
 
+interface Catalog {
+  flights: Flight[];
+  lastUpdate: Date;
+}
+
+const TICK_MS = 5000;
+
+/**
+ * Placeholder catalogue. The feed is not built yet, so these drift on a timer to
+ * show the columns moving. The records they start from are in `../data/flights`.
+ */
+const CATALOG = createTickingStore<Catalog>(
+  { flights: FLIGHTS, lastUpdate: new Date() },
+  TICK_MS,
+  (current) => ({
+    flights: current.flights.map((flight) => ({
+      ...flight,
+      latitude: flight.latitude + (Math.random() - 0.5) * 0.05,
+      longitude: flight.longitude + (Math.random() - 0.5) * 0.05,
+    })),
+    lastUpdate: new Date(),
+  }),
+);
+
+function useCatalog(): Catalog {
+  return useStore(CATALOG);
+}
+
+/**
+ * The carriers the rail lists. `carrier` is `null` for the one entry that means
+ * every flight.
+ *
+ * The rail has no entry for a carrier with no domestic prefix on the table,
+ * and three of the flights above are on carriers it has never heard of, so the
+ * bar counts the catalogue and not the rail: that is what the "Unknown" chip is.
+ */
+export const RAIL: { id: string; label: string; carrier: string | null }[] = [
+  { id: "all", label: "All flights", carrier: null },
+  { id: "kenya", label: "Kenya Airways", carrier: "Kenya Airways" },
+  { id: "jambo", label: "Jambojet", carrier: "Jambojet" },
+  { id: "fly540", label: "Fly540", carrier: "Fly540" },
+  { id: "safarilink", label: "Safarilink", carrier: "Safarilink" },
+];
+
 /**
  * The left column's flight list, for the whole airspace or for one carrier.
  *
  * The four carrier panels used to be four files differing only in a heading and
- * a slice length, each declaring its own copy of `FlightData` and each handed a
- * different fetch from a switch statement. Which carrier is selected is already
- * known here, as `item`, so the panel derives the endpoint from it and polls
- * that one endpoint. Selecting a carrier used to start a second poller for the
- * whole airspace alongside the one on screen, because hooks cannot be called
- * conditionally and the cheap way out was to call both and discard one.
+ * a slice length. Which carrier is selected is already known here, as `item`, so
+ * the panel filters on it rather than asking a second poller for one carrier's
+ * endpoint alongside the whole airspace.
  */
-export function FlightListPanel({
-  item,
-  limit = 20,
-}: PanelProps & { limit?: number }): ReactElement {
-  const codes = AIRLINE_CODES[item ?? "all"] ?? undefined;
-  const { flights, loading } = useFlights(
-    codes === undefined ? ALL_FLIGHTS_ENDPOINT : airlineFlightsEndpoint(codes),
-  );
-
-  const shown = useMemo(() => flights.slice(0, limit), [flights, limit]);
+export function FlightListPanel({ item }: PanelProps): ReactElement {
+  const { flights } = useCatalog();
+  const entry = RAIL.find((candidate) => candidate.id === item) ?? RAIL[0];
+  const carrier = entry?.carrier ?? null;
+  const shown =
+    carrier === null
+      ? flights
+      : flights.filter((flight) => airlineFor(flight.callsign) === carrier);
 
   return (
-    <Panel title={codes === undefined ? "All flights" : airlineFor(codes)}>
-      {loading ? <Empty>Loading flights…</Empty> : null}
-      {!loading && flights.length === 0 ? <Empty>No flights detected</Empty> : null}
-      <CardList items={shown.map(toCard)} />
-      {flights.length > limit ? <Empty>+{flights.length - limit} more flights</Empty> : null}
+    <Panel title={entry?.label ?? "Flights"}>
+      {shown.length === 0 ? (
+        <Empty>No flights for this carrier</Empty>
+      ) : (
+        <CardList
+          items={shown.map((flight) => ({
+            id: flight.icao24,
+            title: flight.callsign,
+            detail: (
+              <>
+                {flight.originCountry} · {Math.round(flight.altitude).toLocaleString()} m
+                {flight.isArriving ? " · Arriving" : flight.isDeparting ? " · Departing" : null}
+              </>
+            ),
+          }))}
+        />
+      )}
     </Panel>
   );
-}
-
-function toCard(flight: FlightData): {
-  id: string;
-  title: string;
-  detail: ReactElement | string;
-} {
-  const status = flight.isArriving ? "Arriving" : flight.isDeparting ? "Departing" : null;
-  return {
-    id: flight.icao24,
-    title: flight.callsign,
-    detail: (
-      <>
-        {flight.originCountry} · {Math.round(flight.altitude).toLocaleString()} m
-        {status === null ? null : ` · ${status}`}
-      </>
-    ),
-  };
 }
 
 /**
@@ -79,7 +111,7 @@ function toCard(flight: FlightData): {
  * other four views have a handful of rows and a category, which is one control.
  */
 export function FlightTable(): ReactElement {
-  const { flights, loading, lastUpdate } = useAllFlights();
+  const { flights, lastUpdate } = useCatalog();
   const carriers = useFilterParam("flights");
   const search = useSearchParam("flightsQ");
 
@@ -111,20 +143,17 @@ export function FlightTable(): ReactElement {
         </div>
         <div className="flex items-center gap-2 text-xs text-ink-muted">
           <RefreshCw className="h-3 w-3" />
-          {loading
-            ? "Loading…"
-            : lastUpdate === null
-              ? ""
-              : `Updated ${lastUpdate.toLocaleTimeString()}`}
+          Updated {lastUpdate.toLocaleTimeString()}
         </div>
       </header>
 
       <SummaryBar
         items={[
           ...summaryCounts(flights, (flight) => airlineFor(flight.callsign), {
-            // Every carrier the callsign table knows, so the bar keeps its
-            // chips while the worker is loading.
             keys: CARRIERS,
+            label: (carrier) =>
+              RAIL.find((entry) => entry.carrier === carrier)?.label ??
+              carrier.charAt(0).toUpperCase() + carrier.slice(1),
             tint: () => "border-accent/30 bg-accent/15 text-accent",
           }),
           {
@@ -146,20 +175,10 @@ export function FlightTable(): ReactElement {
         }}
       />
 
-      {loading ? (
-        <Body>
-          <Empty>Loading flights…</Empty>
-        </Body>
-      ) : flights.length === 0 ? (
-        <Body>
-          <Empty>No flights detected</Empty>
-        </Body>
-      ) : shown.length === 0 ? (
-        <Body>
+      <Body>
+        {shown.length === 0 ? (
           <Empty>No flights match this carrier or search</Empty>
-        </Body>
-      ) : (
-        <Body>
+        ) : (
           <table className="w-full text-left text-sm">
             <thead className="sticky top-0 bg-surface-raised text-xs text-ink-muted">
               <tr>
@@ -188,13 +207,13 @@ export function FlightTable(): ReactElement {
               ))}
             </tbody>
           </table>
-        </Body>
-      )}
+        )}
+      </Body>
     </div>
   );
 }
 
-function Body({ children }: { children: ReactElement }): ReactElement {
+function Body({ children }: { children: ReactNode }): ReactElement {
   return <div className="min-h-0 flex-1 overflow-auto">{children}</div>;
 }
 

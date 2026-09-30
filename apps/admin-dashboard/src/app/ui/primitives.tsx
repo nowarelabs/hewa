@@ -228,9 +228,9 @@ export function SummaryBar({ items, filter, search }: SummaryBarProps): ReactEle
  * it.
  *
  * `keys` is the other half of that. Pass a view's known categories and they are
- * shown even at zero, which is what stops a bar losing chips while the flights
- * worker is still loading, and what the alerts severities do. Anything found in
- * the data is added to them, never dropped, so `keys` cannot hide a category.
+ * shown even at zero, which is what stops a bar losing chips over a narrow
+ * filter, and what the alerts severities do. Anything found in the data is
+ * added to them, never dropped, so `keys` cannot hide a category.
  */
 export function summaryCounts<T, K extends string>(
   items: readonly T[],

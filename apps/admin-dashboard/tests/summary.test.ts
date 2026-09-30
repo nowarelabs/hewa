@@ -55,8 +55,8 @@ describe("summary bars", () => {
   });
 
   test("a bar survives data that has not arrived yet", () => {
-    // The flights bar used to lose every chip but one while the worker was
-    // loading, because the groups were counted out of an empty list.
+    // The flights bar used to lose every chip but one over an empty list,
+    // because the groups were counted out of the rows rather than the table.
     const html = render("flights");
     expect(html).toContain(`data-summary-item="Kenya Airways"`);
     expect(html).toContain(`data-summary-item="Safarilink"`);

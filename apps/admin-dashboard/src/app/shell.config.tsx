@@ -34,7 +34,7 @@ import type { RailItem, ShellConfig, ViewSpec } from "@hewa/app-shell";
 import { AlertDetailsPanel, AlertRailPanel, AlertsFeed } from "./panels/alerts";
 import { ConflictStream, IncidentDetailsPanel, IncidentRailPanel } from "./panels/conflicts";
 import { EconomicIndicators, EconomicRailPanel } from "./panels/economic";
-import { FlightListPanel, FlightTable } from "./panels/flights";
+import { FlightListPanel, FlightTable, RAIL } from "./panels/flights";
 import { ReportDetailsPanel, ReportFeed, ReportRailPanel } from "./panels/osint";
 import { SatelliteListPanel, SatelliteTable } from "./panels/satellites";
 import { LiveStreams, StreamInfoPanel, StreamListPanel } from "./panels/streams";
@@ -59,17 +59,17 @@ import { Assistant, SelectPrompt } from "./ui/primitives";
  */
 const noop = (): void => {};
 
-/** The five flight carriers, whose rail entries differ only in label. */
+/**
+ * The rail, built from the panel's own list of carriers.
+ *
+ * Written out here as well it was two lists to keep in step, and the panel
+ * filters on the carrier while the rail selected an id, so a label that drifted
+ * was a tab that opened an empty column.
+ */
 function flightRail(): RailItem[] {
-  const entries = [
-    { id: "all", label: "All flights" },
-    { id: "kenya", label: "Kenya Airways" },
-    { id: "jambo", label: "Jambojet" },
-    { id: "fly540", label: "Fly540" },
-    { id: "safarilink", label: "Safarilink" },
-  ];
-  return entries.map((entry) => ({
-    ...entry,
+  return RAIL.map((entry) => ({
+    id: entry.id,
+    label: entry.label,
     icon: Plane,
     panel: { title: entry.label, render: FlightListPanel },
   }));

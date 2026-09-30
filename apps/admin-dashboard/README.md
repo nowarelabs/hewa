@@ -278,12 +278,13 @@ src/app/data/osint.ts       REPORTS, REPORT_CATEGORIES, Report, Category
 src/app/data/satellites.ts  SATELLITES, KINDS, Satellite, SatelliteKind
 src/app/data/streams.ts     STREAMS, Stream
 src/app/data/economic.ts    INDICATORS, GDP_SERIES, SECTORS, Indicator
-src/app/data/flights.ts     AIRLINES, CARRIERS, airlineFor, AIRLINE_CODES
+src/app/data/flights.ts     FLIGHTS, CARRIERS, airlineFor, Flight
 ```
 
 A record carries what is true, not how it is drawn: colours, icons and rails stay
 in the panel that draws them, and state stays in the panel that owns it.
 `tests/tokens.test.ts` fails if a colour utility appears in `data/`.
 
-The flights view has a worker behind it, over `NEXT_PUBLIC_FLIGHTS_WORKER_URL`,
-so `data/flights.ts` holds the callsign table and no rows.
+The flights and satellites views drift their records on a timer, the way a feed
+would, so the columns visibly move. Neither feed is built: the records are the
+catalogue, and the store that advances them lives with the panel that owns it.
