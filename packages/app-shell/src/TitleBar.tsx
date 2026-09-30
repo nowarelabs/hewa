@@ -38,12 +38,15 @@ export function TitleBar({
   views: Record<string, ViewSpec>;
   hasAssistant: boolean;
 }): ReactElement {
-  const { view, selectView, panels, togglePanel, theme, setTheme } = useShellState();
+  const { view, selectViewWithRail, panels, togglePanel, theme, setTheme } = useShellState();
   const [menuOpen, setMenuOpen] = useState(false);
   const Logo = brand.icon ?? LayoutGrid;
   const entries = Object.entries(views);
 
   const close = (): void => setMenuOpen(false);
+  const selectView = (id: string): void => {
+    selectViewWithRail(id, views[id]?.rail ?? []);
+  };
   const choose = (id: string): void => {
     selectView(id);
     close();

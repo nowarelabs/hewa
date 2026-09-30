@@ -11,8 +11,15 @@ import type { RailItem } from "./types";
  * literal strings, and the narrow-viewport menu kept a second, hand-written
  * copy of the same seven modes.
  */
-export function IconRail({ items }: { items: RailItem[] }): ReactElement | null {
-  const { item, selectItem } = useShellState();
+export function IconRail({
+  items,
+  activeId,
+}: {
+  items: RailItem[];
+  /** The item the left panel is drawing, which is the resolved one and not `item`. */
+  activeId: string | null;
+}): ReactElement | null {
+  const { selectItem } = useShellState();
 
   if (items.length === 0) {
     return null;
@@ -25,7 +32,7 @@ export function IconRail({ items }: { items: RailItem[] }): ReactElement | null 
     >
       {items.map((entry) => {
         const Icon = entry.icon;
-        const isActive = entry.id === item;
+        const isActive = entry.id === activeId;
         return (
           <button
             key={entry.id}

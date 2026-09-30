@@ -2,7 +2,7 @@ import { describe, expect, test } from "vite-plus/test";
 import type { ReactNode } from "react";
 import { Circle } from "lucide-react";
 
-import { hasAssistant, resolveItem, resolveView } from "../src/resolve";
+import { defaultItemFor, hasAssistant, resolveItem, resolveView } from "../src/resolve";
 import type { RailItem, ShellConfig, ViewSpec } from "../src/types";
 
 /** These tests exercise resolution, so the panels render nothing at all. */
@@ -66,6 +66,30 @@ describe("resolveItem", () => {
 
   test("returns null for a view with no rail, so the shell renders no left panel", () => {
     expect(resolveItem([], "all")).toBeNull();
+  });
+});
+
+describe("defaultItemFor", () => {
+  const rail = [railItem("all"), railItem("kenya")];
+
+  test("keeps an id the new view has", () => {
+    expect(defaultItemFor(rail, "kenya")).toBe("kenya");
+  });
+
+  test("replaces an id the new view does not have, so the first rail item is selected", () => {
+    // The bug: `?item=jambo` carried over from another view resolves to `all`
+    // for the panel, so the left column drew "All flights" while no rail button
+    // was lit — a view that looks like nothing is selected.
+    expect(defaultItemFor(rail, "jambo")).toBe("all");
+  });
+
+  test("keeps a reused id, which is the same item in both views", () => {
+    // `all` is the first rail item in five of the admin dashboard's views.
+    expect(defaultItemFor(rail, "all")).toBe("all");
+  });
+
+  test("selects nothing for a view with no rail", () => {
+    expect(defaultItemFor([], "all")).toBeNull();
   });
 });
 

@@ -2,7 +2,8 @@ import { createContext, useContext, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { useQueryState } from "nuqs";
 
-import type { ShellTheme } from "./types";
+import { defaultItemFor } from "./resolve";
+import type { RailItem, ShellTheme } from "./types";
 
 /**
  * The shell's mutable state: which view is open, which rail item is selected,
@@ -30,6 +31,12 @@ export interface ShellState {
   togglePanel: (panel: "left" | "right" | "assistant") => void;
   theme: ShellTheme;
   setTheme: (theme: ShellTheme) => void;
+  /**
+   * Switching views keeps `item` in the query string, and a rail id means
+   * nothing in a view that does not have it. The caller passes the new view's
+   * rail so the stored id can be replaced with one that resolves.
+   */
+  selectViewWithRail: (view: string, rail: RailItem[]) => void;
 }
 
 const ShellStateContext = createContext<ShellState | null>(null);
@@ -101,6 +108,10 @@ function LocalShellState({
     () => ({
       view,
       selectView: setView,
+      selectViewWithRail: (next, rail) => {
+        setView(next);
+        setItem(defaultItemFor(rail, item));
+      },
       item,
       selectItem: setItem,
       panels: { left, right, assistant: hasAssistant && assistant },
@@ -143,6 +154,12 @@ function UrlShellState({
     () => ({
       view: view ?? defaultView,
       selectView: (next) => void setView(next),
+      selectViewWithRail: (next, rail) => {
+        void setView(next);
+        const selected = item === EMPTY_ITEM || item === null ? null : item;
+        const resolved = defaultItemFor(rail, selected);
+        void setItem(resolved ?? EMPTY_ITEM);
+      },
       item: item === EMPTY_ITEM || item === null ? null : item,
       selectItem: (next) => void setItem(next),
       panels: {

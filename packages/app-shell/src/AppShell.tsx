@@ -51,7 +51,8 @@ function ShellBody({
 
   const resolved = resolveView(config, view);
   const active = resolveItem(resolved.rail, item);
-  const panelProps: PanelProps = { view, item: active?.id ?? null, theme };
+  const activeId = active?.id ?? null;
+  const panelProps: PanelProps = { view, item: activeId, theme };
 
   return (
     <div className={`${theme} h-screen overflow-hidden`} data-shell-theme={theme}>
@@ -63,7 +64,7 @@ function ShellBody({
           hasAssistant={resolved.assistant !== undefined}
         />
         <div className="flex min-h-0 flex-1">
-          <IconRail items={resolved.rail} />
+          <IconRail items={resolved.rail} activeId={active?.id ?? null} />
           {active !== null ? (
             <SidePanel
               side="left"
