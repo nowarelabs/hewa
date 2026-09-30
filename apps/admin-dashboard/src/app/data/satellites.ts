@@ -1,79 +1,48 @@
+"use client";
+
+import type { Satellite, SatelliteKind } from "@hewa/console-types";
+
+import { useConsoleView, type ViewStatus } from "../state/query";
+
 /**
- * The `satellites` view: the orbital catalogue.
+ * The satellites view's half of the console.
  *
- * The view drifts these positions on a timer so the columns visibly move, so
- * these coordinates are not a measurement of anything.
+ * `scientific` is a kind the service names and the rail does not — an air console
+ * has no business tracking a science mission, so its rail entry was left out. It
+ * is still a satellite in the catalogue and it still belongs in the bar's total,
+ * so the vocabulary comes from the service and the rail decides what to offer.
+ *
+ * There is no timer here. The orbits used to be advanced every few seconds in the
+ * browser, which meant the list on the left and the table in the middle could
+ * disagree about where a satellite was — two subscribers, one value — and the
+ * number on screen was one nobody had measured.
  */
 
-export type SatelliteKind =
-  | "reconnaissance"
-  | "weather"
-  | "communication"
-  | "navigation"
-  | "scientific";
+export type { Satellite, SatelliteKind };
 
-export interface Satellite {
-  id: string;
-  name: string;
-  kind: SatelliteKind;
-  lat: number;
-  lng: number;
-  altitudeKm: number;
-  velocityKms: number;
+/**
+ * What the view knows, and how it knows it.
+ *
+ * `rows` is `[]` before the first answer, and that is deliberate for a list: it is
+ * the same empty value the filter produces, and `emptyMessage` is what tells the
+ * two apart. A view whose data is not a list gets `undefined` for its `data`
+ * instead, because there is no honest empty economy to offer.
+ */
+export interface SatelliteView {
+  readonly rows: readonly Satellite[];
+  readonly groups: readonly SatelliteKind[];
+  readonly status: ViewStatus;
+  readonly refetch: () => void;
 }
 
-export const SATELLITES: Satellite[] = [
-  {
-    id: "1",
-    name: "Landsat 8",
-    kind: "reconnaissance",
-    lat: 1.2345,
-    lng: 36.789,
-    altitudeKm: 705,
-    velocityKms: 7.5,
-  },
-  {
-    id: "2",
-    name: "Sentinel-2A",
-    kind: "reconnaissance",
-    lat: -0.5678,
-    lng: 37.456,
-    altitudeKm: 786,
-    velocityKms: 7.6,
-  },
-  {
-    id: "3",
-    name: "ISS",
-    kind: "scientific",
-    lat: 0.1234,
-    lng: 38.901,
-    altitudeKm: 408,
-    velocityKms: 7.66,
-  },
-  {
-    id: "4",
-    name: "Starlink-1234",
-    kind: "communication",
-    lat: 2.3456,
-    lng: 39.123,
-    altitudeKm: 550,
-    velocityKms: 7.5,
-  },
-  {
-    id: "5",
-    name: "GPS IIF-1",
-    kind: "navigation",
-    lat: -1.8901,
-    lng: 36.234,
-    altitudeKm: 20200,
-    velocityKms: 3.9,
-  },
-];
+/** The satellites the service is holding right now, and whether it has answered. */
+export function useSatellites(): SatelliteView {
+  const state = useConsoleView("satellites");
 
-export const KINDS: SatelliteKind[] = [
-  "reconnaissance",
-  "weather",
-  "communication",
-  "navigation",
-  "scientific",
-];
+  return {
+    rows: state.data ?? [],
+    groups: state.groups,
+    status: state.status,
+    refetch: state.refetch,
+  };
+}

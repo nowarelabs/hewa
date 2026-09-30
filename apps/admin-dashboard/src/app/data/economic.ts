@@ -1,74 +1,56 @@
+"use client";
+
+import type { EconomicSection, Economy, GdpPoint, Indicator, Sector } from "@hewa/console-types";
+
+import { useConsoleView, type ViewStatus } from "../state/query";
+
 /**
- * The `economic` view: national indicators.
-
-Figures for the panels beside them.
-
-The indicators carry a label, a value, a caption and which way the figure is
-moving. The colours they used to carry are in the panel, because a Tailwind
-class is how this app says something, not a fact about Kenya, and an endpoint
-cannot send one.
+ * The economic view's half of the console.
+ *
+ * The one view that is not a list, so its `data` is the whole figure set: the
+ * headline cards, the series behind the chart, the pie's slices, and the figures
+ * each rail section shows.
+ *
+ * Those last two used to be a second set of literals held in this app, and they
+ * had already drifted — the rail said GDP growth was 5.2% while the card beside
+ * it said 5.1%, on the same screen, with nothing to reconcile them. There is now
+ * one place they come from and one value each.
  */
 
-export interface Indicator {
-  id: string;
-  label: string;
-  value: string;
-  caption: string;
-  trend?: "up" | "down";
+export type { EconomicSection, Economy, GdpPoint, Indicator, Sector };
+
+export interface EconomyView {
+  /**
+   * The figures, or `undefined` before the service has answered.
+   *
+   * Not `[]`, and not an `Economy` with nothing in it. Every other view's empty
+   * value is an empty list, which is a claim about a list; here the empty value
+   * would be four empty shapes, and drawing two charts over an empty series says
+   * the economy is flat rather than that nothing arrived. So this one view says
+   * it does not know yet, and the panel renders a line about that.
+   */
+  readonly data: Economy | undefined;
+  readonly status: ViewStatus;
+  readonly refetch: () => void;
 }
 
-const KES_PER_USD = 153.25;
-const KES_CHANGE = 0.15;
-const INFLATION = 6.8;
-const GDP_GROWTH = 5.1;
-const UNEMPLOYMENT = 12.8;
+/** The figures the service is holding right now, and whether it has answered. */
+export function useEconomy(): EconomyView {
+  const state = useConsoleView("economic");
 
-export const INDICATORS: Indicator[] = [
-  {
-    id: "fx",
-    label: "KES/USD",
-    value: KES_PER_USD.toFixed(2),
-    caption: `+${KES_CHANGE}%`,
-    trend: "up",
-  },
-  {
-    id: "cpi",
-    label: "Inflation",
-    value: `${INFLATION}%`,
-    caption: "Year over year",
-    trend: "down",
-  },
-  {
-    id: "gdp",
-    label: "GDP growth",
-    value: `${GDP_GROWTH}%`,
-    caption: "Q4 2025",
-  },
-  {
-    id: "jobs",
-    label: "Unemployment",
-    value: `${UNEMPLOYMENT}%`,
-    caption: "National rate",
-  },
-];
+  return { data: state.data, status: state.status, refetch: state.refetch };
+}
 
-export const GDP_SERIES = [
-  { month: "Jan", value: 9.2 },
-  { month: "Feb", value: 9.5 },
-  { month: "Mar", value: 9.8 },
-  { month: "Apr", value: 10.1 },
-  { month: "May", value: 10.4 },
-  { month: "Jun", value: 10.2 },
-  { month: "Jul", value: 10.5 },
-  { month: "Aug", value: 10.8 },
-  { month: "Sep", value: 11.0 },
-  { month: "Oct", value: 11.2 },
-  { month: "Nov", value: 11.5 },
-  { month: "Dec", value: 11.8 },
-];
-
-export const SECTORS = [
-  { name: "Agriculture", value: 35 },
-  { name: "Services", value: 45 },
-  { name: "Industry", value: 20 },
-];
+/**
+ * The figures for one rail section.
+ *
+ * A rail entry with no section behind it has no figures rather than a section of
+ * blanks. That is a different thing from an economy with no figures in it, and
+ * the panel says which of the two it is looking at.
+ */
+export function figuresFor(
+  sections: readonly EconomicSection[],
+  id: string,
+): readonly { label: string; value: string }[] {
+  return sections.find((section) => section.id === id)?.figures ?? [];
+}

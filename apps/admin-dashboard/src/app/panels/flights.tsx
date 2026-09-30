@@ -2,14 +2,21 @@
 
 import { useMemo } from "react";
 import type { ReactElement, ReactNode } from "react";
-import { Plane, RefreshCw } from "lucide-react";
+import { Plane } from "lucide-react";
 
 import type { PanelProps } from "@hewa/app-shell";
-import { CardList, Empty, Panel, SummaryBar, summaryCounts, visibleBy } from "../ui/primitives";
+import {
+  CardList,
+  Empty,
+  Panel,
+  SummaryBar,
+  emptyMessage,
+  summaryCounts,
+  visibleBy,
+} from "../ui/primitives";
 import { matchesQuery } from "../ui/controls";
-import { CARRIERS, FLIGHTS, airlineFor, type Flight } from "../data/flights";
+import { useFlights } from "../data/flights";
 import { useFilterParam, useSearchParam } from "../state/filter";
-import { createTickingStore, useStore } from "../state/store";
 
 /**
  * The `flights` view: every panel the Flights tab can show.
@@ -19,41 +26,13 @@ import { createTickingStore, useStore } from "../state/store";
  * column lists it, and the right column describes the selection.
  */
 
-interface Catalog {
-  flights: Flight[];
-  lastUpdate: Date;
-}
-
-const TICK_MS = 5000;
-
-/**
- * Placeholder catalogue. The feed is not built yet, so these drift on a timer to
- * show the columns moving. The records they start from are in `../data/flights`.
- */
-const CATALOG = createTickingStore<Catalog>(
-  { flights: FLIGHTS, lastUpdate: new Date() },
-  TICK_MS,
-  (current) => ({
-    flights: current.flights.map((flight) => ({
-      ...flight,
-      latitude: flight.latitude + (Math.random() - 0.5) * 0.05,
-      longitude: flight.longitude + (Math.random() - 0.5) * 0.05,
-    })),
-    lastUpdate: new Date(),
-  }),
-);
-
-function useCatalog(): Catalog {
-  return useStore(CATALOG);
-}
-
 /**
  * The carriers the rail lists. `carrier` is `null` for the one entry that means
  * every flight.
  *
- * The rail has no entry for a carrier with no domestic prefix on the table,
- * and three of the flights above are on carriers it has never heard of, so the
- * bar counts the catalogue and not the rail: that is what the "Unknown" chip is.
+ * The rail has no entry for "Unknown" and does not need one: it is a carrier as
+ * far as the bar is concerned, and it is counted, but there is no panel a rail
+ * entry could open. The rail is what to click; the bar is what is there.
  */
 export const RAIL: { id: string; label: string; carrier: string | null }[] = [
   { id: "all", label: "All flights", carrier: null },
@@ -68,22 +47,31 @@ export const RAIL: { id: string; label: string; carrier: string | null }[] = [
  *
  * The four carrier panels used to be four files differing only in a heading and
  * a slice length. Which carrier is selected is already known here, as `item`, so
- * the panel filters on it rather than asking a second poller for one carrier's
- * endpoint alongside the whole airspace.
+ * the panel filters the one list it already has.
+ *
+ * There is no timer on this view any more. The positions used to be advanced
+ * every five seconds by a store that subscribed to itself, which made the flights
+ * look live without anything having observed them: a number from `Math.random()`
+ * is not fresher than one that was invented once and sent, and it cost an
+ * interval per mounted panel, a second copy of the records, and a "Updated"
+ * timestamp reporting a change nobody made.
  */
 export function FlightListPanel({ item }: PanelProps): ReactElement {
-  const { flights } = useCatalog();
+  const { rows, status } = useFlights();
   const entry = RAIL.find((candidate) => candidate.id === item) ?? RAIL[0];
   const carrier = entry?.carrier ?? null;
-  const shown =
-    carrier === null
-      ? flights
-      : flights.filter((flight) => airlineFor(flight.callsign) === carrier);
+  const shown = carrier === null ? rows : rows.filter((flight) => flight.carrier === carrier);
 
   return (
     <Panel title={entry?.label ?? "Flights"}>
       {shown.length === 0 ? (
-        <Empty>No flights for this carrier</Empty>
+        <Empty>
+          {emptyMessage({
+            status,
+            filtered: false,
+            noun: carrier === null ? "flights" : `${carrier} flights`,
+          })}
+        </Empty>
       ) : (
         <CardList
           items={shown.map((flight) => ({
@@ -116,46 +104,35 @@ export function FlightListPanel({ item }: PanelProps): ReactElement {
  * is a bar with two jobs and no room for either.
  */
 export function FlightTable(): ReactElement {
-  const { flights, lastUpdate } = useCatalog();
+  const { rows, groups, status } = useFlights();
   const carriers = useFilterParam("flights");
   const search = useSearchParam("flightsQ");
 
-  const narrowed = visibleBy(flights, (flight) => airlineFor(flight.callsign), carriers.selected);
+  const narrowed = visibleBy(rows, (flight) => flight.carrier, carriers.selected);
   const shown = useMemo(
     () =>
       search.query.trim() === ""
         ? narrowed
         : narrowed.filter((flight) =>
-            matchesQuery(
-              search.query,
-              flight.callsign,
-              airlineFor(flight.callsign),
-              flight.originCountry,
-            ),
+            matchesQuery(search.query, flight.callsign, flight.carrier, flight.originCountry),
           ),
     [narrowed, search.query],
   );
 
   return (
     <div className="flex h-full flex-col bg-surface">
-      <header className="flex items-center justify-between border-b border-line p-4">
-        <div className="flex items-center gap-2">
-          <Plane className="h-5 w-5 text-accent" />
-          <h1 className="text-lg font-semibold text-ink">Flight tracker</h1>
-          <span className="rounded bg-accent/15 px-2 py-0.5 text-xs text-accent">
-            {flights.length} flights
-          </span>
-        </div>
-        <div className="flex items-center gap-2 text-xs text-ink-muted">
-          <RefreshCw className="h-3 w-3" />
-          Updated {lastUpdate.toLocaleTimeString()}
-        </div>
+      <header className="flex items-center gap-2 border-b border-line p-4">
+        <Plane className="h-5 w-5 text-accent" />
+        <h1 className="text-lg font-semibold text-ink">Flight tracker</h1>
+        <span className="rounded bg-accent/15 px-2 py-0.5 text-xs text-accent">
+          {rows.length} flights
+        </span>
       </header>
 
       <SummaryBar
         items={[
-          ...summaryCounts(flights, (flight) => airlineFor(flight.callsign), {
-            keys: CARRIERS,
+          ...summaryCounts(rows, (flight) => flight.carrier, {
+            keys: groups,
             label: (carrier) =>
               RAIL.find((entry) => entry.carrier === carrier)?.label ??
               carrier.charAt(0).toUpperCase() + carrier.slice(1),
@@ -163,7 +140,7 @@ export function FlightTable(): ReactElement {
           }),
           {
             label: "Countries",
-            value: new Set(flights.map((flight) => flight.originCountry)).size,
+            value: new Set(rows.map((flight) => flight.originCountry)).size,
           },
         ]}
         filter={{
@@ -176,13 +153,20 @@ export function FlightTable(): ReactElement {
           onChange: search.set,
           label: "Search flights by callsign, carrier or country",
           placeholder: "Callsign, carrier, country",
-          hint: `${shown.length} of ${flights.length}`,
+          hint: `${shown.length} of ${rows.length}`,
         }}
       />
 
       <Body>
         {shown.length === 0 ? (
-          <Empty>No flights match this carrier or search</Empty>
+          <Empty>
+            {emptyMessage({
+              status,
+              filtered: carriers.selected.length > 0 || search.query.trim() !== "",
+              noun: "flights",
+              filter: "this carrier or search",
+            })}
+          </Empty>
         ) : (
           <table className="w-full text-left text-sm">
             <thead className="sticky top-0 bg-surface-raised text-xs text-ink-muted">
@@ -203,7 +187,7 @@ export function FlightTable(): ReactElement {
                   className="border-b border-line hover:bg-surface-raised"
                 >
                   <Td className="font-medium text-accent">{flight.callsign}</Td>
-                  <Td>{airlineFor(flight.callsign)}</Td>
+                  <Td>{flight.carrier}</Td>
                   <Td>{flight.originCountry}</Td>
                   <Td className="font-mono">{Math.round(flight.altitude).toLocaleString()}</Td>
                   <Td className="font-mono">{Math.round(flight.velocity)}</Td>

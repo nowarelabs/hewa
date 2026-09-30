@@ -10,10 +10,11 @@ import {
   KeyValues,
   Panel,
   SummaryBar,
+  emptyMessage,
   summaryCounts,
   visibleBy,
 } from "../ui/primitives";
-import { REPORTS, REPORT_CATEGORIES, type Category } from "../data/osint";
+import { useReports, type ReportCategory } from "../data/osint";
 import { useFilterParam } from "../state/filter";
 
 /**
@@ -24,7 +25,7 @@ import { useFilterParam } from "../state/filter";
  * column lists it, and the right column describes the selection.
  */
 
-const CATEGORY_ICON: Record<Category, ShellIcon> = {
+const CATEGORY_ICON: Record<ReportCategory, ShellIcon> = {
   cia: Shield,
   military: Globe,
   economic: TrendingUp,
@@ -32,7 +33,7 @@ const CATEGORY_ICON: Record<Category, ShellIcon> = {
   social: FileText,
 };
 
-const CATEGORY_TINT: Record<Category, string> = {
+const CATEGORY_TINT: Record<ReportCategory, string> = {
   cia: "text-red-400 bg-red-500/15",
   military: "text-green-400 bg-green-500/15",
   economic: "text-yellow-400 bg-yellow-500/15",
@@ -47,7 +48,7 @@ function confidenceTint(confidence: number): string {
   return "text-red-400";
 }
 
-const RAIL: Record<string, { title: string; category: Category | null }> = {
+const RAIL: Record<string, { title: string; category: ReportCategory | null }> = {
   all: { title: "All reports", category: null },
   cia: { title: "Intelligence", category: "cia" },
   military: { title: "Military", category: "military" },
@@ -56,15 +57,21 @@ const RAIL: Record<string, { title: string; category: Category | null }> = {
 };
 
 export function ReportRailPanel({ item }: PanelProps): ReactElement {
+  const { rows, status } = useReports();
   const entry = RAIL[item ?? "all"] ?? RAIL["all"];
   const category = entry?.category ?? null;
-  const shown =
-    category === null ? REPORTS : REPORTS.filter((report) => report.category === category);
+  const shown = category === null ? rows : rows.filter((report) => report.category === category);
 
   return (
     <Panel title={entry?.title ?? "Reports"}>
       {shown.length === 0 ? (
-        <Empty>No reports in this category</Empty>
+        <Empty>
+          {emptyMessage({
+            status,
+            filtered: false,
+            noun: category === null ? "reports" : `${category} reports`,
+          })}
+        </Empty>
       ) : (
         <CardList
           items={shown.map((report) => ({
@@ -85,8 +92,9 @@ export function ReportRailPanel({ item }: PanelProps): ReactElement {
  * one thing you act on, so the chip that says it is the chip that sets it.
  */
 export function ReportFeed(): ReactElement {
+  const { rows, groups, status } = useReports();
   const categories = useFilterParam("osint");
-  const shown = visibleBy(REPORTS, (report) => report.category, categories.selected);
+  const shown = visibleBy(rows, (report) => report.category, categories.selected);
 
   return (
     <div className="flex h-full flex-col bg-surface">
@@ -94,13 +102,16 @@ export function ReportFeed(): ReactElement {
         <FileText className="h-5 w-5 text-cyan-400" />
         <h1 className="text-lg font-semibold text-ink">Open-source intelligence</h1>
         <span className="rounded bg-cyan-500/15 px-2 py-0.5 text-xs text-cyan-400">
-          {REPORTS.length} reports
+          {rows.length} reports
         </span>
       </header>
 
       <SummaryBar
-        items={summaryCounts(REPORTS, (report) => report.category, {
-          keys: REPORT_CATEGORIES,
+        items={summaryCounts(rows, (report) => report.category, {
+          // `social` is in the data and was not in the bar, so the chip row was
+          // counting a subset of the feed and had no way to say which two
+          // reports it had dropped. The service names the categories.
+          keys: groups,
           label: (category) => category.toUpperCase(),
           tint: (category) => CATEGORY_TINT[category],
         })}
@@ -112,7 +123,16 @@ export function ReportFeed(): ReactElement {
       />
 
       <div className="min-h-0 flex-1 space-y-3 overflow-auto p-4">
-        {shown.length === 0 ? <Empty>No reports match these categories</Empty> : null}
+        {shown.length === 0 ? (
+          <Empty>
+            {emptyMessage({
+              status,
+              filtered: categories.selected.length > 0,
+              noun: "reports",
+              filter: "these categories",
+            })}
+          </Empty>
+        ) : null}
         {shown.map((report) => {
           const CategoryIcon = CATEGORY_ICON[report.category];
           return (
@@ -160,11 +180,16 @@ export function ReportFeed(): ReactElement {
 }
 
 export function ReportDetailsPanel(): ReactElement {
-  const first = REPORTS[0];
+  const { rows, status } = useReports();
+  const first = rows[0];
   return (
     <Panel title="Report details">
       {first === undefined ? (
-        <Empty>Select a report</Empty>
+        <Empty>
+          {status !== "ready"
+            ? emptyMessage({ status, filtered: false, noun: "reports" })
+            : "Select a report"}
+        </Empty>
       ) : (
         <KeyValues
           rows={[

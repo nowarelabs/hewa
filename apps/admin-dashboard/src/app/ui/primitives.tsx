@@ -80,6 +80,52 @@ export function Empty({ children }: { children: ReactNode }): ReactElement {
 }
 
 /**
+ * What an empty list is allowed to say, which depends on why it is empty.
+ *
+ * Every view's rows now arrive from a service, so "the list is empty" has three
+ * causes and the panel can only tell them apart by asking: nothing has answered
+ * yet, nothing answered, or the answer was empty. All three render nothing, and
+ * the panel that cannot tell them apart says "No alerts match these severities"
+ * over a service that is down — a confident, specific, wrong statement, and the
+ * worst of the three because the operator goes looking for a filter that is not
+ * the problem.
+ *
+ * So the question is asked once, here, and the answer is a string. A string is
+ * also the part that is worth asserting in a test without rendering anything.
+ */
+export function emptyMessage(state: {
+  /**
+   * One value rather than two booleans.
+   *
+   * `pending` and `failed` are not independent — a request cannot be both — so
+   * two booleans would admit a fourth state that exists in the type and nowhere
+   * else, and the one place that decides what an empty list is saying would be
+   * the one place that has to cope with it.
+   */
+  readonly status: "pending" | "failed" | "ready";
+  /** A filter or a search is in force, so an empty answer is the filter's doing. */
+  readonly filtered: boolean;
+  /** The view's plural noun: "alerts". */
+  readonly noun: string;
+  /** Names the filter in force: "these severities". */
+  readonly filter?: string;
+}): string {
+  if (state.status === "pending") {
+    return `Loading ${state.noun}…`;
+  }
+
+  if (state.status === "failed") {
+    return `Could not reach central-api for ${state.noun}`;
+  }
+
+  if (state.filtered) {
+    return `No ${state.noun} match ${state.filter ?? "the filters"}`;
+  }
+
+  return `No ${state.noun} to show`;
+}
+
+/**
  * One chip in a {@link SummaryBar}.
  *
  * `key` is the value a filter toggles on, which is not always the label: the

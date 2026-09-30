@@ -10,10 +10,11 @@ import {
   KeyValues,
   Panel,
   SummaryBar,
+  emptyMessage,
   summaryCounts,
   visibleBy,
 } from "../ui/primitives";
-import { ALERTS, SEVERITIES, type Category, type Severity } from "../data/alerts";
+import { useAlerts, type AlertCategory, type AlertSeverity } from "../data/alerts";
 import { useFilterParam } from "../state/filter";
 
 /**
@@ -29,14 +30,14 @@ import { useFilterParam } from "../state/filter";
  * two tables, one per theme, each with a fallback that nothing ever hit, which
  * is six more strings than the four severities have states.
  */
-const SEVERITY_TINT: Record<Severity, string> = {
+const SEVERITY_TINT: Record<AlertSeverity, string> = {
   critical: "text-red-400 bg-red-500/15 border-red-500/30",
   high: "text-orange-400 bg-orange-500/15 border-orange-500/30",
   medium: "text-cyan-400 bg-cyan-500/15 border-cyan-500/30",
   low: "text-green-400 bg-green-500/15 border-green-500/30",
 };
 
-const CATEGORY_ICON: Record<Category, ShellIcon> = {
+const CATEGORY_ICON: Record<AlertCategory, ShellIcon> = {
   security: Shield,
   conflict: AlertTriangle,
   economic: DollarSign,
@@ -45,7 +46,7 @@ const CATEGORY_ICON: Record<Category, ShellIcon> = {
   traffic: Car,
 };
 
-const CATEGORY_TINT: Record<Category, string> = {
+const CATEGORY_TINT: Record<AlertCategory, string> = {
   security: "text-red-400",
   conflict: "text-orange-400",
   economic: "text-yellow-400",
@@ -55,8 +56,9 @@ const CATEGORY_TINT: Record<Category, string> = {
 };
 
 export function AlertRailPanel({ item }: PanelProps): ReactElement {
-  const severity = SEVERITIES.find((entry) => entry === item) ?? null;
-  const shown = severity === null ? ALERTS : ALERTS.filter((alert) => alert.severity === severity);
+  const { rows, groups, status } = useAlerts();
+  const severity = groups.find((entry) => entry === item) ?? null;
+  const shown = severity === null ? rows : rows.filter((alert) => alert.severity === severity);
   const title =
     severity === null
       ? "All alerts"
@@ -65,7 +67,13 @@ export function AlertRailPanel({ item }: PanelProps): ReactElement {
   return (
     <Panel title={title}>
       {shown.length === 0 ? (
-        <Empty>No {severity ?? ""} priority alerts right now</Empty>
+        <Empty>
+          {emptyMessage({
+            status,
+            filtered: false,
+            noun: severity === null ? "alerts" : `${severity} alerts`,
+          })}
+        </Empty>
       ) : (
         <CardList
           items={shown.map((alert) => ({
@@ -87,8 +95,9 @@ export function AlertRailPanel({ item }: PanelProps): ReactElement {
  * "High: 3" is to go and look at the three high alerts.
  */
 export function AlertsFeed(): ReactElement {
+  const { rows, groups, status } = useAlerts();
   const severities = useFilterParam("alerts");
-  const shown = visibleBy(ALERTS, (alert) => alert.severity, severities.selected);
+  const shown = visibleBy(rows, (alert) => alert.severity, severities.selected);
 
   return (
     <div className="flex h-full flex-col bg-surface">
@@ -96,13 +105,16 @@ export function AlertsFeed(): ReactElement {
         <AlertTriangle className="h-5 w-5 text-red-400" />
         <h1 className="text-lg font-semibold text-ink">Alerts</h1>
         <span className="rounded bg-red-500/15 px-2 py-0.5 text-xs text-red-400">
-          {ALERTS.length} alerts
+          {rows.length} alerts
         </span>
       </header>
 
       <SummaryBar
-        items={summaryCounts(ALERTS, (alert) => alert.severity, {
-          keys: SEVERITIES,
+        items={summaryCounts(rows, (alert) => alert.severity, {
+          // The severities the service names, not a list kept here. Every severity
+          // it can hold gets a chip, including one nothing is on at the moment —
+          // which is what stops the bar losing a filter as the data moves.
+          keys: groups,
           tint: (severity) => SEVERITY_TINT[severity],
         })}
         filter={{
@@ -117,7 +129,14 @@ export function AlertsFeed(): ReactElement {
           // A filter can exclude everything, and a panel that renders an empty
           // scroll area gives the operator nothing to tell that from a feed
           // that failed.
-          <Empty>No alerts match these severities</Empty>
+          <Empty>
+            {emptyMessage({
+              status,
+              filtered: severities.selected.length > 0,
+              noun: "alerts",
+              filter: "these severities",
+            })}
+          </Empty>
         ) : null}
         {shown.map((alert) => {
           const CategoryIcon = CATEGORY_ICON[alert.category];
@@ -167,11 +186,16 @@ export function AlertsFeed(): ReactElement {
 }
 
 export function AlertDetailsPanel(): ReactElement {
-  const first = ALERTS[0];
+  const { rows, status } = useAlerts();
+  const first = rows[0];
   return (
     <Panel title="Alert details">
       {first === undefined ? (
-        <Empty>Select an alert</Empty>
+        <Empty>
+          {status !== "ready"
+            ? emptyMessage({ status, filtered: false, noun: "alerts" })
+            : "Select an alert"}
+        </Empty>
       ) : (
         <KeyValues
           rows={[

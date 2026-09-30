@@ -1,0 +1,11 @@
+{
+  "extends": "@hewa/tsconfig/library.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "types": ["node"],
+    "paths": {
+      "@hewa/response-codes": ["../response-codes/src/index.ts"]
+    }
+  },
+  "include": ["src", "tests"]
+}

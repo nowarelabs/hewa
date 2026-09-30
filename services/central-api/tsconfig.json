@@ -3,6 +3,7 @@
   "compilerOptions": {
     "noEmit": true,
     "paths": {
+      "@hewa/console-types": ["../../packages/console-types/src/index.ts"],
       "@hewa/errors": ["../../packages/errors/src/index.ts"],
       "@hewa/observability": ["../../packages/observability/src/index.ts"],
       "@hewa/response-codes": ["../../packages/response-codes/src/index.ts"]

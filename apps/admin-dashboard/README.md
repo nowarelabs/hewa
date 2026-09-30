@@ -28,9 +28,9 @@ object.
 ```
 src/app/shell.config.tsx   every view, rail item, panel and status line, as data
 src/app/panels/            one module per view, named after its view id
-src/app/data/              one module per view: its records, and nothing else
+src/app/data/              one module per view: its types and its one hook
 src/app/ui/                the panel shapes every view shares
-src/app/state/             the store two panels of one view agree through
+src/app/state/             the fetch, the query status, and the one store
 src/app/App.tsx            <AppShell config={config} />
 ```
 
@@ -43,9 +43,8 @@ has no view, or the two names drift apart.
 
 `ui/primitives.tsx` and `state/store.ts` are not views and are not in `panels/`
 for that reason. State a single view owns stays in that view's module: the
-ticking satellite catalogue is in `panels/satellites.tsx` and the selected
-channel in `panels/streams.tsx`, because both exist to keep two panels of one
-view in step. What is in `state/` is the mechanism, not the data.
+selected channel is in `panels/streams.tsx`, because it exists to keep two
+panels of one view in step. What is in `state/` is the mechanism, not the data.
 
 ## The bar under the title
 
@@ -67,11 +66,12 @@ view either had a summary or had no way to say what it was showing before you
 scrolled. `tests/summary.test.ts` asserts that all seven have one.
 
 Build the chips with `summaryCounts`, which counts out of the rows, and pass
-`keys` for the groups the view knows about so an empty group still gets a chip
-and the bar does not lose its contents while a feed is loading. Anything found
-in the data is counted whether or not it is in `keys`: the osint rail has no
-social entry and two of the seeded reports are social, and a bar built from the
-rail alone would have reported four reports fewer than the feed holds.
+`keys` for the groups the view knows about. Those keys are no longer a constant
+in the app: `meta.groups` comes from the service with the rows, so a group the
+feed has nothing in still gets a chip at zero and can be pressed to say so.
+Anything found in the data is counted whether or not it is in `keys` — the
+conflicts feed names an `election` kind and holds no election, which is the case
+that keeps a bar from losing a control the operator can no longer find.
 
 ### When a bar is a filter
 
@@ -99,13 +99,13 @@ operator cannot get out of.
 answer different questions: a carrier chip says how many there are, and a search
 box says which one you meant. The search runs on top of the chip, not around it,
 so the two compose — Safarilink and "KQ" have no flight between them, and a
-search that ran against the unfiltered table would report the two Kenya Airways
-rows anyway.
+search that ran against the unfiltered table would report the Kenya Airways row
+anyway.
 
 A chip toggles on its **key**, not its label, and `summaryCounts` therefore
 carries the key it counted on. The osint view upper-cases its categories, and a
-filter keyed on `CIA` is a filter keyed on a string someone has to keep in step
-with the display by hand.
+filter keyed on `SOCIAL` is a filter keyed on a string someone has to keep in
+step with the display by hand.
 
 ### The filter is in the URL
 
@@ -235,14 +235,21 @@ Without it this app had no way to test a component at all, which is how a store
 that advanced its value without notifying one subscriber reached `main` with
 every test green. `tests/store.test.ts` now covers that path.
 
-Two files opt into `happy-dom` with a docblock, because a question about
+Five files opt into `happy-dom` with a docblock, because a question about
 whether a press narrows a list, or whether Escape closes a popover, cannot be
 asked of static markup. `tests/filters.test.ts` mounts each view's main panel
-and presses its chips; the flights one stubs `globalThis.fetch` with four rows
-first, because the loading and error states render no rows at all and every
-assertion in that file is about rows. `tests/overlays.test.ts` asks the same
-question of a floating control. Everything else stays in node, where SSR is what
+and presses its chips, `tests/shell.test.ts` asks which rail item is lit,
+`tests/query.test.ts` watches a query move from pending to ready, and
+`tests/controls.test.ts` and `tests/overlays.test.ts` ask the same question of
+the controls above the list. Everything else stays in node, where SSR is what
 it should be tested in.
+
+A panel with a query in it needs a `QueryClientProvider` above it, and the
+second thing it needs is rows in that client: the loading state renders no rows
+at all, so a test that mounted the tree without seeding it would count zero and
+call it a pass. `tests/harness.tsx` builds both — `seededQueryClient()` and
+`emptyQueryClient()`, the second being how the loading and failure states are
+reached deliberately rather than by forgetting.
 
 The filter state is `nuqs`, so anything rendering a main panel needs an adapter
 above it — nuqs throws `NUQS-404` rather than falling back, which is what makes
@@ -268,23 +275,69 @@ React's state alone — which reads as a search field that types without filteri
 
 ## Data
 
-`data/` holds the records, one module per view and named after it. A panel
-takes its rows from one named import: `import { ALERTS } from "../data/alerts"`.
+Every dataset in this console is served by `central-api` and fetched through
+React Query. Nothing is seeded in the browser, and nothing is invented on a
+timer.
+
+`src/app/state/query.ts` is the boundary. It names the base URL, builds the path
+through `consolePath` from `@hewa/console-types`, checks the envelope's `code`,
+and returns one `ViewState`:
+
+```ts
+{
+  status: ("pending" | "failed" | "ready", data, groups, refetch);
+}
+```
+
+The status is a real question rather than a flag derived from a length. A view
+that fails to load is not a view with zero rows, and `emptyMessage(status, …)`
+keeps those two apart in the empty state: pending reads as loading, failure
+reads as failure with a retry, and only a ready view with no matching rows
+claims there is nothing to show. `tests/query.test.ts` asserts all three.
+
+The base URL is `NEXT_PUBLIC_CENTRAL_API_URL`, defaulting to
+`http://localhost:4000`. The service answers CORS from
+`CENTRAL_API_CORS_ORIGINS`, defaulting to this app's port — without that the
+browser blocks the fetch and the failure is reported as a network error rather
+than as a misconfiguration.
+
+`src/app/data/` is still one module per view and still named after it, but a
+module is now the seam between a panel and the network rather than a file of
+records. Each exports its row type and one hook, and nothing else:
 
 ```
-src/app/data/alerts.ts      ALERTS, SEVERITIES, Alert, Severity, Category
-src/app/data/conflicts.ts   INCIDENTS, INCIDENT_KINDS, Incident, IncidentKind
-src/app/data/osint.ts       REPORTS, REPORT_CATEGORIES, Report, Category
-src/app/data/satellites.ts  SATELLITES, KINDS, Satellite, SatelliteKind
-src/app/data/streams.ts     STREAMS, Stream
-src/app/data/economic.ts    INDICATORS, GDP_SERIES, SECTORS, Indicator
-src/app/data/flights.ts     FLIGHTS, CARRIERS, airlineFor, Flight
+src/app/data/alerts.ts      AlertView, useAlerts
+src/app/data/conflicts.ts   IncidentView, useIncidents
+src/app/data/flights.ts     FlightView, useFlights
+src/app/data/osint.ts       ReportView, useReports
+src/app/data/satellites.ts  SatelliteView, useSatellites
+src/app/data/streams.ts     StreamView, useStreams
+src/app/data/economic.ts    EconomyView, useEconomy, figuresFor
 ```
 
-A record carries what is true, not how it is drawn: colours, icons and rails stay
-in the panel that draws them, and state stays in the panel that owns it.
-`tests/tokens.test.ts` fails if a colour utility appears in `data/`.
+No runtime record arrays, no group constants. `tests/data.test.ts` fails if a
+module exports a value that is not a function, because a module that still
+carries its own records has stopped being the thing it claims to be and the
+panel will read one while the test reads the other.
 
-The flights and satellites views drift their records on a timer, the way a feed
-would, so the columns visibly move. Neither feed is built: the records are the
-catalogue, and the store that advances them lives with the panel that owns it.
+`useEconomy` keeps its `data` as `Economy | undefined` rather than mapping a
+missing payload to zero figures. Every other view is a list, and a list that has
+not loaded is legitimately empty; the economic view is one document, and a
+zeroed document is a plausible lie. Its figures are read through `figuresFor`,
+which returns nothing until there is something to read.
+
+### Why the data moved
+
+The records used to live here, which meant two copies of the truth: one in this
+app and one in the service that is supposed to have it. They drifted, and the
+symptom was a summary bar whose chips disagreed with the table under it.
+
+They were also moving on a timer. The flights and satellites views drifted their
+coordinates on an interval, the way a feed would, so the columns looked live
+without being connected to anything — and a store that advanced a value was a
+store with a second listener set and a timer to leak, which is the bug
+`tests/store.test.ts` originally existed to catch. The store survived for the
+one thing that is genuinely local: which channel in the streams view is
+selected.
+
+A record now arrives when the service says so, and it stays where it arrived.

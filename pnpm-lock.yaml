@@ -326,6 +326,9 @@ importers:
       '@hewa/app-shell':
         specifier: workspace:*
         version: link:../../packages/app-shell
+      '@hewa/console-types':
+        specifier: workspace:*
+        version: link:../../packages/console-types
       '@hewa/response-codes':
         specifier: workspace:*
         version: link:../../packages/response-codes
@@ -1026,6 +1029,25 @@ importers:
         specifier: 'catalog:'
         version: 1.0.0(@types/node@26.6.3)(@vitest/ui@5.0.1)(esbuild@0.28.2)(happy-dom@20.14.5)(jiti@2.7.0)(typescript@6.0.3)(yaml@2.9.1)
 
+  packages/console-types:
+    dependencies:
+      '@hewa/response-codes':
+        specifier: workspace:*
+        version: link:../response-codes
+    devDependencies:
+      '@hewa/tsconfig':
+        specifier: workspace:*
+        version: link:../tsconfig
+      '@types/node':
+        specifier: 'catalog:'
+        version: 26.6.3
+      typescript:
+        specifier: 'catalog:'
+        version: 6.0.3
+      vite-plus:
+        specifier: 'catalog:'
+        version: 1.0.0(@types/node@26.6.3)(@vitest/ui@5.0.1)(esbuild@0.28.2)(happy-dom@20.14.5)(jiti@2.7.0)(typescript@6.0.3)(yaml@2.9.1)
+
   packages/crypto:
     dependencies:
       '@hewa/errors':
@@ -1300,6 +1322,9 @@ importers:
 
   services/central-api:
     dependencies:
+      '@hewa/console-types':
+        specifier: workspace:*
+        version: link:../../packages/console-types
       '@hewa/errors':
         specifier: workspace:*
         version: link:../../packages/errors

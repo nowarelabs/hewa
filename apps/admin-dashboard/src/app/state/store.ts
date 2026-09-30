@@ -23,8 +23,6 @@ export interface Store<T> {
   get: () => T;
   set: (next: T) => void;
   subscribe: (listener: () => void) => () => void;
-  /** Live subscriber count. Exposed so a ticking store can own its timer. */
-  readonly size: number;
 }
 
 export function createStore<T>(initial: T): Store<T> {
@@ -45,60 +43,9 @@ export function createStore<T>(initial: T): Store<T> {
         listeners.delete(listener);
       };
     },
-    get size() {
-      return listeners.size;
-    },
   };
 }
 
 export function useStore<T>(store: Store<T>): T {
   return useSyncExternalStore(store.subscribe, store.get, store.get);
-}
-
-/**
- * A store that advances on a timer, with the timer owned by the subscribers.
- *
- * Each of these used to be a `useEffect` per panel, so three mounted panels
- * meant three intervals writing to three copies of the same data, and the list
- * on the left and the table in the middle showed different positions for the
- * same satellite. The interval starts with the first subscriber and stops with
- * the last, so a collapsed panel stops costing anything.
- *
- * This decorates a single store rather than holding one of its own. The first
- * version kept a second listener set and handed out the inner `set`, so the
- * timer advanced the value and notified nobody: the satellite list rendered its
- * initial positions and never moved, with no error to explain it. There is now
- * one value and one listener set, which is the only way that bug cannot come
- * back.
- */
-export function createTickingStore<T>(
-  initial: T,
-  intervalMs: number,
-  advance: (current: T) => T,
-): Store<T> {
-  const store = createStore<T>(initial);
-  let timer: ReturnType<typeof setInterval> | undefined;
-
-  return {
-    get: store.get,
-    set: store.set,
-    get size() {
-      return store.size;
-    },
-    subscribe: (listener: () => void) => {
-      const unsubscribe = store.subscribe(listener);
-      if (store.size === 1) {
-        timer = setInterval(() => {
-          store.set(advance(store.get()));
-        }, intervalMs);
-      }
-      return () => {
-        unsubscribe();
-        if (store.size === 0 && timer !== undefined) {
-          clearInterval(timer);
-          timer = undefined;
-        }
-      };
-    },
-  };
 }

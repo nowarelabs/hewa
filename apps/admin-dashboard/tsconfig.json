@@ -3,6 +3,7 @@
   "compilerOptions": {
     "paths": {
       "@/*": ["./src/*"],
+      "@hewa/console-types": ["../../packages/console-types/src/index.ts"],
       "@hewa/response-codes": ["../../packages/response-codes/src/index.ts"],
       "@hewa/app-shell": ["../../packages/app-shell/src/index.tsx"]
     }

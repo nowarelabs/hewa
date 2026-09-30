@@ -3,10 +3,12 @@
 import { act, createElement, type ReactElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { NuqsTestingAdapter } from "nuqs/adapters/testing";
+import { QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, describe, expect, test } from "vite-plus/test";
 import { AppShell } from "@hewa/app-shell";
 
 import { config } from "../src/app/shell.config";
+import { seededQueryClient } from "./harness";
 
 /**
  * The rail, and the rail item each view remembers.
@@ -41,14 +43,22 @@ const mount = (searchParams: string): HTMLElement => {
   document.body.append(container);
   const root = createRoot(container);
   roots.push(root);
+  // The shell draws real panels, and every panel now reads its rows from a
+  // query. The client is seeded with the fixtures so the tree resolves without a
+  // fetch — these tests are about which rail item is lit, and a request that
+  // rejects mid-assert is a flake that has nothing to do with the rail.
   act(() =>
     root.render(
       createElement(
-        NuqsTestingAdapter,
-        { hasMemory: true, searchParams } as never,
-        createElement(AppShell as ReactElement extends never ? never : () => ReactElement, {
-          config,
-        }),
+        QueryClientProvider,
+        { client: seededQueryClient() },
+        createElement(
+          NuqsTestingAdapter,
+          { hasMemory: true, searchParams } as never,
+          createElement(AppShell as ReactElement extends never ? never : () => ReactElement, {
+            config,
+          }),
+        ),
       ),
     ),
   );

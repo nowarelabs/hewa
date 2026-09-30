@@ -1,9 +1,9 @@
 import { createElement } from "react";
-import { renderToStaticMarkup } from "react-dom/server";
 import { NuqsTestingAdapter } from "nuqs/adapters/testing";
 import { describe, expect, test } from "vite-plus/test";
 import { config } from "../src/app/shell.config";
 import { summaryCounts } from "../src/app/ui/primitives";
+import { emptyQueryClient, renderConsole } from "./harness";
 
 /**
  * Every main panel carries a summary bar.
@@ -17,20 +17,21 @@ import { summaryCounts } from "../src/app/ui/primitives";
  * Rendered with no query string, so every bar here is the one an operator sees
  * on arrival: the group counts are there and nothing is in force.
  *
- * The adapter is nuqs' own testing one rather than a hand-rolled context. Five of
- * the seven panels now read their filter state out of the URL, and nuqs throws
- * NUQS-404 rather than quietly falling back when it cannot find one — so
- * without this the failures would be about a missing provider rather than about
- * a missing bar.
+ * Two providers, both of them real ones. nuqs because five of the seven panels
+ * read their filter state out of the URL and nuqs throws NUQS-404 rather than
+ * quietly falling back — so without it the failures would be about a missing
+ * provider rather than about a missing bar. React Query because every panel now
+ * reads its rows from a service: without a seeded cache every bar would render in
+ * its pending state, which has no chips in it, and the assertions below would
+ * pass or fail for the wrong reason. The cache is seeded from `tests/fixtures.ts`
+ * rather than from the service's records — see that file for why.
  */
 const render = (key: string): string => {
   const view = config.views[key];
   if (view === undefined) {
     throw new Error(`no view called ${key}`);
   }
-  return renderToStaticMarkup(
-    createElement(NuqsTestingAdapter, null, createElement(view.main.render)),
-  );
+  return renderConsole(createElement(view.main.render));
 };
 
 describe("summary bars", () => {
@@ -77,7 +78,7 @@ describe("summary bars", () => {
     // Not as the summary: a narrowed table under a bar of carrier counts is the
     // state that makes somebody type the query again because the console looks
     // like it forgot. `tests/filters.test.ts` drives this one through the DOM.
-    const html = renderToStaticMarkup(
+    const html = renderConsole(
       createElement(
         NuqsTestingAdapter,
         { searchParams: "?flightsQ=KQ" } as never,
@@ -97,12 +98,54 @@ describe("summary bars", () => {
     }
   });
 
-  test("a bar survives data that has not arrived yet", () => {
-    // The flights bar used to lose every chip but one over an empty list,
-    // because the groups were counted out of the rows rather than the table.
+  /**
+   * A chip with nothing behind it.
+   *
+   * The vocabulary now comes from the service, and a vocabulary is larger than
+   * the data in a way a hand-written list used to hide. Two of the fixtures carry
+   * a group with no rows at all — an `election` incident and a `scientific`
+   * satellite — because this is the state that used to be unrepresentable: the
+   * chips were counted out of the rows, so a group with no rows had no chip, so
+   * pressing it later was impossible and its absence was invisible.
+   */
+  test("a group with no rows still gets a chip", () => {
+    expect(render("conflicts")).toContain(`data-summary-item="election"`);
+    expect(render("satellites")).toContain(`data-summary-item="scientific"`);
+  });
+
+  test("a chip with no rows reads zero", () => {
+    // Label and count are separate elements on a filterable bar — the label is
+    // the button, the count is a `tabular-nums` span beside it — so this reads
+    // the chip's own markup rather than a joined string that only the
+    // non-filtering bars would produce.
+    expect(render("conflicts")).toContain('Election<span class="tabular-nums">0</span>');
+    expect(render("satellites")).toContain('Scientific<span class="tabular-nums">0</span>');
+  });
+
+  /**
+   * A carrier the rail does not offer.
+   *
+   * The flights rail has four entries and none of them is "Unknown", so a bar
+   * built from the rail would count three flights and leave the third uncounted.
+   * This is the assertion that the bar and the rail are allowed to be different
+   * sizes, which they never were before.
+   */
+  test("a group the rail does not offer is still counted", () => {
     const html = render("flights");
-    expect(html).toContain(`data-summary-item="Kenya Airways"`);
-    expect(html).toContain(`data-summary-item="Safarilink"`);
+    expect(html).toContain(`data-summary-item="Unknown"`);
+    expect(html).toContain('Unknown<span class="tabular-nums">1</span>');
+  });
+
+  test("a bar over data that has not arrived has no chips and is not broken", () => {
+    // The pending state renders no bar at all rather than a bar of zeroes. A bar
+    // that says "Critical: 0, High: 0" before anything has arrived is a claim
+    // about the world, and it would be the first thing an operator saw.
+    const pending = renderConsole(
+      createElement(config.views["alerts"]?.main.render as never),
+      emptyQueryClient(),
+    );
+    expect(pending).not.toContain("data-summary-bar");
+    expect(pending).toContain("Loading alerts");
   });
 });
 

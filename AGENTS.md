@@ -51,6 +51,7 @@ check.
 | `@hewa/billing-reconciliation-ui` | `apps/billing-reconciliation-ui` | private    |
 | `@hewa/tsconfig`                  | `packages/tsconfig`              | private    |
 | `@hewa/response-codes`            | `packages/response-codes`        | published  |
+| `@hewa/console-types`             | `packages/console-types`         | published  |
 | `@hewa/errors`                    | `packages/errors`                | published  |
 | `@hewa/observability`             | `packages/observability`         | published  |
 | `@hewa/proto`                     | `packages/proto`                 | published  |
@@ -115,6 +116,25 @@ Rules for working on the generator:
   disagree. Assert the mapping in a test. State a single view owns stays in that
   view's module; what several views share lives outside the directory — see
   `apps/admin-dashboard/src/app/{ui,state}`.
+- A view's data comes from `central-api` through `packages/console-types`, and a
+  `data/` module is the seam between a panel and the network — not a file of
+  records. It exports the view's row type and one hook, and nothing else. The
+  same records in the app and in the service is two truths, and they drift in the
+  one direction that is hard to notice: a summary chip that disagrees with the
+  table under it.
+- A group vocabulary travels with the rows it describes, in `meta.groups`, and it
+  includes groups no row currently holds. Derived from the rows, a filter chip
+  appears and disappears as the data moves, which is a control that is only
+  sometimes there.
+- Pending, failed and empty are three states and `status` is how they stay
+  distinct. A list that has not loaded is legitimately empty; a document that has
+  not loaded is not — `useEconomy` returns `Economy | undefined` rather than
+  zeroed figures, because a zeroed economic document is a plausible lie rather
+  than a visibly missing one.
+- Nothing in a panel invents data to look live. A store that moves records on an
+  interval is a second source of truth wearing a feed's clothes, and it is what
+  made the flights and satellites views look connected to something they were
+  not.
 - A store that advances on a timer must notify the **same** listeners it
   registered. Wrapping a store and handing out the inner `set` while keeping a
   second listener set looks correct and notifies nobody: the value moves, the

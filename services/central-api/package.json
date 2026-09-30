@@ -13,6 +13,7 @@
     "check": "vp check"
   },
   "dependencies": {
+    "@hewa/console-types": "workspace:*",
     "@hewa/errors": "workspace:*",
     "@hewa/observability": "workspace:*",
     "@hewa/response-codes": "workspace:*",

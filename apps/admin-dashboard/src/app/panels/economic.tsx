@@ -16,8 +16,8 @@ import {
 } from "recharts";
 
 import type { PanelProps } from "@hewa/app-shell";
-import { GDP_SERIES, INDICATORS, SECTORS } from "../data/economic";
-import { KeyValues, Panel, SummaryBar } from "../ui/primitives";
+import { figuresFor, useEconomy } from "../data/economic";
+import { Empty, KeyValues, Panel, SummaryBar, emptyMessage } from "../ui/primitives";
 
 /**
  * The `economic` view: every panel the Economic tab can show.
@@ -47,36 +47,39 @@ function tintFor(indicator: { id: string }): string {
 
 const SECTOR_COLOURS = ["#3b82f6", "#22c55e", "#f59e0b"];
 
-const RAIL: Record<string, { title: string; rows: { label: string; value: string }[] }> = {
-  overview: {
-    title: "Overview",
-    rows: [
-      { label: "GDP growth", value: "5.2%" },
-      { label: "Inflation", value: "4.3%" },
-      { label: "Unemployment", value: "5.5%" },
-    ],
-  },
-  currency: {
-    title: "Currency",
-    rows: [
-      { label: "KES/USD", value: "153.45" },
-      { label: "KES/EUR", value: "168.20" },
-      { label: "KES/GBP", value: "195.30" },
-    ],
-  },
-  gdp: {
-    title: "GDP",
-    rows: [{ label: "Latest quarter", value: "11.8 B USD" }],
-  },
-  trade: { title: "Trade", rows: [{ label: "Balance", value: "-2.4 B USD" }] },
-  markets: { title: "Markets", rows: [{ label: "NSE 20", value: "1,842.15" }] },
+/**
+ * The rail's entries, which are titles and nothing else.
+ *
+ * The figures each entry shows used to be literals here, and they had already
+ * drifted from the headline cards on the same screen: the rail said GDP growth
+ * was 5.2% and the card beside it said 5.1%, inflation was 4.3% and 6.8%, and
+ * there was nothing to reconcile them because they were two sets of numbers that
+ * happened to be about Kenya. Both now come from the service and there is one
+ * value each — see `figuresFor`.
+ */
+const RAIL: Record<string, string> = {
+  overview: "Overview",
+  currency: "Currency",
+  gdp: "GDP",
+  trade: "Trade",
+  markets: "Markets",
 };
 
 export function EconomicRailPanel({ item }: PanelProps): ReactElement {
-  const entry = RAIL[item ?? "overview"] ?? RAIL["overview"];
+  const { data, status } = useEconomy();
+  const figures = figuresFor(data?.sections ?? [], item ?? "overview");
+
   return (
-    <Panel title={entry?.title ?? "Economy"}>
-      <KeyValues rows={entry?.rows ?? []} />
+    <Panel title={RAIL[item ?? "overview"] ?? "Economy"}>
+      {figures.length === 0 ? (
+        <Empty>
+          {status !== "ready"
+            ? emptyMessage({ status, filtered: false, noun: "figures" })
+            : "No figures for this section"}
+        </Empty>
+      ) : (
+        <KeyValues rows={[...figures]} />
+      )}
     </Panel>
   );
 }
@@ -87,6 +90,8 @@ export function EconomicRailPanel({ item }: PanelProps): ReactElement {
  * theme-token greys is a chart that cannot be themed without rewriting it.
  */
 export function EconomicIndicators(): ReactElement {
+  const { data, status } = useEconomy();
+  const indicators = data?.indicators ?? [];
   const axis = { stroke: "#64748b", fontSize: 12 };
   const tooltip = {
     contentStyle: {
@@ -111,7 +116,7 @@ export function EconomicIndicators(): ReactElement {
           figures at more length, and a search over five of them is a keyboard
           shortcut for scrolling. */}
       <SummaryBar
-        items={INDICATORS.map((indicator) => ({
+        items={indicators.map((indicator) => ({
           label: indicator.label,
           value: indicator.value,
           tint: `border-line bg-surface-raised ${tintFor(indicator)}`,
@@ -119,78 +124,91 @@ export function EconomicIndicators(): ReactElement {
       />
 
       <div className="p-4">
-        <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
-          {INDICATORS.map((indicator) => (
-            <article
-              key={indicator.id}
-              className="rounded-lg border border-line bg-surface-raised p-3"
-            >
-              <div className="mb-2 flex items-center justify-between">
-                <span className="text-xs text-ink-muted">{indicator.label}</span>
-                <span className={tintFor(indicator)}>
-                  {indicator.id === "fx" ? (
-                    <DollarSign className="h-4 w-4" />
-                  ) : indicator.id === "gdp" ? (
-                    <Activity className="h-4 w-4" />
-                  ) : (
-                    <Percent className="h-4 w-4" />
-                  )}
-                </span>
-              </div>
-              <p className="text-xl font-bold text-ink">{indicator.value}</p>
-              <p className={`mt-1 flex items-center gap-1 text-xs ${tintFor(indicator)}`}>
-                {indicator.trend === "up" ? (
-                  <TrendingUp className="h-3 w-3" />
-                ) : indicator.trend === "down" ? (
-                  <TrendingDown className="h-3 w-3" />
-                ) : null}
-                {indicator.caption}
-              </p>
-            </article>
-          ))}
-        </div>
-
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-          <Chart title="GDP growth (billions USD)">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={GDP_SERIES}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
-                <XAxis dataKey="month" {...axis} />
-                <YAxis {...axis} />
-                <Tooltip {...tooltip} />
-                <Line
-                  type="monotone"
-                  dataKey="value"
-                  stroke="#3b82f6"
-                  strokeWidth={2}
-                  dot={{ fill: "#3b82f6", strokeWidth: 2 }}
-                />
-              </LineChart>
-            </ResponsiveContainer>
-          </Chart>
-
-          <Chart title="GDP by sector">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie
-                  data={SECTORS}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={50}
-                  outerRadius={80}
-                  paddingAngle={5}
-                  dataKey="value"
-                  label={({ name, value }) => `${name ?? ""}: ${String(value ?? "")}%`}
+        {indicators.length === 0 ? (
+          // Two charts over an empty array draw two empty boxes, which is a chart
+          // that says "the economy is flat" rather than one that says nothing has
+          // arrived. The figures are the view's whole subject, so an answer with
+          // none in it is a failure to say so, not an economy to report.
+          <Empty>{emptyMessage({ status, filtered: false, noun: "figures" })}</Empty>
+        ) : (
+          <>
+            <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
+              {indicators.map((indicator) => (
+                <article
+                  key={indicator.id}
+                  className="rounded-lg border border-line bg-surface-raised p-3"
                 >
-                  {SECTORS.map((sector, index) => (
-                    <Cell key={sector.name} fill={SECTOR_COLOURS[index % SECTOR_COLOURS.length]} />
-                  ))}
-                </Pie>
-                <Tooltip {...tooltip} />
-              </PieChart>
-            </ResponsiveContainer>
-          </Chart>
-        </div>
+                  <div className="mb-2 flex items-center justify-between">
+                    <span className="text-xs text-ink-muted">{indicator.label}</span>
+                    <span className={tintFor(indicator)}>
+                      {indicator.id === "fx" ? (
+                        <DollarSign className="h-4 w-4" />
+                      ) : indicator.id === "gdp" ? (
+                        <Activity className="h-4 w-4" />
+                      ) : (
+                        <Percent className="h-4 w-4" />
+                      )}
+                    </span>
+                  </div>
+                  <p className="text-xl font-bold text-ink">{indicator.value}</p>
+                  <p className={`mt-1 flex items-center gap-1 text-xs ${tintFor(indicator)}`}>
+                    {indicator.trend === "up" ? (
+                      <TrendingUp className="h-3 w-3" />
+                    ) : indicator.trend === "down" ? (
+                      <TrendingDown className="h-3 w-3" />
+                    ) : null}
+                    {indicator.caption}
+                  </p>
+                </article>
+              ))}
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+              <Chart title="GDP growth (billions USD)">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={data?.gdpSeries ?? []}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
+                    <XAxis dataKey="month" {...axis} />
+                    <YAxis {...axis} />
+                    <Tooltip {...tooltip} />
+                    <Line
+                      type="monotone"
+                      dataKey="value"
+                      stroke="#3b82f6"
+                      strokeWidth={2}
+                      dot={{ fill: "#3b82f6", strokeWidth: 2 }}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              </Chart>
+
+              <Chart title="GDP by sector">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={data?.sectors ?? []}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={50}
+                      outerRadius={80}
+                      paddingAngle={5}
+                      dataKey="value"
+                      label={({ name, value }) => `${name ?? ""}: ${String(value ?? "")}%`}
+                    >
+                      {(data?.sectors ?? []).map((sector, index) => (
+                        <Cell
+                          key={sector.name}
+                          fill={SECTOR_COLOURS[index % SECTOR_COLOURS.length]}
+                        />
+                      ))}
+                    </Pie>
+                    <Tooltip {...tooltip} />
+                  </PieChart>
+                </ResponsiveContainer>
+              </Chart>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

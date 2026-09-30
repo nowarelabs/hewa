@@ -1,13 +1,20 @@
 "use client";
 
 import type { ReactElement } from "react";
-import { RefreshCw, Satellite as SatelliteIcon } from "lucide-react";
+import { Satellite as SatelliteIcon } from "lucide-react";
 
 import type { PanelProps } from "@hewa/app-shell";
-import { CardList, Empty, Panel, SummaryBar, summaryCounts, visibleBy } from "../ui/primitives";
+import {
+  CardList,
+  Empty,
+  Panel,
+  SummaryBar,
+  emptyMessage,
+  summaryCounts,
+  visibleBy,
+} from "../ui/primitives";
 import { useFilterParam } from "../state/filter";
-import { KINDS, SATELLITES, type Satellite, type SatelliteKind } from "../data/satellites";
-import { createTickingStore, useStore } from "../state/store";
+import { useSatellites, type SatelliteKind } from "../data/satellites";
 
 /**
  * The `satellites` view: every panel the Satellites tab can show.
@@ -16,34 +23,6 @@ import { createTickingStore, useStore } from "../state/store";
  * `shell.config.tsx`. The rail picks what the view is about, the middle
  * column lists it, and the right column describes the selection.
  */
-
-interface Catalog {
-  satellites: Satellite[];
-  lastUpdate: Date;
-}
-
-const TICK_MS = 5000;
-
-/**
- * Placeholder catalogue. The orbital feed is not built yet, so these drift on a
- * timer to show the columns moving. The records they start from are in `../data/satellites`.
- */
-const CATALOG = createTickingStore<Catalog>(
-  { satellites: SATELLITES, lastUpdate: new Date() },
-  TICK_MS,
-  (current) => ({
-    satellites: current.satellites.map((satellite) => ({
-      ...satellite,
-      lat: satellite.lat + (Math.random() - 0.5) * 0.05,
-      lng: satellite.lng + (Math.random() - 0.5) * 0.05,
-    })),
-    lastUpdate: new Date(),
-  }),
-);
-
-function useCatalog(): Catalog {
-  return useStore(CATALOG);
-}
 
 /**
  * `null` means no filter. The "All satellites" entry used to carry
@@ -59,15 +38,6 @@ const RAIL: { id: string; label: string; kind: SatelliteKind | null }[] = [
   { id: "nav", label: "Navigation", kind: "navigation" },
 ];
 
-/**
- * Every kind the catalogue can hold, which is one more than the rail lists.
- *
- * The rail has no entry for a scientific satellite because the air console does
- * not track them, and a kind with no rail entry would otherwise be a row in
- * the table that no chip accounts for. The bar counts the catalogue, not the
- * rail.
- */
-
 const TINT: Record<SatelliteKind, string> = {
   reconnaissance: "text-purple-400 bg-purple-500/15",
   weather: "text-blue-400 bg-blue-500/15",
@@ -77,16 +47,21 @@ const TINT: Record<SatelliteKind, string> = {
 };
 
 export function SatelliteListPanel({ item }: PanelProps): ReactElement {
-  const { satellites } = useCatalog();
+  const { rows, status } = useSatellites();
   const entry = RAIL.find((candidate) => candidate.id === item) ?? RAIL[0];
   const kind = entry?.kind ?? null;
-  const shown =
-    kind === null ? satellites : satellites.filter((satellite) => satellite.kind === kind);
+  const shown = kind === null ? rows : rows.filter((satellite) => satellite.kind === kind);
 
   return (
     <Panel title={entry?.label ?? "Satellites"}>
       {shown.length === 0 ? (
-        <Empty>Nothing in this category is in view</Empty>
+        <Empty>
+          {emptyMessage({
+            status,
+            filtered: false,
+            noun: kind === null ? "satellites" : `${kind} satellites`,
+          })}
+        </Empty>
       ) : (
         <CardList
           items={shown.map((satellite) => ({
@@ -103,35 +78,36 @@ export function SatelliteListPanel({ item }: PanelProps): ReactElement {
 /**
  * The main column: every satellite, filtered by kind.
  *
- * This is the one view whose rows move while you look at them, so the selection
- * is plain component state and not part of the ticking store: the catalogue
- * advances and the filter stays where the operator put it, and a filter that
- * reset itself on every tick would be unusable.
+ * The bar counts kinds the service names, which is one more than the rail lists:
+ * there is no scientific satellite in an air console's rail, and the bar used to
+ * be built from the rail, so it counted the catalogue while the rail counted the
+ * rail and neither had to agree with the other. `scientific` gets a chip and no
+ * panel to open, which is the honest shape for a kind the rail does not offer.
+ *
+ * There is no timer on this view any more. The orbits used to be advanced every
+ * five seconds, so the positions on screen were a random walk rather than an
+ * observation — and the one bug worth remembering from that store was a second
+ * listener set, which ticked the value without notifying anybody and left the
+ * list rendering its initial positions with no error to explain it.
  */
 export function SatelliteTable(): ReactElement {
-  const { satellites, lastUpdate } = useCatalog();
+  const { rows, groups, status } = useSatellites();
   const kinds = useFilterParam("satellites");
-  const shown = visibleBy(satellites, (satellite) => satellite.kind, kinds.selected);
+  const shown = visibleBy(rows, (satellite) => satellite.kind, kinds.selected);
 
   return (
     <div className="flex h-full flex-col bg-surface">
-      <header className="flex items-center justify-between border-b border-line p-4">
-        <div className="flex items-center gap-2">
-          <SatelliteIcon className="h-5 w-5 text-purple-400" />
-          <h1 className="text-lg font-semibold text-ink">Satellite tracker</h1>
-          <span className="rounded bg-purple-500/15 px-2 py-0.5 text-xs text-purple-400">
-            {satellites.length} satellites
-          </span>
-        </div>
-        <div className="flex items-center gap-2 text-xs text-ink-muted">
-          <RefreshCw className="h-3 w-3" />
-          Updated {lastUpdate.toLocaleTimeString()}
-        </div>
+      <header className="flex items-center gap-2 border-b border-line p-4">
+        <SatelliteIcon className="h-5 w-5 text-purple-400" />
+        <h1 className="text-lg font-semibold text-ink">Satellite tracker</h1>
+        <span className="rounded bg-purple-500/15 px-2 py-0.5 text-xs text-purple-400">
+          {rows.length} satellites
+        </span>
       </header>
 
       <SummaryBar
-        items={summaryCounts(satellites, (satellite) => satellite.kind, {
-          keys: KINDS,
+        items={summaryCounts(rows, (satellite) => satellite.kind, {
+          keys: groups,
           label: (kind) =>
             RAIL.find((entry) => entry.kind === kind)?.label ??
             kind.charAt(0).toUpperCase() + kind.slice(1),
@@ -159,7 +135,14 @@ export function SatelliteTable(): ReactElement {
             {shown.length === 0 ? (
               <tr>
                 <td colSpan={5} className="px-4 py-3">
-                  <Empty>No satellites match these kinds</Empty>
+                  <Empty>
+                    {emptyMessage({
+                      status,
+                      filtered: kinds.selected.length > 0,
+                      noun: "satellites",
+                      filter: "these kinds",
+                    })}
+                  </Empty>
                 </td>
               </tr>
             ) : null}

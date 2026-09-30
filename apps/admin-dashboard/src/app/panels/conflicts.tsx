@@ -10,10 +10,11 @@ import {
   KeyValues,
   Panel,
   SummaryBar,
+  emptyMessage,
   summaryCounts,
   visibleBy,
 } from "../ui/primitives";
-import { INCIDENTS, INCIDENT_KINDS, type IncidentKind, type Severity } from "../data/conflicts";
+import { useIncidents, type IncidentKind, type IncidentSeverity } from "../data/conflicts";
 import { useFilterParam } from "../state/filter";
 
 /**
@@ -24,7 +25,7 @@ import { useFilterParam } from "../state/filter";
  * column lists it, and the right column describes the selection.
  */
 
-const SEVERITY_TINT: Record<Severity, string> = {
+const SEVERITY_TINT: Record<IncidentSeverity, string> = {
   critical: "text-red-400 bg-red-500/15 border-red-500/30",
   high: "text-orange-400 bg-orange-500/15 border-orange-500/30",
   medium: "text-cyan-400 bg-cyan-500/15 border-cyan-500/30",
@@ -48,14 +49,21 @@ const RAIL: Record<string, { title: string; kind: IncidentKind | null }> = {
 };
 
 export function IncidentRailPanel({ item }: PanelProps): ReactElement {
+  const { rows, status } = useIncidents();
   const entry = RAIL[item ?? "all"] ?? RAIL["all"];
   const kind = entry?.kind ?? null;
-  const shown = kind === null ? INCIDENTS : INCIDENTS.filter((incident) => incident.kind === kind);
+  const shown = kind === null ? rows : rows.filter((incident) => incident.kind === kind);
 
   return (
     <Panel title={entry?.title ?? "Incidents"}>
       {shown.length === 0 ? (
-        <Empty>No incidents of this kind are open</Empty>
+        <Empty>
+          {emptyMessage({
+            status,
+            filtered: false,
+            noun: kind === null ? "incidents" : `${kind} incidents`,
+          })}
+        </Empty>
       ) : (
         <CardList
           items={shown.map((incident) => ({
@@ -76,8 +84,9 @@ export function IncidentRailPanel({ item }: PanelProps): ReactElement {
  * of "protest: 2" is a pointer at two rows.
  */
 export function ConflictStream(): ReactElement {
+  const { rows, groups, status } = useIncidents();
   const kinds = useFilterParam("conflicts");
-  const shown = visibleBy(INCIDENTS, (incident) => incident.kind, kinds.selected);
+  const shown = visibleBy(rows, (incident) => incident.kind, kinds.selected);
 
   return (
     <div className="flex h-full flex-col bg-surface">
@@ -85,13 +94,18 @@ export function ConflictStream(): ReactElement {
         <Crosshair className="h-5 w-5 text-orange-400" />
         <h1 className="text-lg font-semibold text-ink">Conflict stream</h1>
         <span className="rounded bg-orange-500/15 px-2 py-0.5 text-xs text-orange-400">
-          {INCIDENTS.length} incidents
+          {rows.length} incidents
         </span>
       </header>
 
       <SummaryBar
-        items={summaryCounts(INCIDENTS, (incident) => incident.kind, {
-          keys: INCIDENT_KINDS,
+        items={summaryCounts(rows, (incident) => incident.kind, {
+          // The service's whole vocabulary of kinds. The rail above lists four of
+          // the five — `election` is not one an incident table is organised
+          // around — so a bar built from the rail would have counted fewer
+          // incidents than the list beneath it, with no chip to account for the
+          // difference.
+          keys: groups,
           tint: (kind) => KIND_TINT[kind],
         })}
         filter={{
@@ -102,7 +116,16 @@ export function ConflictStream(): ReactElement {
       />
 
       <div className="min-h-0 flex-1 space-y-3 overflow-auto p-4">
-        {shown.length === 0 ? <Empty>No incidents match these kinds</Empty> : null}
+        {shown.length === 0 ? (
+          <Empty>
+            {emptyMessage({
+              status,
+              filtered: kinds.selected.length > 0,
+              noun: "incidents",
+              filter: "these kinds",
+            })}
+          </Empty>
+        ) : null}
         {shown.map((incident) => (
           <article
             key={incident.id}
@@ -158,11 +181,16 @@ export function ConflictStream(): ReactElement {
 }
 
 export function IncidentDetailsPanel(): ReactElement {
-  const first = INCIDENTS[0];
+  const { rows, status } = useIncidents();
+  const first = rows[0];
   return (
     <Panel title="Incident details">
       {first === undefined ? (
-        <Empty>Select an incident</Empty>
+        <Empty>
+          {status !== "ready"
+            ? emptyMessage({ status, filtered: false, noun: "incidents" })
+            : "Select an incident"}
+        </Empty>
       ) : (
         <KeyValues
           rows={[

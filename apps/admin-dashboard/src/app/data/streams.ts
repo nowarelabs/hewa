@@ -1,38 +1,52 @@
-/**
- * The `streams` view: what is on screen.
+"use client";
 
-Records for the panels beside them.
+import type { Stream } from "@hewa/console-types";
+
+import { useConsoleView, type ViewStatus } from "../state/query";
+
+/**
+ * The streams view's half of the console.
+ *
+ * The selected channel is not here. It is per-view state that belongs to the
+ * view, so it lives in `panels/streams.tsx` — see the store in `state/store.ts`
+ * for why it is a module-scoped store and not a hook.
+ *
+ * The channels are the service's. Nothing in this view groups by them, so the
+ * response's vocabulary is empty and that is honest rather than a gap.
  */
 
-export interface Stream {
-  id: string;
-  title: string;
-  channel: string;
-  videoId: string;
+export type { Stream };
+
+/**
+ * What the view knows, and how it knows it.
+ *
+ * `rows` is `[]` before the first answer, and that is deliberate for a list: it is
+ * the same empty value the filter produces, and `emptyMessage` is what tells the
+ * two apart. A view whose data is not a list gets `undefined` for its `data`
+ * instead, because there is no honest empty economy to offer.
+ */
+export interface StreamView {
+  readonly rows: readonly Stream[];
+  /**
+   * Nothing in this view groups, so this is empty.
+   *
+   * It is still here and still typed, because a view that groups by nothing and a
+   * view that has not loaded yet both send an empty array, and only one of them
+   * means there is nothing to offer.
+   */
+  readonly groups: readonly string[];
+  readonly status: ViewStatus;
+  readonly refetch: () => void;
 }
 
-export const STREAMS: Stream[] = [
-  {
-    id: "1",
-    title: "Citizen TV Kenya",
-    channel: "citizen",
-    videoId: "XaAGe0YGOgI",
-  },
-  { id: "2", title: "KTN News Live", channel: "ktn", videoId: "dl_-tX3lCto" },
-  {
-    id: "3",
-    title: "Al Jazeera Live",
-    channel: "aljazeera",
-    videoId: "gCNeDWCI0vo",
-  },
-  {
-    id: "4",
-    title: "Sky News Live",
-    channel: "skynews",
-    videoId: "YDvsBbKfLPA",
-  },
-  { id: "5", title: "NTV Kenya Live", channel: "ntv", videoId: "ZRDjGXNezw" },
-  { id: "6", title: "K24 LIVE", channel: "k24", videoId: "d0BlPe6TyEg" },
-  { id: "7", title: "Spice FM", channel: "spice", videoId: "GtVUMmPmv9s" },
-  { id: "8", title: "Capital FM", channel: "capital", videoId: "9dTw7h1LdlE" },
-];
+/** The channels the service is holding right now, and whether it has answered. */
+export function useStreams(): StreamView {
+  const state = useConsoleView("streams");
+
+  return {
+    rows: state.data ?? [],
+    groups: state.groups,
+    status: state.status,
+    refetch: state.refetch,
+  };
+}

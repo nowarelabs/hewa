@@ -4,8 +4,8 @@ import type { ReactElement } from "react";
 import { ExternalLink, Radio } from "lucide-react";
 
 import type { PanelProps } from "@hewa/app-shell";
-import { CardList, Empty, KeyValues, Panel, SummaryBar } from "../ui/primitives";
-import { STREAMS, type Stream } from "../data/streams";
+import { CardList, Empty, KeyValues, Panel, SummaryBar, emptyMessage } from "../ui/primitives";
+import { useStreams, type Stream } from "../data/streams";
 import { createStore, useStore } from "../state/store";
 
 /**
@@ -20,14 +20,23 @@ import { createStore, useStore } from "../state/store";
  * Which channel is on screen, shared between the player and the info column.
  *
  * The selection used to be `useState` inside the player, and the info column
- * reported `STREAMS[0]` as "Playing" no matter what the viewer had clicked. It
- * was wrong in the one way a status line should never be wrong.
+ * reported the first channel in the local list as "Playing" no matter what the
+ * viewer had clicked. It was wrong in the one way a status line should never be
+ * wrong.
+ *
+ * The store holds an id and not a channel, and starts empty rather than starting
+ * on the first row. That matters now the rows arrive: a store initialised from
+ * the list would capture whatever the list was when the module was first
+ * evaluated, which is nothing, and the store would then name a channel that is
+ * not there. Resolving the id against the rows on each render keeps the
+ * selection meaning the same thing whether the rows came from a constant or from
+ * a service.
  */
-const SELECTED = createStore<string>(STREAMS[0]?.id ?? "");
+const SELECTED = createStore<string>("");
 
-function useSelected(): Stream | undefined {
+function useSelected(rows: readonly Stream[]): Stream | undefined {
   const id = useStore(SELECTED);
-  return STREAMS.find((stream) => stream.id === id);
+  return rows.find((stream) => stream.id === id) ?? rows[0];
 }
 
 /**
@@ -44,15 +53,23 @@ const RAIL: { id: string; label: string }[] = [
 ];
 
 export function StreamListPanel({ item }: PanelProps): ReactElement {
-  const selected = useSelected();
+  const { rows, status } = useStreams();
+  const selected = useSelected(rows);
   const entry = RAIL.find((candidate) => candidate.id === item) ?? RAIL[0];
   const channel = entry?.id === "all" || entry === undefined;
-  const shown = channel ? STREAMS : STREAMS.filter((stream) => stream.channel === entry?.id);
+  const shown = channel ? rows : rows.filter((stream) => stream.channel === entry?.id);
 
   return (
     <Panel title={entry?.label ?? "Streams"}>
       {shown.length === 0 ? (
-        <Empty>No channels in this group</Empty>
+        <Empty>
+          {emptyMessage({
+            status,
+            filtered: !channel,
+            noun: "channels",
+            filter: "this group",
+          })}
+        </Empty>
       ) : (
         <CardList
           items={shown.map((stream) => ({
@@ -67,7 +84,8 @@ export function StreamListPanel({ item }: PanelProps): ReactElement {
 }
 
 export function LiveStreams(): ReactElement {
-  const current = useSelected();
+  const { rows, status } = useStreams();
+  const current = useSelected(rows);
 
   return (
     <div className="flex h-full flex-col bg-surface">
@@ -76,7 +94,7 @@ export function LiveStreams(): ReactElement {
           <Radio className="h-5 w-5 text-green-400" />
           <h1 className="text-lg font-semibold text-ink">Live streams</h1>
           <span className="rounded bg-green-500/15 px-2 py-0.5 text-xs text-green-400">
-            {STREAMS.length} channels
+            {rows.length} channels
           </span>
         </div>
       </header>
@@ -101,7 +119,7 @@ export function LiveStreams(): ReactElement {
       <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-auto p-4 lg:grid-cols-3">
         {current === undefined ? (
           <p className="text-xs text-ink-faint lg:col-span-2">
-            <Empty>No channel selected</Empty>
+            <Empty>{emptyMessage({ status, filtered: false, noun: "channels" })}</Empty>
           </p>
         ) : (
           <div className="lg:col-span-2">
@@ -114,7 +132,7 @@ export function LiveStreams(): ReactElement {
           </div>
         )}
         <div className="space-y-2">
-          {STREAMS.map((stream) => (
+          {rows.map((stream) => (
             <button
               key={stream.id}
               type="button"
@@ -137,12 +155,13 @@ export function LiveStreams(): ReactElement {
 }
 
 export function StreamInfoPanel(): ReactElement {
-  const current = useSelected();
+  const { rows } = useStreams();
+  const current = useSelected(rows);
   return (
     <Panel title="Stream info">
       <KeyValues
         rows={[
-          { label: "Channels", value: STREAMS.length },
+          { label: "Channels", value: rows.length },
           { label: "Playing", value: current?.title ?? "None" },
         ]}
       />

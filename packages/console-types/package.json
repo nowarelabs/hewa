@@ -1,0 +1,33 @@
+{
+  "name": "@hewa/console-types",
+  "version": "0.0.0",
+  "description": "The admin console's API contract: the records it reads and the envelope they arrive in.",
+  "license": "MIT",
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": "./dist/index.mjs",
+    "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "vp pack",
+    "dev": "vp pack --watch",
+    "test": "vp test",
+    "check": "vp check"
+  },
+  "dependencies": {
+    "@hewa/response-codes": "workspace:*"
+  },
+  "devDependencies": {
+    "@hewa/tsconfig": "workspace:*",
+    "@types/node": "catalog:",
+    "typescript": "catalog:",
+    "vite-plus": "catalog:"
+  }
+}

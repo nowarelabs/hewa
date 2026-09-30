@@ -4,9 +4,23 @@ import { act, createElement, type ReactElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { NuqsTestingAdapter } from "nuqs/adapters/testing";
 import { afterEach, describe, expect, test } from "vite-plus/test";
+import { QueryClientProvider } from "@tanstack/react-query";
 import { config } from "../src/app/shell.config";
-import { FLIGHTS } from "../src/app/data/flights";
 import { visibleBy } from "../src/app/ui/primitives";
+import { consoleFixtures } from "./fixtures";
+import { seededQueryClient } from "./harness";
+
+/**
+ * Every panel here reads its rows from a service, so every mount is given a
+ * `QueryClient` with the fixtures already in it. Without one the tree renders
+ * "Loading alerts…" and every count below would be a count of nothing.
+ *
+ * The rows come from `tests/fixtures.ts` rather than from the service's records,
+ * so a change to the data is not a change to this suite's expectations. The
+ * counts further down are therefore counts of the fixtures, and they are small
+ * on purpose.
+ */
+const FLIGHT_ROWS = consoleFixtures["flights"].data;
 
 /**
  * The summary bar, filtered, and the filter in the address bar.
@@ -63,18 +77,22 @@ const mount = (element: ReactElement, searchParams = ""): HTMLElement => {
   written.set(container, "");
   act(() =>
     root.render(
-      createElement(NuqsTestingAdapter, {
-        hasMemory: true,
-        searchParams,
-        onUrlUpdate: (event) => {
-          written.set(container, event.queryString);
-        },
-        // In the props object rather than as a third argument to
-        // `createElement`. The adapter declares `children` as a required prop
-        // rather than the optional `PropsWithChildren` shape, and a required
-        // `children` is not satisfied by the variadic overload.
-        children: element,
-      }),
+      createElement(
+        QueryClientProvider,
+        { client: seededQueryClient() },
+        createElement(NuqsTestingAdapter, {
+          hasMemory: true,
+          searchParams,
+          onUrlUpdate: (event) => {
+            written.set(container, event.queryString);
+          },
+          // In the props object rather than as a third argument to
+          // `createElement`. The adapter declares `children` as a required prop
+          // rather than the optional `PropsWithChildren` shape, and a required
+          // `children` is not satisfied by the variadic overload.
+          children: element,
+        }),
+      ),
     ),
   );
   roots.push(root);
@@ -160,18 +178,46 @@ const rows = (root: ParentNode): number => root.querySelectorAll("[data-row]").l
  * rows, and it is what these tests count. Without it they would be counting tag
  * names, which a view is free to change.
  */
+/**
+ * One group per filtering view, and the counts are worked out rather than
+ * written down.
+ *
+ * They used to be literals from the app's own records — "high leaves 3 of 8" —
+ * which is a second copy of the data in the test that is checking the data is
+ * displayed. They are computed from `tests/fixtures.ts` now, so a fixture
+ * change moves them and a record change in the service cannot.
+ *
+ * The group is one the fixtures actually contain, because a filter that matches
+ * nothing has its own tests further down and testing it here as well would only
+ * prove that an empty list renders as an empty list.
+ */
 const FILTERS = [
-  { view: "alerts", group: "high", remaining: 3, total: 8 },
-  { view: "conflicts", group: "armed", remaining: 1, total: 5 },
-  // The key is `cia` and the label is `CIA`. Looking the chip up by its label is
-  // how this file's first draft found nothing and reported eight rows for a
-  // filter it thought it had applied.
-  { view: "osint", group: "cia", remaining: 1, total: 8 },
-  { view: "satellites", group: "reconnaissance", remaining: 2, total: 5 },
+  { view: "alerts", group: "high", field: "severity" },
+  { view: "conflicts", group: "armed", field: "kind" },
+  // The key is `social` and the label is `SOCIAL`. Looking the chip up by its
+  // label is how this file's first draft found nothing and reported eight rows
+  // for a filter it thought it had applied.
+  { view: "osint", group: "social", field: "category" },
+  { view: "satellites", group: "reconnaissance", field: "kind" },
 ] as const;
 
+/** How many of a view's fixture rows are on `group`. */
+function remainingIn(view: string, field: string, group: string): number {
+  const rows = consoleFixtures[view as keyof typeof consoleFixtures].data as {
+    [key: string]: unknown;
+  }[];
+  return rows.filter((row) => row[field] === group).length;
+}
+
+/** How many rows a view has before anything is filtered. */
+function totalIn(view: string): number {
+  return (consoleFixtures[view as keyof typeof consoleFixtures].data as unknown[]).length;
+}
+
 describe("a bar that filters", () => {
-  for (const { view: name, group, remaining, total } of FILTERS) {
+  for (const { view: name, group, field: groupField } of FILTERS) {
+    const remaining = remainingIn(name, groupField, group);
+    const total = totalIn(name);
     test(`the ${name} list is the whole list to begin with`, () => {
       const container = mount(view(name));
       expect(rows(container)).toBe(total);
@@ -277,7 +323,7 @@ describe("the filter in the address bar", () => {
 
   test("a link arrives with its filter already in force", () => {
     const container = mount(view("alerts"), "?alerts=high");
-    expect(rows(container)).toBe(3);
+    expect(rows(container)).toBe(remainingIn("alerts", "severity", "high"));
     expect(chip(container, "high").getAttribute("aria-pressed")).toBe("true");
   });
 
@@ -287,7 +333,7 @@ describe("the filter in the address bar", () => {
     // view's `weather` into the conflicts view, match no incident, and show an
     // empty list with no chip pressed: a filter nobody set and nobody can see.
     const container = mount(view("conflicts"), "?satellites=weather");
-    expect(rows(container)).toBe(5);
+    expect(rows(container)).toBe(totalIn("conflicts"));
     for (const element of container.querySelectorAll("[data-summary-item]")) {
       expect(element.getAttribute("aria-pressed")).toBe("false");
     }
@@ -374,7 +420,7 @@ describe("the flights bar", () => {
   test("it draws the catalogue, so the counts below are about the filter", () => {
     // Without this the rest of these pass on an empty table.
     const container = mount(view("flights"));
-    expect(rows(container)).toBe(FLIGHTS.length);
+    expect(rows(container)).toBe(FLIGHT_ROWS.length);
   });
 
   test("it starts as a summary: a chip per carrier and a way to ask for the field", () => {
@@ -382,7 +428,7 @@ describe("the flights bar", () => {
     // by side is a strip with two jobs and no room for either, so the field is
     // not in the DOM until the bar is asked to become it.
     const container = mount(view("flights"));
-    for (const carrier of ["Kenya Airways", "Fly540", "Safarilink"]) {
+    for (const carrier of ["Kenya Airways", "Jambojet", "Safarilink"]) {
       expect(query(container, `[data-summary-item="${carrier}"]`)).not.toBeNull();
     }
     expect(maybe(container, '[role="searchbox"]')).toBeNull();
@@ -403,7 +449,7 @@ describe("the flights bar", () => {
     await type(container, "KQ");
     await click(query(container, "[data-close-search]"));
     expect(maybe(container, '[role="searchbox"]')).toBeNull();
-    expect(rows(container)).toBe(FLIGHTS.length);
+    expect(rows(container)).toBe(FLIGHT_ROWS.length);
     expect(query(container, '[data-summary-item="Safarilink"]')).not.toBeNull();
   });
 
@@ -413,7 +459,7 @@ describe("the flights bar", () => {
     await type(container, "KQ");
     await press(field(container), "Escape");
     expect(maybe(container, '[role="searchbox"]')).toBeNull();
-    expect(rows(container)).toBe(FLIGHTS.length);
+    expect(rows(container)).toBe(FLIGHT_ROWS.length);
   });
 
   test("a link that arrives searched opens the bar as the field", () => {
@@ -422,7 +468,9 @@ describe("the flights bar", () => {
     // like it forgot.
     const container = mount(view("flights"), "?flightsQ=KQ");
     expect(field(container).value).toBe("KQ");
-    expect(rows(container)).toBe(3);
+    expect(rows(container)).toBe(
+      FLIGHT_ROWS.filter((flight) => flight.callsign === "KQ100").length,
+    );
   });
 
   test("a carrier filter stays visible and removable while searching", async () => {
@@ -438,7 +486,13 @@ describe("the flights bar", () => {
     const remove = query(container, '[aria-label="Remove filter Safarilink"]');
     expect(remove).not.toBeNull();
     await click(remove);
-    expect(rows(container)).toBe(3);
+    // Taking the carrier filter off leaves the search in force, so what is left
+    // is the search's answer and not the carrier's. Both halves of the bar have
+    // to survive each other; a search that also undid the filter would make the
+    // removable chip above it a lie.
+    expect(rows(container)).toBe(
+      FLIGHT_ROWS.filter((flight) => flight.callsign === "KQ100").length,
+    );
   });
 
   test("the field is focused when the bar becomes it", async () => {
@@ -451,14 +505,18 @@ describe("the flights bar", () => {
   test("a carrier chip narrows the table", async () => {
     const container = mount(view("flights"));
     await click(chip(container, "Safarilink"));
-    expect(rows(container)).toBe(4);
+    expect(rows(container)).toBe(
+      FLIGHT_ROWS.filter((flight) => flight.carrier === "Safarilink").length,
+    );
   });
 
   test("the search field narrows the table by callsign", async () => {
     const container = mount(view("flights"));
     await open(container);
     await type(container, "KQ");
-    expect(rows(container)).toBe(3);
+    expect(rows(container)).toBe(
+      FLIGHT_ROWS.filter((flight) => flight.callsign === "KQ100").length,
+    );
   });
 
   test("a search that matches nothing says so", async () => {
@@ -475,7 +533,9 @@ describe("the flights bar", () => {
     await open(container);
     await type(container, "KQ");
     expect(field(container).value).toBe("KQ");
-    expect(container.textContent).toContain(`3 of ${FLIGHTS.length}`);
+    expect(container.textContent).toContain(
+      `${FLIGHT_ROWS.filter((flight) => flight.callsign === "KQ100").length} of ${FLIGHT_ROWS.length}`,
+    );
   });
 
   test("the two compose, and the search cannot undo the filter", async () => {
@@ -496,7 +556,9 @@ describe("the flights bar", () => {
     await type(container, "KQ");
     expect(rows(container)).toBe(0);
     await type(container, "");
-    expect(rows(container)).toBe(4);
+    expect(rows(container)).toBe(
+      FLIGHT_ROWS.filter((flight) => flight.carrier === "Safarilink").length,
+    );
   });
 
   test("closing the search leaves the filter in force", async () => {
@@ -509,7 +571,9 @@ describe("the flights bar", () => {
     expect(query(container, '[data-summary-item="Safarilink"]').getAttribute("aria-pressed")).toBe(
       "true",
     );
-    expect(rows(container)).toBe(4);
+    expect(rows(container)).toBe(
+      FLIGHT_ROWS.filter((flight) => flight.carrier === "Safarilink").length,
+    );
   });
 });
 
@@ -545,7 +609,9 @@ describe("the flights search in the address bar", () => {
     // table, which is the state that makes an operator type the same query
     // again because the console has forgotten what they already said.
     const container = mount(view("flights"), "?flightsQ=KQ");
-    expect(rows(container)).toBe(3);
+    expect(rows(container)).toBe(
+      FLIGHT_ROWS.filter((flight) => flight.callsign === "KQ100").length,
+    );
     expect(field(container).value).toBe("KQ");
   });
 });
