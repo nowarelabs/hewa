@@ -6,6 +6,7 @@ import { NuqsTestingAdapter } from "nuqs/adapters/testing";
 import { afterEach, describe, expect, test } from "vite-plus/test";
 import { config } from "../src/app/shell.config";
 import type { FlightData } from "../src/app/hooks";
+import { airlineFor, FLIGHTS } from "../src/app/data/flights";
 import { visibleBy } from "../src/app/ui/primitives";
 
 /**
@@ -332,7 +333,7 @@ describe("a filter that matches nothing", () => {
  * be told apart: "KQ" is two rows, Safarilink is one, and the two have no
  * flight in common.
  */
-const FLIGHTS: FlightData[] = [
+const ROWS: FlightData[] = [
   {
     icao24: "a1",
     callsign: "KQ100",
@@ -383,15 +384,12 @@ const FLIGHTS: FlightData[] = [
   },
 ];
 
-/**
- * Stubbed rather than left to fail, because the loading and error states render
- * no rows at all and every assertion about flights is about rows.
- */
+/** Four rows, from the worker. `data/flights` has 15, so the two are told apart. */
 const stubWorker = async (searchParams = ""): Promise<HTMLElement> => {
   globalThis.fetch = (async () =>
     ({
       ok: true,
-      json: async () => ({ timestamp: 0, total: FLIGHTS.length, flights: FLIGHTS }),
+      json: async () => ({ timestamp: 0, total: ROWS.length, flights: ROWS }),
     }) as unknown as Response) as typeof fetch;
   const container = mount(view("flights"), searchParams);
   await act(async () => {});
@@ -565,5 +563,37 @@ describe("visibleBy", () => {
     const source = [...rows];
     expect(visibleBy(source, of, [])).not.toBe(source);
     expect(visibleBy(source, of, [])).toEqual(source);
+  });
+});
+
+describe("when the flights worker is down", () => {
+  const stubFailure = async (searchParams = ""): Promise<HTMLElement> => {
+    globalThis.fetch = (async () => {
+      throw new Error("ECONNREFUSED");
+    }) as unknown as typeof fetch;
+    const container = mount(view("flights"), searchParams);
+    await act(async () => {});
+    return container;
+  };
+
+  const text = (root: ParentNode): string => root.textContent ?? "";
+
+  test("the table draws the records instead of emptying", async () => {
+    const container = await stubFailure();
+    expect(rows(container)).toBe(FLIGHTS.length);
+  });
+
+  test("it says the flights are not live", async () => {
+    // Both halves. Drawing records hides the outage, and dropping the outage
+    // means an operator cannot tell "no traffic" from "no data".
+    const container = await stubFailure();
+    expect(text(container)).toContain("unreachable");
+    expect(text(container)).toContain("not live");
+  });
+
+  test("the worker wins when it answers", async () => {
+    const container = await stubWorker();
+    expect(rows(container)).toBe(ROWS.length);
+    expect(text(container)).not.toContain("not live");
   });
 });

@@ -39,4 +39,4 @@ export const CHIP = "rounded border border-line bg-surface-raised text-xs text-i
 export const CHIP_ACTIVE = "rounded border border-accent/40 bg-accent/15 text-xs text-accent";
 
 /** The floating surface: the shell's raised one, with a shadow to lift it. */
-export const SURFACE = "rounded-lg border border-line bg-surface-raised shadow-lg shadow-black/10";
+export const SURFACE = "rounded-lg border border-line bg-surface-raised shadow-lg shadow-elevation";

@@ -8,20 +8,10 @@ import { toggleValue } from "../ui/controls";
 /**
  * Filter state, in the query string.
  *
- * A filter is the one piece of a panel's state that an operator needs twice: once
- * while looking at the list, and once after they have sent the link to somebody
- * else. In `useState` the second copy is not available, so the conversation turns
- * into "which severity was that" and somebody reads the counts aloud.
- *
- * The shell already keeps its own state here — which view is open, which panel
- * is wide, whether it is dark — and this is the same decision made for the same
- * reason. `NuqsAdapter` is in `providers.tsx` and `syncUrl` is already on, so
- * this is the mechanism the console was already using, applied to the state that
- * had been left out of it.
- *
- * This file is not a view and lives outside `panels/` for the reason
- * `state/store.ts` gives. What is here is the mechanism; which groups a view
- * filters on, and what it calls them, belongs to that view's own module.
+ * The shell already puts its own state there — which view is open, which panel is
+ * wide, whether it is dark — so this is the same mechanism applied to the state
+ * that had been left out of it. Which groups a view filters on belongs to that
+ * view's own module.
  */
 
 /** The groups a view has in force, and the two things you can do to them. */
@@ -44,14 +34,9 @@ const groups = parseAsArrayOf(parseAsString).withDefault([]);
  * rows by "kind". A shared `?kind=` would carry the satellite view's `weather`
  * into the conflicts view, match no incident, and show an empty list with no
  * chip pressed: a filter the operator did not set and cannot see to clear.
- * Naming the key after the view means the URL also says which list it describes.
  *
- * Empty clears the key rather than writing `?alerts=`, so an unfiltered console
- * has the URL it had before anything was filtered. History is left at nuqs'
- * default of `replace`, which is what the shell's own state does: a chip press
- * is not somewhere to navigate back to, and the console keeps one history entry
- * for the page rather than one per press. The URL is an address to send, not a
- * trail through what was pressed.
+ * Empty clears the key rather than writing `?alerts=`. History stays at nuqs'
+ * default of `replace`: a chip press is not somewhere to navigate back to.
  */
 export function useFilterParam(name: string): FilterParam {
   const [selected, setSelected] = useQueryState(name, groups);

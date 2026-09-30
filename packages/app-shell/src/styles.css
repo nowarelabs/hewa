@@ -28,6 +28,7 @@
   --shell-accent: #1a365d;
   --shell-accent-hover: #234a7d;
   --shell-accent-ink: #ffffff;
+  --shell-elevation: rgb(10 15 26 / 0.12);
 }
 
 .dark {
@@ -45,6 +46,7 @@
   --shell-accent: #3b82f6;
   --shell-accent-hover: #60a5fa;
   --shell-accent-ink: #0a0f1a;
+  --shell-elevation: rgb(0 0 0 / 0.55);
 }
 
 @theme inline {
@@ -60,6 +62,12 @@
   --color-accent: var(--shell-accent);
   --color-accent-hover: var(--shell-accent-hover);
   --color-accent-ink: var(--shell-accent-ink);
+  /*
+   * The colour a raised surface casts its shadow in. A Tailwind shadow with no
+   * colour of its own is black in both themes, which is a shadow you cannot see
+   * on a dark surface, so the elevation follows the theme like everything else.
+   */
+  --color-elevation: var(--shell-elevation);
 }
 
 /*

@@ -1,11 +1,12 @@
 "use client";
 
 import type { ReactElement } from "react";
-import { RefreshCw, Satellite } from "lucide-react";
+import { RefreshCw, Satellite as SatelliteIcon } from "lucide-react";
 
 import type { PanelProps } from "@hewa/app-shell";
 import { CardList, Empty, Panel, SummaryBar, summaryCounts, visibleBy } from "../ui/primitives";
 import { useFilterParam } from "../state/filter";
+import { KINDS, SATELLITES, type Satellite, type SatelliteKind } from "../data/satellites";
 import { createTickingStore, useStore } from "../state/store";
 
 /**
@@ -16,80 +17,19 @@ import { createTickingStore, useStore } from "../state/store";
  * column lists it, and the right column describes the selection.
  */
 
-type SatelliteKind = "reconnaissance" | "weather" | "communication" | "navigation" | "scientific";
-
-interface Satellite {
-  id: string;
-  name: string;
-  kind: SatelliteKind;
-  lat: number;
-  lng: number;
-  altitudeKm: number;
-  velocityKms: number;
-}
-
 interface Catalog {
   satellites: Satellite[];
   lastUpdate: Date;
 }
 
-const SEED: Satellite[] = [
-  {
-    id: "1",
-    name: "Landsat 8",
-    kind: "reconnaissance",
-    lat: 1.2345,
-    lng: 36.789,
-    altitudeKm: 705,
-    velocityKms: 7.5,
-  },
-  {
-    id: "2",
-    name: "Sentinel-2A",
-    kind: "reconnaissance",
-    lat: -0.5678,
-    lng: 37.456,
-    altitudeKm: 786,
-    velocityKms: 7.6,
-  },
-  {
-    id: "3",
-    name: "ISS",
-    kind: "scientific",
-    lat: 0.1234,
-    lng: 38.901,
-    altitudeKm: 408,
-    velocityKms: 7.66,
-  },
-  {
-    id: "4",
-    name: "Starlink-1234",
-    kind: "communication",
-    lat: 2.3456,
-    lng: 39.123,
-    altitudeKm: 550,
-    velocityKms: 7.5,
-  },
-  {
-    id: "5",
-    name: "GPS IIF-1",
-    kind: "navigation",
-    lat: -1.8901,
-    lng: 36.234,
-    altitudeKm: 20200,
-    velocityKms: 3.9,
-  },
-];
-
 const TICK_MS = 5000;
 
 /**
  * Placeholder catalogue. The orbital feed is not built yet, so these drift on a
- * timer to show the columns moving. Replace the whole module when the real
- * source lands; nothing else in the app reads it.
+ * timer to show the columns moving. The records they start from are in `../data/satellites`.
  */
 const CATALOG = createTickingStore<Catalog>(
-  { satellites: SEED, lastUpdate: new Date() },
+  { satellites: SATELLITES, lastUpdate: new Date() },
   TICK_MS,
   (current) => ({
     satellites: current.satellites.map((satellite) => ({
@@ -127,13 +67,6 @@ const RAIL: { id: string; label: string; kind: SatelliteKind | null }[] = [
  * the table that no chip accounts for. The bar counts the catalogue, not the
  * rail.
  */
-const KINDS: SatelliteKind[] = [
-  "reconnaissance",
-  "weather",
-  "communication",
-  "navigation",
-  "scientific",
-];
 
 const TINT: Record<SatelliteKind, string> = {
   reconnaissance: "text-purple-400 bg-purple-500/15",
@@ -184,7 +117,7 @@ export function SatelliteTable(): ReactElement {
     <div className="flex h-full flex-col bg-surface">
       <header className="flex items-center justify-between border-b border-line p-4">
         <div className="flex items-center gap-2">
-          <Satellite className="h-5 w-5 text-purple-400" />
+          <SatelliteIcon className="h-5 w-5 text-purple-400" />
           <h1 className="text-lg font-semibold text-ink">Satellite tracker</h1>
           <span className="rounded bg-purple-500/15 px-2 py-0.5 text-xs text-purple-400">
             {satellites.length} satellites

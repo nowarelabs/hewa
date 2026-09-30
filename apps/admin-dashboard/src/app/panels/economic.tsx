@@ -16,6 +16,7 @@ import {
 } from "recharts";
 
 import type { PanelProps } from "@hewa/app-shell";
+import { GDP_SERIES, INDICATORS, SECTORS } from "../data/economic";
 import { KeyValues, Panel, SummaryBar } from "../ui/primitives";
 
 /**
@@ -26,74 +27,23 @@ import { KeyValues, Panel, SummaryBar } from "../ui/primitives";
  * column lists it, and the right column describes the selection.
  */
 
-interface Indicator {
-  id: string;
-  label: string;
-  value: string;
-  caption: string;
-  tint: string;
-  trend?: "up" | "down";
+/**
+ * The colour each indicator is drawn in, keyed by the id the record carries.
+ *
+ * This used to be a `tint` field on the record, which put a Tailwind class in
+ * the data: a Tailwind class is how this app says something, not a fact about
+ * Kenya.
+ */
+const INDICATOR_TINT: Record<string, string> = {
+  fx: "text-green-400",
+  cpi: "text-red-400",
+  gdp: "text-blue-400",
+  jobs: "text-orange-400",
+};
+
+function tintFor(indicator: { id: string }): string {
+  return INDICATOR_TINT[indicator.id] ?? "text-ink";
 }
-
-const KES_PER_USD = 153.25;
-const KES_CHANGE = 0.15;
-const INFLATION = 6.8;
-const GDP_GROWTH = 5.1;
-const UNEMPLOYMENT = 12.8;
-
-const INDICATORS: Indicator[] = [
-  {
-    id: "fx",
-    label: "KES/USD",
-    value: KES_PER_USD.toFixed(2),
-    caption: `+${KES_CHANGE}%`,
-    tint: "text-green-400",
-    trend: "up",
-  },
-  {
-    id: "cpi",
-    label: "Inflation",
-    value: `${INFLATION}%`,
-    caption: "Year over year",
-    tint: "text-red-400",
-    trend: "down",
-  },
-  {
-    id: "gdp",
-    label: "GDP growth",
-    value: `${GDP_GROWTH}%`,
-    caption: "Q4 2025",
-    tint: "text-blue-400",
-  },
-  {
-    id: "jobs",
-    label: "Unemployment",
-    value: `${UNEMPLOYMENT}%`,
-    caption: "National rate",
-    tint: "text-orange-400",
-  },
-];
-
-const GDP_SERIES = [
-  { month: "Jan", value: 9.2 },
-  { month: "Feb", value: 9.5 },
-  { month: "Mar", value: 9.8 },
-  { month: "Apr", value: 10.1 },
-  { month: "May", value: 10.4 },
-  { month: "Jun", value: 10.2 },
-  { month: "Jul", value: 10.5 },
-  { month: "Aug", value: 10.8 },
-  { month: "Sep", value: 11.0 },
-  { month: "Oct", value: 11.2 },
-  { month: "Nov", value: 11.5 },
-  { month: "Dec", value: 11.8 },
-];
-
-const SECTORS = [
-  { name: "Agriculture", value: 35 },
-  { name: "Services", value: 45 },
-  { name: "Industry", value: 20 },
-];
 
 const SECTOR_COLOURS = ["#3b82f6", "#22c55e", "#f59e0b"];
 
@@ -164,7 +114,7 @@ export function EconomicIndicators(): ReactElement {
         items={INDICATORS.map((indicator) => ({
           label: indicator.label,
           value: indicator.value,
-          tint: `border-line bg-surface-raised ${indicator.tint}`,
+          tint: `border-line bg-surface-raised ${tintFor(indicator)}`,
         }))}
       />
 
@@ -177,7 +127,7 @@ export function EconomicIndicators(): ReactElement {
             >
               <div className="mb-2 flex items-center justify-between">
                 <span className="text-xs text-ink-muted">{indicator.label}</span>
-                <span className={indicator.tint}>
+                <span className={tintFor(indicator)}>
                   {indicator.id === "fx" ? (
                     <DollarSign className="h-4 w-4" />
                   ) : indicator.id === "gdp" ? (
@@ -188,7 +138,7 @@ export function EconomicIndicators(): ReactElement {
                 </span>
               </div>
               <p className="text-xl font-bold text-ink">{indicator.value}</p>
-              <p className={`mt-1 flex items-center gap-1 text-xs ${indicator.tint}`}>
+              <p className={`mt-1 flex items-center gap-1 text-xs ${tintFor(indicator)}`}>
                 {indicator.trend === "up" ? (
                   <TrendingUp className="h-3 w-3" />
                 ) : indicator.trend === "down" ? (

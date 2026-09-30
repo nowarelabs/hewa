@@ -28,6 +28,7 @@ object.
 ```
 src/app/shell.config.tsx   every view, rail item, panel and status line, as data
 src/app/panels/            one module per view, named after its view id
+src/app/data/              one module per view: its records, and nothing else
 src/app/ui/                the panel shapes every view shares
 src/app/state/             the store two panels of one view agree through
 src/app/App.tsx            <AppShell config={config} />
@@ -42,9 +43,9 @@ has no view, or the two names drift apart.
 
 `ui/primitives.tsx` and `state/store.ts` are not views and are not in `panels/`
 for that reason. State a single view owns stays in that view's module: the
-satellite catalogue is in `panels/satellites.tsx` and the selected channel in
-`panels/streams.tsx`, because both exist to keep two panels of one view in step.
-What is in `state/` is the mechanism, not the data.
+ticking satellite catalogue is in `panels/satellites.tsx` and the selected
+channel in `panels/streams.tsx`, because both exist to keep two panels of one
+view in step. What is in `state/` is the mechanism, not the data.
 
 ## The bar under the title
 
@@ -267,7 +268,23 @@ React's state alone — which reads as a search field that types without filteri
 
 ## Data
 
-Everything except the flights feed is placeholder data, held in the panel
-module that renders it. The flights feed is the only real one: `useFlights`
-polls a local OpenSky mirror, whose URL comes from
-`NEXT_PUBLIC_FLIGHTS_WORKER_URL`.
+`data/` holds the records, one module per view and named after it. A panel
+takes its rows from one named import: `import { ALERTS } from "../data/alerts"`.
+
+```
+src/app/data/alerts.ts      ALERTS, SEVERITIES, Alert, Severity, Category
+src/app/data/conflicts.ts   INCIDENTS, INCIDENT_KINDS, Incident, IncidentKind
+src/app/data/osint.ts       REPORTS, REPORT_CATEGORIES, Report, Category
+src/app/data/satellites.ts  SATELLITES, KINDS, Satellite, SatelliteKind
+src/app/data/streams.ts     STREAMS, Stream
+src/app/data/economic.ts    INDICATORS, GDP_SERIES, SECTORS, Indicator
+src/app/data/flights.ts     FLIGHTS, CARRIERS, airlineFor, flightsFor
+```
+
+A record carries what is true, not how it is drawn: colours, icons and rails stay
+in the panel that draws them, and state stays in the panel that owns it.
+`tests/tokens.test.ts` fails if a colour utility appears in `data/`.
+
+The flights view has a worker behind it, over `NEXT_PUBLIC_FLIGHTS_WORKER_URL`.
+The panel uses its rows when it can reach it and `data/flights.ts` when it cannot,
+saying which on screen.
