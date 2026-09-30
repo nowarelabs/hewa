@@ -259,7 +259,10 @@ export function AlertDetailsPanel(): ReactElement {
             { label: "Title", value: first.title },
             { label: "County", value: first.county },
             { label: "Severity", value: first.severity },
-            { label: "Raised", value: new Date(first.raisedAt).toLocaleString() },
+            {
+              label: "Raised",
+              value: new Date(first.raisedAt).toLocaleString(),
+            },
           ]}
         />
       )}

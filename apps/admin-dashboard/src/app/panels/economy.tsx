@@ -106,7 +106,10 @@ const RAIL: Record<string, { title: string; rows: { label: string; value: string
       { label: "KES/GBP", value: "195.30" },
     ],
   },
-  gdp: { title: "GDP", rows: [{ label: "Latest quarter", value: "11.8 B USD" }] },
+  gdp: {
+    title: "GDP",
+    rows: [{ label: "Latest quarter", value: "11.8 B USD" }],
+  },
   trade: { title: "Trade", rows: [{ label: "Balance", value: "-2.4 B USD" }] },
   markets: { title: "Markets", rows: [{ label: "NSE 20", value: "1,842.15" }] },
 };
@@ -128,7 +131,11 @@ export function EconomyRailPanel({ item }: PanelProps): ReactElement {
 export function EconomicIndicators(): ReactElement {
   const axis = { stroke: "#64748b", fontSize: 12 };
   const tooltip = {
-    contentStyle: { backgroundColor: "#111827", border: "1px solid #374151", borderRadius: 8 },
+    contentStyle: {
+      backgroundColor: "#111827",
+      border: "1px solid #374151",
+      borderRadius: 8,
+    },
     labelStyle: { color: "#f1f5f9" },
   };
 

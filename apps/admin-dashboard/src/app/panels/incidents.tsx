@@ -206,7 +206,10 @@ export function IncidentDetailsPanel(): ReactElement {
         <KeyValues
           rows={[
             { label: "Title", value: first.title },
-            { label: "Location", value: `${first.county} / ${first.subCounty}` },
+            {
+              label: "Location",
+              value: `${first.county} / ${first.subCounty}`,
+            },
             { label: "Severity", value: first.severity },
             { label: "Casualties", value: first.casualties },
           ]}

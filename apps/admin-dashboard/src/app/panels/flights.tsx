@@ -73,7 +73,11 @@ export function FlightListPanel({
   );
 }
 
-function toCard(flight: FlightData): { id: string; title: string; detail: ReactElement | string } {
+function toCard(flight: FlightData): {
+  id: string;
+  title: string;
+  detail: ReactElement | string;
+} {
   const status = flight.isArriving ? "Arriving" : flight.isDeparting ? "Departing" : null;
   return {
     id: flight.icao24,
