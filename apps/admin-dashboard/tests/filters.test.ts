@@ -6,7 +6,7 @@ import { NuqsTestingAdapter } from "nuqs/adapters/testing";
 import { afterEach, describe, expect, test } from "vite-plus/test";
 import { config } from "../src/app/shell.config";
 import type { FlightData } from "../src/app/hooks";
-import { airlineFor, FLIGHTS } from "../src/app/data/flights";
+import { FLIGHTS } from "../src/app/data/flights";
 import { visibleBy } from "../src/app/ui/primitives";
 
 /**

@@ -4,7 +4,7 @@ import { config } from "../src/app/shell.config";
 import { ALERTS, SEVERITIES } from "../src/app/data/alerts";
 import { INCIDENTS, INCIDENT_KINDS } from "../src/app/data/conflicts";
 import { INDICATORS, SECTORS } from "../src/app/data/economic";
-import { AIRLINE_CODES, airlineFor, CARRIERS, FLIGHTS, flightsFor } from "../src/app/data/flights";
+import { AIRLINE_CODES, airlineFor, FLIGHTS, flightsFor } from "../src/app/data/flights";
 import { REPORTS, REPORT_CATEGORIES } from "../src/app/data/osint";
 import { KINDS, SATELLITES } from "../src/app/data/satellites";
 import { STREAMS } from "../src/app/data/streams";
