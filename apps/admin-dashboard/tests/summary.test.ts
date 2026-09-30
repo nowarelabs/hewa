@@ -1,5 +1,4 @@
 import { createElement } from "react";
-import { NuqsTestingAdapter } from "nuqs/adapters/testing";
 import { describe, expect, test } from "vite-plus/test";
 import { config } from "../src/app/shell.config";
 import { summaryCounts } from "../src/app/ui/primitives";
@@ -52,49 +51,6 @@ describe("summary bars", () => {
     const html = render("alerts");
     for (const severity of ["critical", "high", "medium", "low"]) {
       expect(html).toContain(`data-summary-item="${severity}"`);
-    }
-  });
-
-  /**
-   * The morph, and the rule it is for.
-   *
-   * A summary bar is a strip of chips for a list that is grouped. Flights is
-   * also a list looked up by callsign, and putting a text field in the same
-   * strip gave the bar two jobs and no room for either — five toggles wrapping
-   * onto a second line around a field that then had to shrink. So the bar is one
-   * thing at a time: it is the summary, and asking turns it into the field.
-   *
-   * Only flights passes `search`, so the other six render no trigger at all.
-   * Asserted here rather than left to reading the component, because a bar that
-   * grew a search button it did not need is not a bug anyone would report.
-   */
-  test("the flights bar is a summary that can be asked to become the field", () => {
-    const html = render("flights");
-    expect(html).toContain("data-open-search");
-    expect(html).not.toContain('role="searchbox"');
-  });
-
-  test("a link arriving searched arrives as the field", () => {
-    // Not as the summary: a narrowed table under a bar of carrier counts is the
-    // state that makes somebody type the query again because the console looks
-    // like it forgot. `tests/filters.test.ts` drives this one through the DOM.
-    const html = renderConsole(
-      createElement(
-        NuqsTestingAdapter,
-        { searchParams: "?flightsQ=KQ" } as never,
-        createElement(config.views.flights?.main.render as never),
-      ),
-    );
-    expect(html).toContain('role="searchbox"');
-    expect(html).not.toContain("data-open-search");
-  });
-
-  test("no other bar grows a search trigger", () => {
-    for (const key of Object.keys(config.views)) {
-      if (key === "flights") {
-        continue;
-      }
-      expect(render(key), key).not.toContain("data-open-search");
     }
   });
 
@@ -159,8 +115,8 @@ describe("which bars are filters", () => {
    * there is no way to tell from reading the component whether a view that
    * should have been a filter was left as a summary.
    */
-  const FILTERS = ["alerts", "conflicts", "osint", "flights", "satellites"];
-  const SUMMARIES = ["streams", "economic"];
+  const FILTERS = ["alerts", "conflicts", "osint", "flights", "satellites", "streams"];
+  const SUMMARIES = ["economic"];
 
   for (const key of Object.keys(config.views)) {
     const shouldFilter = FILTERS.includes(key);
@@ -177,9 +133,10 @@ describe("which bars are filters", () => {
   });
 
   test("a bar that is a filter has toggles in it", () => {
-    // The other half of the rule, and the half a string cannot check: the streams
-    // view has `aria-pressed` all over it, on the channel buttons, which have
-    // nothing to do with its bar. `tests/filters.test.ts` looks inside the bar.
+    // The other half of the rule, and the half a string cannot check: it looks
+    // for a toggle *anywhere* in the main panel, so a view whose bar is a plain
+    // summary but whose own layout holds `aria-pressed` buttons would pass on the
+    // strength of them. `tests/filters.test.ts` looks inside the bar instead.
     for (const key of FILTERS) {
       expect(render(key)).toContain('aria-pressed="false"');
     }

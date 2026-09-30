@@ -11,12 +11,12 @@ import {
 import { ResponseCode } from "@hewa/response-codes";
 
 /**
- * The console's one call into central-api.
+ * The console's one call out of the browser.
  *
  * This is the boundary. Everything above it — the seven `data/` modules, the
  * panels, the summary bars — works in terms of {@link ConsolePayload} and never
- * sees a URL, a `fetch`, or a response code. Everything below it lives in a
- * service.
+ * sees a URL, a `fetch`, or a response code. Everything below it lives behind a
+ * route handler in this same app.
  *
  * It is here and not in each of the seven modules because the fetch is the same
  * fetch. Seven modules each opening their own connection to the same service to
@@ -25,14 +25,22 @@ import { ResponseCode } from "@hewa/response-codes";
  */
 
 /**
- * Where central-api is, from the browser.
+ * The app's own origin, so there is no base URL to configure.
  *
- * `NEXT_PUBLIC_` because it is inlined into the client bundle at build time, so
- * it has to be present when the app is built and not when the page is served.
- * There is no server in this app to proxy through, which is the reason central-api
- * is the one service in the workspace that enables CORS.
+ * A relative path, and this is the only reason the app is not `NEXT_PUBLIC_CENTRAL_API_URL`.
+ * That variable had to be inlined into the client bundle at build time, which put
+ * central-api's address — and, on a deploy where the token had been shipped the
+ * same way, central-api's secret — into every visitor's devtools. Asking the
+ * browser for `/api/v1/alerts` instead means it asks the origin it was loaded
+ * from, and the route handler under `app/api/v1` decides what that is worth: it
+ * reads the address and the token from the server's own environment and attaches
+ * the token on the way out. Nothing about central-api is in the bundle, so there
+ * is nothing to leak and nothing to keep in step across two deploys.
+ *
+ * The consequence worth stating is that a CORS preflight can no longer happen
+ * here at all, and central-api's own CORS policy is scoped away from `/api/v1`
+ * for the same reason.
  */
-const BASE_URL = process.env["NEXT_PUBLIC_CENTRAL_API_URL"] ?? "http://localhost:4000";
 
 /**
  * How long a view's rows may be served from cache before they are refetched.
@@ -77,21 +85,22 @@ export interface ViewState<TView extends ConsoleViewKey> {
 async function fetchView<TView extends ConsoleViewKey>(
   view: TView,
 ): Promise<ConsolePayload[TView]> {
-  const response = await fetch(`${BASE_URL}${consolePath(view)}`, {
+  const response = await fetch(consolePath(view), {
     headers: { accept: "application/json" },
   });
 
   if (!response.ok) {
-    // The status, not the body. A 500 from a service carries its own diagnostics
-    // and may carry customer data, and neither belongs in an error an operator
-    // reads in a browser.
-    throw new Error(`central-api answered ${response.status} for /console/${view}`);
+    // The status, not the body. A 500 carries its own diagnostics and may carry
+    // customer data, and neither belongs in an error an operator reads in a
+    // browser. The route handler has already made that call for anything that
+    // came off the wire; this is about this app's own failures.
+    throw new Error(`${consolePath(view)} answered ${response.status}`);
   }
 
   const payload = (await response.json()) as ConsolePayload[TView];
 
   if (payload.code !== ResponseCode.Ok) {
-    throw new Error(`central-api refused /console/${view} with code ${payload.code}`);
+    throw new Error(`${consolePath(view)} refused the request with code ${payload.code}`);
   }
 
   return payload;

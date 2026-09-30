@@ -1,21 +1,26 @@
 "use client";
 
-import type { Stream } from "@hewa/console-types";
+import type { Stream, StreamChannel } from "@hewa/console-types";
 
 import { useConsoleView, type ViewStatus } from "../state/query";
 
 /**
  * The streams view's half of the console.
  *
- * The selected channel is not here. It is per-view state that belongs to the
- * view, so it lives in `panels/streams.tsx` — see the store in `state/store.ts`
- * for why it is a module-scoped store and not a hook.
+ * The channels are the service's, and they arrive in `meta.groups` beside the
+ * rows rather than being listed in the browser. This view used to carry a hard
+ * coded list of five of them in the panel and five more in `shell.config.tsx`,
+ * which between them named two channels the service was not holding and missed
+ * four it was: the vocabulary is the service's, so a channel it stops offering
+ * goes quiet rather than becoming an empty column.
  *
- * The channels are the service's. Nothing in this view groups by them, so the
- * response's vocabulary is empty and that is honest rather than a gap.
+ * The selected channel is not here either. It used to be, in a module-scoped
+ * store the player and the info column both read, and that store is gone: the
+ * view no longer picks a channel, so nothing needs two panels to agree on one.
  */
 
 export type { Stream };
+export type { StreamChannel };
 
 /**
  * What the view knows, and how it knows it.
@@ -28,13 +33,12 @@ export type { Stream };
 export interface StreamView {
   readonly rows: readonly Stream[];
   /**
-   * Nothing in this view groups, so this is empty.
+   * The channels the service can hold, including any that have gone quiet.
    *
-   * It is still here and still typed, because a view that groups by nothing and a
-   * view that has not loaded yet both send an empty array, and only one of them
-   * means there is nothing to offer.
+   * Typed as the contract's channels rather than as strings, so a chip in the
+   * bar is looked up by a name that is known to exist.
    */
-  readonly groups: readonly string[];
+  readonly groups: readonly StreamChannel[];
   readonly status: ViewStatus;
   readonly refetch: () => void;
 }

@@ -1,62 +1,22 @@
-// @vitest-environment happy-dom
-
-import { act, createElement, type ReactElement } from "react";
-import { createRoot, type Root } from "react-dom/client";
+import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { afterEach, describe, expect, test } from "vite-plus/test";
-import {
-  ActiveFilters,
-  Dropdown,
-  FilterBar,
-  FilterToggle,
-  SearchField,
-  matchesQuery,
-  nextIndex,
-  toggleValue,
-} from "../src/app/ui/controls";
+import { describe, expect, test } from "vite-plus/test";
+import { Dropdown, FilterBar, FilterToggle, nextIndex, toggleValue } from "../src/app/ui/controls";
 
 /**
  * The controls, in the states a panel puts them in.
  *
  * Rendered to static markup on purpose. What these tests are for is the states:
- * a search field with a clear button and one without, a filter that is pressed
- * and one that is not, a dropdown that has chosen something. Those are all
- * strings, and asserting on strings is a test that cannot pass by accident when
- * a class name changes.
+ * a filter that is pressed and one that is not, a dropdown that has chosen
+ * something. Those are all strings, and asserting on strings is a test that
+ * cannot pass by accident when a class name changes.
  *
- * The exceptions are the key handling, which is behaviour rather than a state and
- * cannot be read off a string. Those mount for real; everything else here is
- * markup.
+ * Everything here is markup, so nothing in this file mounts a tree or handles a
+ * key. It used to: the search field's Escape and the dropdown's arrow keys are
+ * behaviour rather than a state, and were driven with real keyboard events. The
+ * search field is gone, and the dropdown's key handling is a view's business —
+ * it is the one control whose only interactive half is inside itself.
  */
-
-declare global {
-  var IS_REACT_ACT_ENVIRONMENT: boolean;
-}
-
-globalThis.IS_REACT_ACT_ENVIRONMENT = true;
-
-const roots: Root[] = [];
-
-afterEach(() => {
-  for (const root of roots.splice(0)) {
-    act(() => root.unmount());
-  }
-  document.body.replaceChildren();
-});
-
-const mount = (node: ReactElement): HTMLElement => {
-  const container = document.body.appendChild(document.createElement("div"));
-  const root = createRoot(container);
-  roots.push(root);
-  act(() => root.render(node));
-  return container;
-};
-
-const press = async (element: Element, key: string): Promise<void> => {
-  await act(async () => {
-    element.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true }));
-  });
-};
 
 const OPTIONS = [
   { value: "all", label: "All statuses" },
@@ -64,41 +24,6 @@ const OPTIONS = [
   { value: "degraded", label: "Degraded" },
   { value: "resolved", label: "Resolved", disabled: true },
 ];
-
-describe("matchesQuery", () => {
-  const row = ["Kenya Airways", "NBO", "Jomo Kenyatta International"];
-
-  test("an empty query keeps every row", () => {
-    expect(matchesQuery("", ...row)).toBe(true);
-  });
-
-  test("a query of nothing but spaces keeps every row", () => {
-    // A trailing space in a pasted query is the difference between a result and
-    // an empty panel, and it is not worth a special case at every call site.
-    expect(matchesQuery("   ", ...row)).toBe(true);
-  });
-
-  test("it matches any field, not just the first", () => {
-    expect(matchesQuery("nbo", ...row)).toBe(true);
-  });
-
-  test("it ignores case in both directions", () => {
-    expect(matchesQuery("KENYA", ...row)).toBe(true);
-    expect(matchesQuery("kenya", "KENYA AIRWAYS")).toBe(true);
-  });
-
-  test("it trims the query", () => {
-    expect(matchesQuery("  nbo  ", ...row)).toBe(true);
-  });
-
-  test("a query that matches nothing keeps nothing", () => {
-    expect(matchesQuery("qantas", ...row)).toBe(false);
-  });
-
-  test("a row with no fields is never a match for a real query", () => {
-    expect(matchesQuery("nbo")).toBe(false);
-  });
-});
 
 describe("toggleValue", () => {
   test("it adds a value that is not there", () => {
@@ -160,130 +85,6 @@ describe("nextIndex", () => {
   });
 });
 
-describe("SearchField", () => {
-  const render = (props: Parameters<typeof SearchField>[0]): string =>
-    renderToStaticMarkup(createElement(SearchField, props));
-
-  test("an empty field shows its placeholder and offers nothing to clear", () => {
-    const html = render({ value: "", onChange: () => {} });
-    expect(html).toContain('placeholder="Search"');
-    expect(html).not.toContain("Clear search");
-  });
-
-  test("a field with something in it offers to clear it", () => {
-    const html = render({ value: "nbo", onChange: () => {} });
-    expect(html).toContain('value="nbo"');
-    expect(html).toContain('aria-label="Clear search"');
-  });
-
-  test("it is a search landmark wrapping a searchbox", () => {
-    const html = render({ value: "", onChange: () => {} });
-    expect(html).toContain('role="search"');
-    expect(html).toContain('role="searchbox"');
-  });
-
-  test("it is always labelled, even when no label was passed", () => {
-    // An unlabelled searchbox is announced as "edit text" by every reader, which
-    // is why the default falls back to the placeholder rather than nothing.
-    const html = render({ value: "", onChange: () => {} });
-    expect(html).toContain("sr-only");
-    expect(html).toMatch(/<label[^>]*>Search<\/label>/);
-  });
-
-  test("a passed label replaces the placeholder in the label", () => {
-    const html = render({
-      value: "",
-      onChange: () => {},
-      label: "Search flights",
-      placeholder: "Callsign",
-    });
-    expect(html).toMatch(/<label[^>]*>Search flights<\/label>/);
-  });
-
-  test("a hint shows beside the field with nothing typed", () => {
-    const html = render({ value: "", onChange: () => {}, hint: "12 results" });
-    expect(html).toContain("12 results");
-  });
-
-  test("a hint survives a query, which is when it matters most", () => {
-    // "No matches" is the hint that matters, and it only ever appears next to a
-    // query, so a hint that vanished with the clear button would never be seen.
-    const html = render({ value: "zzz", onChange: () => {}, hint: "No matches" });
-    expect(html).toContain("No matches");
-  });
-
-  test("a disabled field is disabled", () => {
-    expect(render({ value: "", onChange: () => {}, disabled: true })).toContain("disabled");
-  });
-
-  /**
-   * Escape is the one key every search box is expected to answer to, and it has
-   * two meanings. On a field that stays on screen it clears the text. On a field
-   * the summary bar morphs *into*, "stop searching" means clearing and
-   * unmounting, and only the caller knows how to put the bar back.
-   */
-  describe("escape", () => {
-    const field = (container: HTMLElement): HTMLInputElement =>
-      container.querySelector<HTMLInputElement>('[role="searchbox"]') as HTMLInputElement;
-
-    test("with nothing to clear and nowhere to go, it does nothing", async () => {
-      const cleared: string[] = [];
-      const container = mount(
-        createElement(SearchField, { value: "", onChange: (v: string) => cleared.push(v) }),
-      );
-      await press(field(container), "Escape");
-      expect(cleared).toEqual([]);
-    });
-
-    test("a field that stays clears itself", async () => {
-      const cleared: string[] = [];
-      const container = mount(
-        createElement(SearchField, { value: "KQ", onChange: (v: string) => cleared.push(v) }),
-      );
-      await press(field(container), "Escape");
-      expect(cleared).toEqual([""]);
-    });
-
-    test("a field the bar morphs into hands Escape to the caller", async () => {
-      // The caller clears *and* unmounts, so it must not be told to clear as
-      // well: a field that clears itself and is then unmounted is one write to a
-      // query key for a view nobody is looking at.
-      const cleared: string[] = [];
-      let escaped = 0;
-      const container = mount(
-        createElement(SearchField, {
-          value: "KQ",
-          onChange: (v: string) => cleared.push(v),
-          onEscape: () => {
-            escaped += 1;
-          },
-        }),
-      );
-      await press(field(container), "Escape");
-      expect(escaped).toBe(1);
-      expect(cleared).toEqual([]);
-    });
-
-    test("an empty field still hands Escape over, because closing is not clearing", async () => {
-      // The summary bar's close button and Escape must behave the same way, or
-      // Escape does nothing on an empty field and the bar cannot be dismissed
-      // from the keyboard — the one case where somebody opened it and is done.
-      let escaped = 0;
-      const container = mount(
-        createElement(SearchField, {
-          value: "",
-          onChange: () => {},
-          onEscape: () => {
-            escaped += 1;
-          },
-        }),
-      );
-      await press(field(container), "Escape");
-      expect(escaped).toBe(1);
-    });
-  });
-});
-
 describe("FilterToggle", () => {
   const render = (props: Parameters<typeof FilterToggle>[0]): string =>
     renderToStaticMarkup(createElement(FilterToggle, props));
@@ -330,29 +131,6 @@ describe("FilterBar", () => {
     );
     expect(html).toContain('role="group"');
     expect(html).toContain('aria-label="Filter by status"');
-  });
-});
-
-describe("ActiveFilters", () => {
-  const render = (items: readonly { id: string; label: string }[]): string =>
-    renderToStaticMarkup(
-      createElement(ActiveFilters, { items, onRemove: () => {}, onClearAll: () => {} }),
-    );
-
-  test("no filters in force is no chips and no clear-all", () => {
-    // Rendering an empty "clear all" button is a control that does nothing.
-    const html = render([]);
-    expect(html).toBe("");
-  });
-
-  test("each filter in force is named and removable", () => {
-    const html = render([
-      { id: "status", label: "Critical" },
-      { id: "carrier", label: "Kenya Airways" },
-    ]);
-    expect(html).toContain("Remove filter Critical");
-    expect(html).toContain("Remove filter Kenya Airways");
-    expect(html).toContain("Clear all");
   });
 });
 

@@ -173,14 +173,40 @@ describe("useConsoleView", () => {
     expect(view.groups).toEqual([]);
   });
 
-  test("asks central-api at the view's own path", async () => {
+  /**
+   * The URL the browser sends, and the thing most likely to regress silently.
+   *
+   * It has to be a *relative* path. An absolute one to central-api would be a
+   * `NEXT_PUBLIC_` value inlined into the client bundle, which puts the service's
+   * address in every visitor's devtools and makes the token attached on the way
+   * out impossible. So the assertion is not "the right host" but "no host at
+   * all": a path with a leading `/` and nothing in front of it, which the browser
+   * resolves against the origin it was loaded from.
+   */
+  test("asks this app's own origin at the view's own path", async () => {
     serve(consoleFixtures["alerts"]);
 
     const { flush } = probe(useAlerts);
     await flush();
 
     const call = vi.mocked(fetch).mock.calls[0];
-    expect(call?.[0]).toBe("http://localhost:4000/console/alerts");
+    expect(call?.[0]).toBe("/api/v1/alerts");
+  });
+
+  test("sends no token, and no other credential, to its own origin", async () => {
+    serve(consoleFixtures["alerts"]);
+
+    const { flush } = probe(useAlerts);
+    await flush();
+
+    // A header here would be a token in a client bundle. The guard on the other
+    // side is why one is not needed: this app's route handler presents the
+    // service token from the server's environment, and the browser's request
+    // carries nothing worth forwarding.
+    const headers = new Headers(vi.mocked(fetch).mock.calls[0]?.[1]?.headers);
+    expect(headers.get("x-hewa-service-token")).toBeNull();
+    expect(headers.get("authorization")).toBeNull();
+    expect(headers.get("cookie")).toBeNull();
   });
 });
 

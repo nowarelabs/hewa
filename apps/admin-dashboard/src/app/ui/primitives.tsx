@@ -1,8 +1,5 @@
-import { useState, type ReactElement, type ReactNode } from "react";
-import { Search, X } from "lucide-react";
-import { ActiveFilters, FilterBar, FilterToggle, SearchField } from "./controls";
-import type { SearchFieldProps } from "./controls";
-import { ICON_BUTTON_SMALL } from "./tokens";
+import type { ReactElement, ReactNode } from "react";
+import { FilterBar, FilterToggle } from "./controls";
 
 /**
  * The two shapes most of this console's panels take.
@@ -190,19 +187,6 @@ export interface SummaryBarProps {
    * recorded in each view's module.
    */
   filter?: SummaryFilter;
-  /**
-   * A search field the strip turns into, for a list that is keyed by text.
-   *
-   * Not a substitute for `filter`: a search finds one of eight hundred rows and
-   * a filter says how many of everything there are. The one view that has both
-   * is flights, which is a live feed looked up by callsign.
-   *
-   * Not a second control beside the chips either. Five carrier toggles and a
-   * text field side by side is a bar with two jobs and no room for either, so
-   * the bar starts as the summary and becomes the field when asked: one thing
-   * at a time, and the filter stays on screen while you search.
-   */
-  search?: SearchFieldProps;
 }
 
 /**
@@ -216,116 +200,53 @@ export interface SummaryBarProps {
  * count, so it puts its headline figures in the same place — and passes no
  * `filter`, because a figure is not a group and a filter that hides nothing is a
  * control that lies.
+ *
+ * It used to also hold a search field that the strip turned into, on the
+ * argument that one view needed a callsign lookup and the bar could not show
+ * both at once. That view no longer searches, and the morph went with it: a
+ * summary bar that changes into a text input is a control whose meaning depends
+ * on its own state, and this bar no longer has a reason to hold that state.
  */
-export function SummaryBar({ items, filter, search }: SummaryBarProps): ReactElement | null {
-  // A link that arrives searched opens the bar in the field, or the operator is
-  // shown a narrowed table and a summary of what narrowed it, which is the state
-  // that makes somebody type the query again because the console looks like it
-  // forgot it.
-  const [hunting, setHunting] = useState(search !== undefined && search.value.trim() !== "");
-  const stop = (): void => {
-    setHunting(false);
-    search?.onChange("");
-  };
-
+export function SummaryBar({ items, filter }: SummaryBarProps): ReactElement | null {
   if (items.length === 0) {
     return null;
   }
-
-  const active =
-    filter === undefined
-      ? []
-      : items
-          .filter((item) => filter.selected.includes(item.key ?? item.label))
-          .map((item) => ({ id: item.key ?? item.label, label: item.label }));
 
   return (
     <div
       data-summary-bar=""
       data-filterable={filter === undefined ? undefined : ""}
-      data-searching={hunting ? "" : undefined}
       className="flex flex-wrap items-center gap-2 border-b border-line p-3"
     >
-      {search === undefined || !hunting ? (
-        <>
-          {filter === undefined ? (
-            items.map((item) => (
-              <span
-                key={item.label}
-                data-summary-item={item.key}
-                className={`rounded border px-2 py-1 text-xs ${
-                  item.tint ?? "border-line bg-surface-raised text-ink-muted"
-                }`}
-              >
-                {item.label}: {item.value}
-              </span>
-            ))
-          ) : (
-            <FilterBar label={filter.label} className="flex-1">
-              {items.map((item) => (
-                <FilterToggle
-                  key={item.key ?? item.label}
-                  group={item.key ?? item.label}
-                  label={item.label}
-                  // Only a count belongs on a toggle. A bar that mixes figures in
-                  // with counts is a bar that has nothing to filter on, and
-                  // `Number("NBO")` is a number with no rows behind it.
-                  count={typeof item.value === "number" ? item.value : undefined}
-                  tint={item.tint}
-                  pressed={filter.selected.includes(item.key ?? item.label)}
-                  onToggle={() => filter.onToggle(item.key ?? item.label)}
-                />
-              ))}
-            </FilterBar>
-          )}
-
-          {search === undefined ? null : (
-            <button
-              type="button"
-              data-open-search=""
-              aria-label={search.label ?? "Search"}
-              onClick={() => setHunting(true)}
-              className={`${ICON_BUTTON_SMALL} h-7 gap-1 border border-line bg-surface-raised px-2 hover:bg-surface-sunken hover:text-ink focus-visible:outline-2 focus-visible:outline-accent`}
-            >
-              <Search aria-hidden="true" className="h-3.5 w-3.5" />
-              Search
-            </button>
-          )}
-        </>
-      ) : (
-        <>
-          <div className="min-w-40 flex-1">
-            <SearchField {...search} autoFocus onEscape={stop} />
-          </div>
-
-          {/*
-           * The filter in force, not hidden behind the field.
-
-           * Search and filter compose, and a carrier filter left in force with
-           * nothing on screen to say so is how a search quietly returns nothing:
-           * "Safarilink" plus "KQ" has no flight in common, and an empty table
-           * with no chip pressed reads as no matches rather than as a filter the
-           * operator set and cannot see.
-           */}
-          {filter === undefined ? null : (
-            <ActiveFilters
-              items={active}
-              onRemove={(id) => filter.onToggle(id)}
-              onClearAll={() => active.forEach((item) => filter.onToggle(item.id))}
-              label={`Active ${filter.label.toLowerCase()}`}
-            />
-          )}
-
-          <button
-            type="button"
-            data-close-search=""
-            aria-label="Close search"
-            onClick={stop}
-            className={`${ICON_BUTTON_SMALL} h-7 w-7 border border-line bg-surface-raised hover:bg-surface-sunken hover:text-ink focus-visible:outline-2 focus-visible:outline-accent`}
+      {filter === undefined ? (
+        items.map((item) => (
+          <span
+            key={item.label}
+            data-summary-item={item.key}
+            className={`rounded border px-2 py-1 text-xs ${
+              item.tint ?? "border-line bg-surface-raised text-ink-muted"
+            }`}
           >
-            <X aria-hidden="true" className="h-3.5 w-3.5" />
-          </button>
-        </>
+            {item.label}: {item.value}
+          </span>
+        ))
+      ) : (
+        <FilterBar label={filter.label} className="flex-1">
+          {items.map((item) => (
+            <FilterToggle
+              key={item.key ?? item.label}
+              group={item.key ?? item.label}
+              label={item.label}
+              // Only a count belongs on a toggle. A bar that mixes figures in
+              // with counts is a bar that has nothing to filter on, and
+              // `Number("NBO")` is a number with no rows behind it.
+              count={typeof item.value === "number" ? item.value : undefined}
+              tint={item.tint}
+              pressed={filter.selected.includes(item.key ?? item.label)}
+              onToggle={() => filter.onToggle(item.key ?? item.label)}
+            />
+          ))}
+        </FilterBar>
       )}
     </div>
   );

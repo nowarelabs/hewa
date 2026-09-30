@@ -12,4 +12,4 @@ export { INCIDENTS, INCIDENT_KINDS } from "./conflicts.js";
 export { ECONOMY, ECONOMY_SECTIONS, GDP_SERIES, INDICATORS, SECTOR_SHARE } from "./economic.js";
 export { REPORTS, REPORT_CATEGORIES } from "./osint.js";
 export { SATELLITES, SATELLITE_KINDS } from "./satellites.js";
-export { STREAMS } from "./streams.js";
+export { STREAMS, STREAM_CHANNELS } from "./streams.js";

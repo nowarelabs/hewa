@@ -6,7 +6,7 @@ import type { Flight } from "./flights.js";
 import type { Incident, IncidentKind } from "./conflicts.js";
 import type { Report, ReportCategory } from "./osint.js";
 import type { Satellite, SatelliteKind } from "./satellites.js";
-import type { Stream } from "./streams.js";
+import type { Stream, StreamChannel } from "./streams.js";
 
 /**
  * The console's wire contract: one endpoint per view, one envelope for all of them.
@@ -73,10 +73,11 @@ export type ConsoleViewKey = (typeof CONSOLE_VIEWS)[number];
 /**
  * What each view's endpoint answers with, and the groups its bar can name.
  *
- * The two views with nothing to group by — `economic` counts figures rather than
- * rows and `streams` has no rows to break down — take `never`, so a chip built
- * from their groups is a type error rather than an empty bar that renders as if
- * the groups were still loading.
+ * `economic` is the one view that groups by nothing — it counts figures rather
+ * than rows — so it takes `never`, and a chip built from its groups is a type
+ * error rather than an empty bar that renders as if the groups were still
+ * loading. `streams` was on that list until its channels became a vocabulary in
+ * the same way `flights` carriers already were.
  */
 export interface ConsolePayload {
   readonly alerts: ConsoleEnvelope<Alert[], AlertSeverity>;
@@ -85,7 +86,7 @@ export interface ConsolePayload {
   readonly flights: ConsoleEnvelope<Flight[], string>;
   readonly osint: ConsoleEnvelope<Report[], ReportCategory>;
   readonly satellites: ConsoleEnvelope<Satellite[], SatelliteKind>;
-  readonly streams: ConsoleEnvelope<Stream[], never>;
+  readonly streams: ConsoleEnvelope<Stream[], StreamChannel>;
 }
 
 export type ConsoleData<K extends ConsoleViewKey> = ConsolePayload[K]["data"];
@@ -93,12 +94,19 @@ export type ConsoleData<K extends ConsoleViewKey> = ConsolePayload[K]["data"];
 export type ConsoleGroups<K extends ConsoleViewKey> = ConsolePayload[K]["meta"]["groups"];
 
 /**
- * Where a view's endpoint lives.
+ * Where a view's endpoint lives, on both sides of the proxy.
  *
- * Here rather than in either caller because the app builds a URL with it and the
- * service's tests assert a route against it, which is the pair that has to agree.
- * A string literal written out in both is a 404 waiting for a rename.
+ * Here rather than in either caller because the app builds a URL with it, the
+ * proxy builds its upstream URL with it, and the service's tests assert a route
+ * against it. A string literal written out in more than one of those is a 404
+ * waiting for a rename.
+ *
+ * The path is the same on both hops, and that is the point. The browser asks its
+ * own origin for `/api/v1/alerts`; the Next handler that answers it asks
+ * `CENTRAL_API_URL` for `/api/v1/alerts` and attaches the service token. So the
+ * one function describes the whole route, and the only difference between the two
+ * calls is the base URL — which the browser does not have and the server does.
  */
 export function consolePath(view: ConsoleViewKey): string {
-  return `/console/${view}`;
+  return `/api/v1/${view}`;
 }

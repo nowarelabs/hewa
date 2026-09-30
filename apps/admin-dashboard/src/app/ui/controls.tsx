@@ -2,35 +2,19 @@
 
 import { useEffect, useId, useRef, useState, type ReactElement, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { Check, ChevronDown, Search, X } from "lucide-react";
+import { Check, ChevronDown } from "lucide-react";
 import { useAnchorPosition, useDismiss, usePortal } from "./overlays";
-import { BUTTON, CHIP, CHIP_ACTIVE, ICON_BUTTON_SMALL, SURFACE } from "./tokens";
+import { BUTTON, CHIP, CHIP_ACTIVE, SURFACE } from "./tokens";
 
 /**
- * The controls that sit in a panel's own row: a search field, filters, and the
- * menu a dropdown opens.
+ * The controls that sit in a panel's own row: the filter chips and the menu a
+ * dropdown opens.
  *
  * The class strings they are built from are the shell's, declared once in
  * `./tokens` rather than here: `@hewa/app-shell` has the same button written out
  * three times already, and a fourth copy is how two panels end up looking like
  * two applications.
  */
-
-/**
- * Whether a row matches a search box.
- *
- * A `toLowerCase` substring test, and that is all it claims to be: no stemming,
- * no ranking, no typo tolerance. `trim` because a trailing space in a copied
- * query should not silently return nothing, and the empty query matches
- * everything so a caller does not have to special-case clearing the field.
- */
-export function matchesQuery(query: string, ...fields: readonly string[]): boolean {
-  const needle = query.trim().toLowerCase();
-  if (needle === "") {
-    return true;
-  }
-  return fields.some((field) => field.toLowerCase().includes(needle));
-}
 
 /** Adds a value to a list of them, or takes it out if it is already there. */
 export function toggleValue<T>(values: readonly T[], value: T): T[] {
@@ -63,120 +47,6 @@ export function nextIndex(current: number, count: number, key: string): number {
     return count - 1;
   }
   return current;
-}
-
-export interface SearchFieldProps {
-  value: string;
-  onChange: (value: string) => void;
-  /** Called on Enter. Omit it and Enter does nothing rather than submitting. */
-  onSubmit?: (value: string) => void;
-  /**
-   * Called on Escape, instead of clearing.
-   *
-   * Clearing is the right answer for a field that stays on screen, and the wrong
-   * one for a field the summary bar morphs *into*: Escape there means "stop
-   * searching", which is clearing and unmounting, and the caller is the only
-   * thing that knows how to put the bar back. Omit it and Escape clears, which is
-   * what a field on its own wants.
-   */
-  onEscape?: () => void;
-  placeholder?: string;
-  /** Announced and shown. Always labelled, labelled or not. */
-  label?: string;
-  /** Text inside the field on the right: a result count, or "No matches". */
-  hint?: ReactNode;
-  disabled?: boolean;
-  autoFocus?: boolean;
-  className?: string;
-}
-
-/**
- * A search box with a clear button and a hint slot.
- *
- * The hint is inside the field rather than beside it so that "12 results" cannot
- * wrap onto the next line and change the height of a row every other panel's
- * header is aligned with. Escape clears it, which is the one key every search
- * box is expected to answer to and the one most of them do not.
- */
-export function SearchField({
-  value,
-  onChange,
-  onSubmit,
-  onEscape,
-  placeholder = "Search",
-  label,
-  hint,
-  disabled = false,
-  autoFocus = false,
-  className = "",
-}: SearchFieldProps): ReactElement {
-  const inputId = useId();
-  const field = useRef<HTMLInputElement>(null);
-
-  return (
-    <div role="search" className={`relative min-w-0 ${className}`}>
-      <label htmlFor={inputId} className="sr-only">
-        {label ?? placeholder}
-      </label>
-      <Search
-        aria-hidden="true"
-        className="pointer-events-none absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-faint"
-      />
-      <input
-        ref={field}
-        id={inputId}
-        type="text"
-        role="searchbox"
-        value={value}
-        disabled={disabled}
-        placeholder={placeholder}
-        autoFocus={autoFocus}
-        onChange={(event) => onChange(event.target.value)}
-        onKeyDown={(event) => {
-          if (event.key === "Escape" && (value !== "" || onEscape !== undefined)) {
-            event.preventDefault();
-            if (onEscape === undefined) {
-              onChange("");
-              return;
-            }
-            onEscape();
-            return;
-          }
-          if (event.key === "Enter") {
-            onSubmit?.(value);
-          }
-        }}
-        className={`h-8 w-full rounded-md border border-line bg-surface-raised pl-8 text-sm text-ink placeholder:text-ink-faint focus-visible:outline-2 focus-visible:outline-accent disabled:pointer-events-none disabled:opacity-40 ${
-          value === "" ? "pr-2" : "pr-16"
-        }`}
-      />
-      {value === "" && hint !== undefined ? (
-        <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-xs text-ink-faint">
-          {hint}
-        </span>
-      ) : null}
-      {value === "" ? null : (
-        <>
-          {hint === undefined ? null : (
-            <span className="pointer-events-none absolute right-8 top-1/2 -translate-y-1/2 text-xs text-ink-faint">
-              {hint}
-            </span>
-          )}
-          <button
-            type="button"
-            onClick={() => {
-              onChange("");
-              field.current?.focus();
-            }}
-            aria-label="Clear search"
-            className={`${ICON_BUTTON_SMALL} absolute right-1 top-1/2 -translate-y-1/2`}
-          >
-            <X className="h-3.5 w-3.5" />
-          </button>
-        </>
-      )}
-    </div>
-  );
 }
 
 /**
@@ -260,65 +130,6 @@ export function FilterToggle({
       {label}
       {count === undefined ? null : <span className="tabular-nums">{count}</span>}
     </button>
-  );
-}
-
-export interface ActiveFiltersProps {
-  /** The filters in force, as chips the reader can take off one at a time. */
-  items: readonly { id: string; label: string }[];
-  onRemove: (id: string) => void;
-  onClearAll: () => void;
-  label?: string;
-  className?: string;
-}
-
-/**
- * The filters in force, each removable, and a way to take all of them off.
- *
- * Separate from {@link FilterBar} because it answers a different question. The
- * bar is every filter that exists; this is the two that are on, and a list of
- * every filter stays on screen after the panel it filters is closed.
- */
-export function ActiveFilters({
-  items,
-  onRemove,
-  onClearAll,
-  label = "Active filters",
-  className = "",
-}: ActiveFiltersProps): ReactElement {
-  if (items.length === 0) {
-    return <></>;
-  }
-  return (
-    <div
-      role="group"
-      aria-label={label}
-      className={`flex flex-wrap items-center gap-1 ${className}`}
-    >
-      {items.map((item) => (
-        <span
-          key={item.id}
-          className={`${CHIP_ACTIVE} inline-flex h-7 items-center gap-1 pl-2 pr-1`}
-        >
-          {item.label}
-          <button
-            type="button"
-            onClick={() => onRemove(item.id)}
-            aria-label={`Remove filter ${item.label}`}
-            className={`${ICON_BUTTON_SMALL} h-5 w-5 hover:bg-accent/20`}
-          >
-            <X className="h-3 w-3" />
-          </button>
-        </span>
-      ))}
-      <button
-        type="button"
-        onClick={onClearAll}
-        className={`${CHIP} h-7 px-2 transition-colors hover:bg-surface-sunken hover:text-ink focus-visible:outline-2 focus-visible:outline-accent`}
-      >
-        Clear all
-      </button>
-    </div>
   );
 }
 

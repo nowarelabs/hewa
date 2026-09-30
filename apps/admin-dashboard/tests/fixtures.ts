@@ -181,9 +181,11 @@ export const consoleFixtures = {
         carrier: "Unknown",
       },
     ],
-    // Four carriers named, and the last is a rail entry that does not exist:
-    // "Unknown" has a chip and no panel. Both halves of that used to be
-    // impossible at once, because the chips came from the rail.
+    // Both halves of a disagreement between the rail and the vocabulary, at
+    // once, because the chips no longer come from the rail: "Unknown" is a
+    // group with no tab, and "Fly540" is a tab with no group and no rows. The
+    // panel has to survive either — a tab the service does not offer opens the
+    // whole catalogue, and a group with no tab still gets a chip at zero.
     meta: { groups: ["Kenya Airways", "Jambojet", "Safarilink", "Unknown"] },
   },
 
@@ -243,9 +245,12 @@ export const consoleFixtures = {
   streams: {
     code: ResponseCode.Ok,
     data: [
-      { id: "t1", title: "Citizen TV Kenya", channel: "citizen", videoId: "XaAGe0YGOgI" },
-      { id: "t2", title: "KTN News Live", channel: "ktn", videoId: "dl_-tX3lCto" },
+      { id: "t1", title: "Citizen TV Kenya", channel: "citizen" },
+      { id: "t2", title: "KTN News Live", channel: "ktn" },
     ],
-    meta: { groups: [] },
+    // The channels are the service's vocabulary now, and `spice` is in it with
+    // no row: the bar and the rail are both built from these names, so a channel
+    // with no stream still has a chip and a tab that are honest about it.
+    meta: { groups: ["citizen", "ktn", "aljazeera", "skynews", "ntv", "k24", "spice", "capital"] },
   },
 } satisfies { [K in ConsoleViewKey]: ConsoleEnvelope<unknown, string> };

@@ -123,10 +123,6 @@ const url = async (container: HTMLElement): Promise<string> => {
   return written.get(container) ?? "";
 };
 
-/** The same thing parsed, for asserting on one key without depending on order. */
-const params = async (container: HTMLElement): Promise<URLSearchParams> =>
-  new URLSearchParams(await url(container));
-
 afterEach(() => {
   for (const root of roots.splice(0)) {
     act(() => root.unmount());
@@ -199,6 +195,9 @@ const FILTERS = [
   // for a filter it thought it had applied.
   { view: "osint", group: "social", field: "category" },
   { view: "satellites", group: "reconnaissance", field: "kind" },
+  // `citizen` is both a key and a label here, so this case cannot tell the two
+  // apart by accident the way the osint one can.
+  { view: "streams", group: "citizen", field: "channel" },
 ] as const;
 
 /** How many of a view's fixture rows are on `group`. */
@@ -277,9 +276,10 @@ describe("a bar that filters", () => {
   });
 
   test("a bar that is not a filter holds no toggles of its own", () => {
-    // The streams view has aria-pressed all over it, on the channel buttons.
-    // The bar is what has to be free of them.
-    for (const name of ["streams", "economic"]) {
+    // The economy view is the one left: it counts figures rather than rows, so
+    // there is nothing for a chip to filter. Asserted for the view that has the
+    // least reason to grow one.
+    for (const name of ["economic"]) {
       const container = mount(view(name));
       const bar = query(container, "[data-summary-bar]");
       expect(bar.hasAttribute("data-filterable")).toBe(false);
@@ -354,6 +354,10 @@ describe("a filter that matches nothing", () => {
   const EMPTY_CASES = [
     { view: "conflicts", group: "election", message: "No incidents match these kinds" },
     { view: "satellites", group: "weather", message: "No satellites match these kinds" },
+    // `spice` is in the vocabulary, the rail and the bar, and has no stream. The
+    // stream view used to have no vocabulary at all, so this state — a channel
+    // that is named everywhere and holds nothing — was not representable.
+    { view: "streams", group: "spice", message: "No streams match these channels" },
   ] as const;
 
   for (const { view: name, group, message } of EMPTY_CASES) {
@@ -370,52 +374,17 @@ describe("a filter that matches nothing", () => {
   }
 });
 
-const field = (container: HTMLElement): HTMLInputElement =>
-  query<HTMLInputElement>(container, '[role="searchbox"]');
-
 /** The same lookup, for asserting a thing is *not* there. */
 const maybe = <T extends Element>(root: ParentNode, selector: string): T | null =>
   root.querySelector<T>(selector);
 
-/** Asks the summary bar to become the field. */
-const open = async (container: HTMLElement): Promise<void> => {
-  await click(query(container, "[data-open-search]"));
-};
-
-const press = async (element: HTMLElement, key: string): Promise<void> => {
-  await act(async () => {
-    element.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true }));
-  });
-};
-
-const type = async (container: HTMLElement, value: string): Promise<void> => {
-  const input = field(container);
-  // The prototype's own setter, not `input.value = …`. React installs a value
-  // tracker on the element and drops the change event when the value it holds is
-  // the one it is handed, so assigning the property updates the DOM and leaves
-  // React's state where it was — which reads as a search field that types
-  // without filtering.
-  //
-  // The descriptor is retyped rather than narrowed at the use site: `value` is
-  // declared as a method in the DOM types, and a method reference is exactly
-  // what the unbound-method rule is about. The receiver is passed explicitly, so
-  // there is no unbound call here for it to warn about.
-  const descriptor = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value") as
-    | { set?: (next: string) => void }
-    | undefined;
-  await act(async () => {
-    if (descriptor?.set !== undefined) {
-      Reflect.apply(descriptor.set, input, [value]);
-    }
-    input.dispatchEvent(new Event("input", { bubbles: true }));
-  });
-};
-
 describe("the flights bar", () => {
   /**
-   * The one view with both controls, and the reason it is the one is that the
-   * two answer different questions: a carrier says how many there are, a
-   * callsign says which one you meant.
+   * The bar counts the carriers, and the table under it is what it counted.
+   *
+   * It used to also be a callsign lookup, which meant the bar had to become a
+   * text field when asked and the shared `SummaryBar` grew a second set of
+   * controls to do it. A carrier chip is the whole control now.
    */
   test("it draws the catalogue, so the counts below are about the filter", () => {
     // Without this the rest of these pass on an empty table.
@@ -423,83 +392,15 @@ describe("the flights bar", () => {
     expect(rows(container)).toBe(FLIGHT_ROWS.length);
   });
 
-  test("it starts as a summary: a chip per carrier and a way to ask for the field", () => {
-    // The bar is one thing at a time. Five carrier toggles and a text field side
-    // by side is a strip with two jobs and no room for either, so the field is
-    // not in the DOM until the bar is asked to become it.
+  test("it is a chip per carrier, with nothing in it that is not one", () => {
+    // Asserted as the absence of a second control, because that is what a bar
+    // that grew a search field again would look like: a toggle per carrier, plus
+    // a text box sharing the strip with them.
     const container = mount(view("flights"));
     for (const carrier of ["Kenya Airways", "Jambojet", "Safarilink"]) {
       expect(query(container, `[data-summary-item="${carrier}"]`)).not.toBeNull();
     }
     expect(maybe(container, '[role="searchbox"]')).toBeNull();
-    expect(query(container, "[data-open-search]")).not.toBeNull();
-  });
-
-  test("the bar becomes the field, and the chips go", async () => {
-    const container = mount(view("flights"));
-    await open(container);
-    expect(field(container)).not.toBeNull();
-    expect(maybe(container, '[data-summary-item="Safarilink"]')).toBeNull();
-    expect(query(container, "[data-searching]")).not.toBeNull();
-  });
-
-  test("closing it puts the summary back", async () => {
-    const container = mount(view("flights"));
-    await open(container);
-    await type(container, "KQ");
-    await click(query(container, "[data-close-search]"));
-    expect(maybe(container, '[role="searchbox"]')).toBeNull();
-    expect(rows(container)).toBe(FLIGHT_ROWS.length);
-    expect(query(container, '[data-summary-item="Safarilink"]')).not.toBeNull();
-  });
-
-  test("escape closes it and clears the query", async () => {
-    const container = mount(view("flights"));
-    await open(container);
-    await type(container, "KQ");
-    await press(field(container), "Escape");
-    expect(maybe(container, '[role="searchbox"]')).toBeNull();
-    expect(rows(container)).toBe(FLIGHT_ROWS.length);
-  });
-
-  test("a link that arrives searched opens the bar as the field", () => {
-    // Not as the summary: a narrowed table under a bar of carrier counts is the
-    // state that makes somebody type the query again because the console looks
-    // like it forgot.
-    const container = mount(view("flights"), "?flightsQ=KQ");
-    expect(field(container).value).toBe("KQ");
-    expect(rows(container)).toBe(
-      FLIGHT_ROWS.filter((flight) => flight.callsign === "KQ100").length,
-    );
-  });
-
-  test("a carrier filter stays visible and removable while searching", async () => {
-    // The whole reason the filter survives the morph. Safarilink and "KQ" have
-    // no flight in common, and an empty table with nothing pressed reads as "no
-    // matches" rather than as a filter the operator set and cannot see.
-    const container = mount(view("flights"));
-    await click(chip(container, "Safarilink"));
-    await open(container);
-    await type(container, "KQ");
-    expect(rows(container)).toBe(0);
-
-    const remove = query(container, '[aria-label="Remove filter Safarilink"]');
-    expect(remove).not.toBeNull();
-    await click(remove);
-    // Taking the carrier filter off leaves the search in force, so what is left
-    // is the search's answer and not the carrier's. Both halves of the bar have
-    // to survive each other; a search that also undid the filter would make the
-    // removable chip above it a lie.
-    expect(rows(container)).toBe(
-      FLIGHT_ROWS.filter((flight) => flight.callsign === "KQ100").length,
-    );
-  });
-
-  test("the field is focused when the bar becomes it", async () => {
-    // Otherwise the operator presses Search and then has to click again.
-    const container = mount(view("flights"));
-    await open(container);
-    expect(document.activeElement).toBe(field(container));
   });
 
   test("a carrier chip narrows the table", async () => {
@@ -510,109 +411,13 @@ describe("the flights bar", () => {
     );
   });
 
-  test("the search field narrows the table by callsign", async () => {
-    const container = mount(view("flights"));
-    await open(container);
-    await type(container, "KQ");
-    expect(rows(container)).toBe(
-      FLIGHT_ROWS.filter((flight) => flight.callsign === "KQ100").length,
-    );
-  });
-
-  test("a search that matches nothing says so", async () => {
-    const container = mount(view("flights"));
-    await open(container);
-    await type(container, "zzzz");
+  test("a carrier with no flights says so rather than showing an empty table", () => {
+    // A carrier the service's vocabulary names and this fixture has no flight
+    // on, so this is the filter that opens a column with nothing in it. Driven
+    // from the URL because all four of the fixture's carriers have rows.
+    const container = mount(view("flights"), "?flights=Fly540");
     expect(rows(container)).toBe(0);
-    expect(container.textContent).toContain("No flights match this carrier or search");
-  });
-
-  test("the search reports how much of the table it left", async () => {
-    // "3 of 15" is the difference between a search and a disappearance.
-    const container = mount(view("flights"));
-    await open(container);
-    await type(container, "KQ");
-    expect(field(container).value).toBe("KQ");
-    expect(container.textContent).toContain(
-      `${FLIGHT_ROWS.filter((flight) => flight.callsign === "KQ100").length} of ${FLIGHT_ROWS.length}`,
-    );
-  });
-
-  test("the two compose, and the search cannot undo the filter", async () => {
-    // Safarilink and "KQ" have no flight in common. A search that ran against
-    // the unfiltered table would report the three Kenya Airways rows, which is
-    // the one way this can be silently wrong.
-    const container = mount(view("flights"));
-    await click(chip(container, "Safarilink"));
-    await open(container);
-    await type(container, "KQ");
-    expect(rows(container)).toBe(0);
-  });
-
-  test("the filter comes back in force when the search is cleared", async () => {
-    const container = mount(view("flights"));
-    await click(chip(container, "Safarilink"));
-    await open(container);
-    await type(container, "KQ");
-    expect(rows(container)).toBe(0);
-    await type(container, "");
-    expect(rows(container)).toBe(
-      FLIGHT_ROWS.filter((flight) => flight.carrier === "Safarilink").length,
-    );
-  });
-
-  test("closing the search leaves the filter in force", async () => {
-    // The morph is about the bar's shape, not about the query string.
-    const container = mount(view("flights"));
-    await click(chip(container, "Safarilink"));
-    await open(container);
-    await type(container, "KQ");
-    await click(query(container, "[data-close-search]"));
-    expect(query(container, '[data-summary-item="Safarilink"]').getAttribute("aria-pressed")).toBe(
-      "true",
-    );
-    expect(rows(container)).toBe(
-      FLIGHT_ROWS.filter((flight) => flight.carrier === "Safarilink").length,
-    );
-  });
-});
-
-describe("the flights search in the address bar", () => {
-  test("what is typed reaches the query string", async () => {
-    const container = mount(view("flights"));
-    await open(container);
-    await type(container, "KQ");
-    expect((await params(container)).get("flightsQ")).toBe("KQ");
-  });
-
-  test("a carrier and a search are two keys, and both survive", async () => {
-    const container = mount(view("flights"));
-    await click(chip(container, "Safarilink"));
-    await open(container);
-    await type(container, "KQ");
-    expect((await params(container)).get("flights")).toBe("Safarilink");
-    expect((await params(container)).get("flightsQ")).toBe("KQ");
-  });
-
-  test("clearing the search takes its key out and leaves the carrier's", async () => {
-    const container = mount(view("flights"));
-    await click(chip(container, "Safarilink"));
-    await open(container);
-    await type(container, "KQ");
-    await type(container, "");
-    expect((await params(container)).has("flightsQ")).toBe(false);
-    expect((await params(container)).get("flights")).toBe("Safarilink");
-  });
-
-  test("a link arrives searched, with the text in the box", async () => {
-    // The field is populated from the URL and not left empty over a filtered
-    // table, which is the state that makes an operator type the same query
-    // again because the console has forgotten what they already said.
-    const container = mount(view("flights"), "?flightsQ=KQ");
-    expect(rows(container)).toBe(
-      FLIGHT_ROWS.filter((flight) => flight.callsign === "KQ100").length,
-    );
-    expect(field(container).value).toBe("KQ");
+    expect(container.textContent).toContain("No flights match this carrier");
   });
 });
 

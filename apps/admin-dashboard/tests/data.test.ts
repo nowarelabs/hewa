@@ -3,7 +3,9 @@ import { describe, expect, test } from "vite-plus/test";
 import { CONSOLE_VIEWS, consolePath, type ConsolePayload } from "@hewa/console-types";
 import { ResponseCode } from "@hewa/response-codes";
 import { config } from "../src/app/shell.config";
-import { RAIL } from "../src/app/panels/flights";
+import { FLIGHT_RAIL } from "../src/app/panels/flights";
+import { STREAM_RAIL } from "../src/app/panels/streams";
+import { consoleFixtures } from "./fixtures";
 
 /**
  * The app's side of the API boundary.
@@ -76,9 +78,17 @@ describe("the response envelope", () => {
     expect(alerts.code).toBe(ResponseCode.Ok);
   });
 
-  test("every view's path is under /console and named after itself", () => {
+  /**
+   * One path, two hops.
+   *
+   * The browser asks its own origin for `/api/v1/alerts` and the route handler
+   * asks central-api for `/api/v1/alerts`; only the base URL differs. So the
+   * function that builds it is asserted here rather than trusted in two places,
+   * and the prefix is `api/v1` because that is where the controller registers.
+   */
+  test("every view's path is under /api/v1 and named after itself", () => {
     for (const view of CONSOLE_VIEWS) {
-      expect(consolePath(view)).toBe(`/console/${view}`);
+      expect(consolePath(view)).toBe(`/api/v1/${view}`);
     }
   });
 });
@@ -86,9 +96,15 @@ describe("the response envelope", () => {
 describe("rails", () => {
   // The panel's rail is what the shell config builds from, so the two can only
   // disagree by the config importing a different list than the panel filters on.
-  test("the shell's flights rail is the panel's rail", () => {
+  test("the shell's rail is the panel's rail", () => {
+    // Asserted per view, because the drift this catches is per view: the
+    // streams rail used to be written out in `shell.config.tsx` as well as in
+    // the panel, and the two had come to name different channels.
     expect((config.views["flights"]?.rail ?? []).map((entry) => entry.id)).toEqual(
-      RAIL.map((entry) => entry.id),
+      FLIGHT_RAIL.map((entry) => entry.id),
+    );
+    expect((config.views["streams"]?.rail ?? []).map((entry) => entry.id)).toEqual(
+      STREAM_RAIL.map((entry) => entry.id),
     );
   });
 
@@ -99,9 +115,33 @@ describe("rails", () => {
   test("every flights rail entry names a carrier except the one that means all", () => {
     for (const entry of config.views["flights"]?.rail ?? []) {
       const opensOneCarrier = entry.id !== "all";
-      expect(typeof RAIL.find((candidate) => candidate.id === entry.id)?.carrier === "string").toBe(
-        opensOneCarrier,
-      );
+      expect(
+        typeof FLIGHT_RAIL.find((candidate) => candidate.id === entry.id)?.carrier === "string",
+      ).toBe(opensOneCarrier);
     }
+  });
+
+  test("every streams rail entry names a channel except the one that means all", () => {
+    for (const entry of config.views["streams"]?.rail ?? []) {
+      const opensOneChannel = entry.id !== "all";
+      expect(
+        typeof STREAM_RAIL.find((candidate) => candidate.id === entry.id)?.channel === "string",
+      ).toBe(opensOneChannel);
+    }
+  });
+  // Deliberately not asserted: that every tab's value is in `meta.groups`. The
+  // fixture models a flights feed that names `Unknown` with no tab for it and
+  // holds `Fly540` with no group for it, and both are states the panel is
+  // meant to survive — a tab the service does not offer falls back to the whole
+  // catalogue rather than opening an empty column. The duplicate hand-written
+  // rail that caused the streams drift is caught by the first test instead,
+  // which is where the fault actually was.
+  test("a group the service names but no tab opens still gets a chip", () => {
+    const groups = consoleFixtures["flights"].meta.groups;
+    const tabbed = FLIGHT_RAIL.map((entry) => entry.carrier);
+
+    expect(groups).toContain("Unknown");
+    expect(tabbed).not.toContain("Unknown");
+    expect(groups).not.toContain("all");
   });
 });

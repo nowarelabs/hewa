@@ -18,7 +18,6 @@ import {
   MapPin,
   Navigation,
   Plane,
-  Play,
   Radio,
   RefreshCw,
   Satellite,
@@ -34,10 +33,10 @@ import type { RailItem, ShellConfig, ViewSpec } from "@hewa/app-shell";
 import { AlertDetailsPanel, AlertRailPanel, AlertsFeed } from "./panels/alerts";
 import { ConflictStream, IncidentDetailsPanel, IncidentRailPanel } from "./panels/conflicts";
 import { EconomicIndicators, EconomicRailPanel } from "./panels/economic";
-import { FlightListPanel, FlightTable, RAIL } from "./panels/flights";
+import { FlightListPanel, FlightTable, FLIGHT_RAIL } from "./panels/flights";
 import { ReportDetailsPanel, ReportFeed, ReportRailPanel } from "./panels/osint";
 import { SatelliteListPanel, SatelliteTable } from "./panels/satellites";
-import { LiveStreams, StreamInfoPanel, StreamListPanel } from "./panels/streams";
+import { StreamDetailsPanel, StreamFeed, StreamRailPanel, STREAM_RAIL } from "./panels/streams";
 import { Assistant, SelectPrompt } from "./ui/primitives";
 
 /**
@@ -64,14 +63,24 @@ const noop = (): void => {};
  *
  * Written out here as well it was two lists to keep in step, and the panel
  * filters on the carrier while the rail selected an id, so a label that drifted
- * was a tab that opened an empty column.
+ * was a tab that opened an empty column. The streams view does the same thing
+ * with its channels, for the same reason and after the same drift.
  */
 function flightRail(): RailItem[] {
-  return RAIL.map((entry) => ({
+  return FLIGHT_RAIL.map((entry) => ({
     id: entry.id,
     label: entry.label,
     icon: Plane,
     panel: { title: entry.label, render: FlightListPanel },
+  }));
+}
+
+function streamRail(): RailItem[] {
+  return STREAM_RAIL.map((entry) => ({
+    id: entry.id,
+    label: entry.label,
+    icon: Radio,
+    panel: { title: entry.label, render: StreamRailPanel },
   }));
 }
 
@@ -154,47 +163,19 @@ const views: Record<string, ViewSpec> = {
     label: "Streams",
     longLabel: "Live streams",
     icon: Radio,
-    rail: [
-      {
-        id: "all",
-        label: "All streams",
-        icon: Radio,
-        panel: { title: "All streams", render: StreamListPanel },
-      },
-      {
-        id: "ktn",
-        label: "KTN News",
-        icon: Radio,
-        panel: { title: "KTN News", render: StreamListPanel },
-      },
-      {
-        id: "citizen",
-        label: "Citizen TV",
-        icon: Radio,
-        panel: { title: "Citizen TV", render: StreamListPanel },
-      },
-      {
-        id: "ntv",
-        label: "NTV Kenya",
-        icon: Radio,
-        panel: { title: "NTV Kenya", render: StreamListPanel },
-      },
-      {
-        id: "k24",
-        label: "K24",
-        icon: Radio,
-        panel: { title: "K24", render: StreamListPanel },
-      },
-    ],
-    main: { render: LiveStreams },
-    right: { title: "Stream info", render: StreamInfoPanel },
+    rail: streamRail(),
+    main: { render: StreamFeed },
+    right: { title: "Stream details", render: StreamDetailsPanel },
     assistant: {
       title: "Assistant",
       render: () => <Assistant task="Generate stream summaries and highlights." />,
     },
     status: {
-      message: "Video monitoring",
-      actions: [{ id: "play-all", label: "Play all", icon: Play, onSelect: noop }],
+      message: "Channel monitoring",
+      actions: [
+        { id: "refresh", label: "Refresh", icon: RefreshCw, onSelect: noop },
+        { id: "filter", label: "Filter", icon: Filter, onSelect: noop },
+      ],
     },
   },
 

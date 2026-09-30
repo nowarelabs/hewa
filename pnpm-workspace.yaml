@@ -59,6 +59,11 @@ catalog:
   hono: ^4
   ioredis: ^6
   kafkajs: ^2
+  # Fails a build when a module that must never reach the browser can reach it.
+  # The BFF in `apps/admin-dashboard/src/app/api/v1` reads the service token, and
+  # this is what turns "somebody imported it into a client component" into a build
+  # error instead of a credential in the client bundle.
+  server-only: ^0.0.1
   recharts: ^3.10.1
   # A DOM for the tests that need one. Scoped to the files that ask for it
   # with a `@vitest-environment` docblock, so the rest of the suite stays in

@@ -1,8 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "vite-plus/test";
-import { Test } from "@nestjs/testing";
 import type { INestApplication } from "@nestjs/common";
-import { CentralApiAppModule } from "../src/app.module.js";
-import { CentralApiErrorFilter } from "../src/common/error.filter.js";
+
+import { bootCentralApi } from "./boot.js";
 
 /**
  * Boots the real application, which is the only way to prove dependency
@@ -14,13 +13,7 @@ describe("CentralApi application", () => {
   let baseUrl: string;
 
   beforeAll(async () => {
-    const moduleRef = await Test.createTestingModule({
-      imports: [CentralApiAppModule],
-    }).compile();
-
-    app = moduleRef.createNestApplication();
-    app.useGlobalFilters(new CentralApiErrorFilter());
-    await app.listen(0);
+    app = await bootCentralApi();
     baseUrl = await app.getUrl();
   });
 

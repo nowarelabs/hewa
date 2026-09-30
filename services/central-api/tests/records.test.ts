@@ -12,7 +12,8 @@ import {
   SATELLITES,
   SATELLITE_KINDS,
   STREAMS,
-} from "../src/console/records/index.js";
+  STREAM_CHANNELS,
+} from "../src/api-v1/records/index.js";
 
 /**
  * The invariants the seed records have to hold.
@@ -225,14 +226,34 @@ describe("streams", () => {
     expect(new Set(STREAMS.map((stream) => stream.id)).size).toBe(STREAMS.length);
   });
 
-  test("channels are unique", () => {
-    expect(new Set(STREAMS.map((stream) => stream.channel)).size).toBe(STREAMS.length);
+  test("every row is on a channel the view names", () => {
+    everyRowIsGrouped(
+      STREAMS.map((stream) => stream.channel),
+      STREAM_CHANNELS,
+      "streams",
+    );
   });
 
-  test("every stream has a YouTube video id", () => {
+  test("every channel the view names is a real one", () => {
+    expect([...STREAM_CHANNELS].toSorted()).toEqual([
+      "aljazeera",
+      "capital",
+      "citizen",
+      "k24",
+      "ktn",
+      "ntv",
+      "skynews",
+      "spice",
+    ]);
+  });
+
+  test("the vocabulary has no channel twice", () => {
+    expect(new Set(STREAM_CHANNELS).size).toBe(STREAM_CHANNELS.length);
+  });
+
+  test("every stream has a title", () => {
     for (const stream of STREAMS) {
-      expect(stream.videoId, stream.id).toMatch(/^[A-Za-z0-9_-]{11}$/);
-      expect(stream.channel, stream.id).not.toBe("");
+      expect(stream.title, stream.id).not.toBe("");
     }
   });
 });

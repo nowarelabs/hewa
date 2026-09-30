@@ -1,9 +1,22 @@
 {
   "extends": "@hewa/tsconfig/next.json",
   "compilerOptions": {
+    // No `@hewa/console-types` entry, and that is deliberate. A `paths` entry
+    // pointing at a sibling's `src` is the usual way to type-check a shared
+    // package here, but it also makes *the bundler* resolve through `src`, and
+    // the two consumers of this package disagree about how a relative import is
+    // written. `central-api` runs on `nodenext`, which requires the `.js`
+    // extension; `@hewa/app-shell` had the same fight and resolved it by going
+    // extensionless, which works for it because nothing else imports it.
+    //
+    // `console-types` has both a Nest service and this app on it, so there is no
+    // spelling that satisfies `nodenext` and a bundler at once. Resolving through
+    // `node_modules` to the built `dist` is the answer that both can take, and it
+    // is the resolution the package's own `exports` was written for. The cost is
+    // that `dist` has to be current: `pnpm run build:shared` at the root, which
+    // `verify` already runs before anything here.
     "paths": {
       "@/*": ["./src/*"],
-      "@hewa/console-types": ["../../packages/console-types/src/index.ts"],
       "@hewa/response-codes": ["../../packages/response-codes/src/index.ts"],
       "@hewa/app-shell": ["../../packages/app-shell/src/index.tsx"]
     }

@@ -1,6 +1,5 @@
 "use client";
 
-import { useMemo } from "react";
 import type { ReactElement, ReactNode } from "react";
 import { Plane } from "lucide-react";
 
@@ -14,9 +13,8 @@ import {
   summaryCounts,
   visibleBy,
 } from "../ui/primitives";
-import { matchesQuery } from "../ui/controls";
 import { useFlights } from "../data/flights";
-import { useFilterParam, useSearchParam } from "../state/filter";
+import { useFilterParam } from "../state/filter";
 
 /**
  * The `flights` view: every panel the Flights tab can show.
@@ -34,7 +32,7 @@ import { useFilterParam, useSearchParam } from "../state/filter";
  * far as the bar is concerned, and it is counted, but there is no panel a rail
  * entry could open. The rail is what to click; the bar is what is there.
  */
-export const RAIL: { id: string; label: string; carrier: string | null }[] = [
+export const FLIGHT_RAIL: { id: string; label: string; carrier: string | null }[] = [
   { id: "all", label: "All flights", carrier: null },
   { id: "kenya", label: "Kenya Airways", carrier: "Kenya Airways" },
   { id: "jambo", label: "Jambojet", carrier: "Jambojet" },
@@ -58,7 +56,7 @@ export const RAIL: { id: string; label: string; carrier: string | null }[] = [
  */
 export function FlightListPanel({ item }: PanelProps): ReactElement {
   const { rows, status } = useFlights();
-  const entry = RAIL.find((candidate) => candidate.id === item) ?? RAIL[0];
+  const entry = FLIGHT_RAIL.find((candidate) => candidate.id === item) ?? FLIGHT_RAIL[0];
   const carrier = entry?.carrier ?? null;
   const shown = carrier === null ? rows : rows.filter((flight) => flight.carrier === carrier);
 
@@ -91,33 +89,23 @@ export function FlightListPanel({ item }: PanelProps): ReactElement {
 }
 
 /**
- * The main column: every flight, narrowed by carrier and looked up by text.
+ * The main column: every flight, narrowed by carrier.
  *
- * The only view that gets both controls, and the reason it is the only one is
- * that the two answer different questions about a different shape of data. A
- * carrier says how many there are; a callsign says which one you meant. The
- * other four views have a handful of rows and a category, which is one control.
+ * This view used to be the only one with a search box as well, and the bar had
+ * to become the field when asked: a carrier breakdown and a callsign lookup in
+ * one strip, one at a time, with the other kept alive behind the swap. That
+ * arrangement existed for the one view it was needed by, and it cost the shared
+ * `SummaryBar` a state machine, a second set of controls and a second copy of
+ * the filters so that a list of five chips could be turned into a text input.
  *
- * They are not both on screen. `SummaryBar` morphs: the bar is the carrier
- * breakdown, and asking turns it into the field with the filters it already has
- * still in force and still removable. Five toggles and a text field in one strip
- * is a bar with two jobs and no room for either.
+ * The carrier filter is the one control, and it acts: the bar counts what
+ * pressing a chip leaves, and the table beneath it is what it counted. A callsign
+ * is a field in the table, and the rows are the list to look a name up in.
  */
 export function FlightTable(): ReactElement {
   const { rows, groups, status } = useFlights();
   const carriers = useFilterParam("flights");
-  const search = useSearchParam("flightsQ");
-
-  const narrowed = visibleBy(rows, (flight) => flight.carrier, carriers.selected);
-  const shown = useMemo(
-    () =>
-      search.query.trim() === ""
-        ? narrowed
-        : narrowed.filter((flight) =>
-            matchesQuery(search.query, flight.callsign, flight.carrier, flight.originCountry),
-          ),
-    [narrowed, search.query],
-  );
+  const shown = visibleBy(rows, (flight) => flight.carrier, carriers.selected);
 
   return (
     <div className="flex h-full flex-col bg-surface">
@@ -134,7 +122,7 @@ export function FlightTable(): ReactElement {
           ...summaryCounts(rows, (flight) => flight.carrier, {
             keys: groups,
             label: (carrier) =>
-              RAIL.find((entry) => entry.carrier === carrier)?.label ??
+              FLIGHT_RAIL.find((entry) => entry.carrier === carrier)?.label ??
               carrier.charAt(0).toUpperCase() + carrier.slice(1),
             tint: () => "border-accent/30 bg-accent/15 text-accent",
           }),
@@ -148,13 +136,6 @@ export function FlightTable(): ReactElement {
           selected: carriers.selected,
           onToggle: carriers.toggle,
         }}
-        search={{
-          value: search.query,
-          onChange: search.set,
-          label: "Search flights by callsign, carrier or country",
-          placeholder: "Callsign, carrier, country",
-          hint: `${shown.length} of ${rows.length}`,
-        }}
       />
 
       <Body>
@@ -162,9 +143,9 @@ export function FlightTable(): ReactElement {
           <Empty>
             {emptyMessage({
               status,
-              filtered: carriers.selected.length > 0 || search.query.trim() !== "",
+              filtered: carriers.selected.length > 0,
               noun: "flights",
-              filter: "this carrier or search",
+              filter: "this carrier",
             })}
           </Empty>
         ) : (

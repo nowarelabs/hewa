@@ -51,9 +51,14 @@ describe("the console's views", () => {
 });
 
 describe("consolePath", () => {
-  test("a view's endpoint hangs off the console prefix", () => {
-    expect(consolePath("alerts")).toBe("/console/alerts");
-    expect(consolePath("streams")).toBe("/console/streams");
+  test("a view's endpoint hangs off the versioned prefix", () => {
+    // `api/v1` rather than `console`, and the reason is the two hops. The browser
+    // asks its own origin for this path and the app's route handler asks
+    // central-api for the same one, so the prefix is the app's public API and not a
+    // name for one service behind it. Renaming the prefix moves both sides because
+    // both read it here.
+    expect(consolePath("alerts")).toBe("/api/v1/alerts");
+    expect(consolePath("streams")).toBe("/api/v1/streams");
   });
 
   test("every view has a path, and no two share one", () => {
