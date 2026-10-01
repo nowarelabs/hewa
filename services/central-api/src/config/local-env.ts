@@ -4,10 +4,13 @@ import { resolve } from "node:path";
 /**
  * Read a local `.env` into `process.env`, if there is one.
  *
- * Called from `main.ts` and nowhere else, which is what keeps `loadEnv` a pure
- * function of a passed-in object: a test hands it a literal and gets a literal
- * back, and the one place that reaches for a file is the process entry point
- * where reading a file is a reasonable thing to do.
+ * Called from the two entry points — `main.ts` and `db/seed.ts` — and nowhere
+ * else, which is what keeps `loadEnv` a pure function of a passed-in object: a
+ * test hands it a literal and gets a literal back, and the two places that reach
+ * for a file are the two that a developer starts from. It is called in `seed.ts`
+ * even though `db:migrate` has already run by then, because drizzle-kit reads
+ * `.env` itself and `db:seed` does not; the asymmetry is invisible until the
+ * documented sequence of commands fails on the third one.
  *
  * ## Why this exists at all
  *

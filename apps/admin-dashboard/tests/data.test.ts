@@ -1,10 +1,18 @@
 import { readdirSync } from "node:fs";
 import { describe, expect, test } from "vite-plus/test";
-import { CONSOLE_VIEWS, consolePath, type ConsolePayload } from "@hewa/console-types";
+import {
+  ALERT_SEVERITIES,
+  CONSOLE_VIEWS,
+  MARKET_POOL_TITLES,
+  NODE_KINDS,
+  SETTLEMENT_KINDS,
+  consolePath,
+  type ConsolePayload,
+} from "@hewa/console-types";
+import { SLA_STATES } from "@hewa/marketplace-types";
 import { ResponseCode } from "@hewa/response-codes";
 import { config } from "../src/app/shell.config";
-import { FLIGHT_RAIL } from "../src/app/panels/flights";
-import { STREAM_RAIL } from "../src/app/panels/streams";
+import { MARKET_RAIL, poolFor } from "../src/app/panels/market";
 import { consoleFixtures } from "./fixtures";
 
 /**
@@ -12,15 +20,15 @@ import { consoleFixtures } from "./fixtures";
  *
  * This file used to assert things about the records: that ids were unique, that
  * a flight's heading was under 360, that a sector's share added to a hundred.
- * All of that moved to `services/central-api/tests/console.records.test.ts`,
- * with the records, because those are properties of the data and the client does
- * not get a say in them. Asserting them here would have meant importing the
- * records to check them, which is the arrangement this change exists to end.
+ * All of that moved to the service with the records, because those are properties
+ * of the data and the client does not get a say in them. Asserting them here
+ * would have meant importing the records to check them, which is the arrangement
+ * this change exists to end.
  *
  * What is left is what the app is actually responsible for: that `data/` is one
  * module per view, that those modules hold no records, that the app and the
  * service agree on what a view is, and that the rails still line up with the
- * panels that filter on them.
+ * vocabularies they select from.
  */
 
 /** `data/` is one module per view, named after it, like `panels/`. */
@@ -38,7 +46,7 @@ describe("data modules", () => {
     expect(modules).toEqual(keys);
   });
 
-  test("the app's views and the service's views are the same seven", () => {
+  test("the app's views and the service's views are the same five", () => {
     // `CONSOLE_VIEWS` is the service's list of what it will answer for. If this
     // app gains a view the service has no route for, it fails here rather than as
     // a 404 behind a panel that renders its own empty state.
@@ -94,54 +102,61 @@ describe("the response envelope", () => {
 });
 
 describe("rails", () => {
-  // The panel's rail is what the shell config builds from, so the two can only
-  // disagree by the config importing a different list than the panel filters on.
-  test("the shell's rail is the panel's rail", () => {
-    // Asserted per view, because the drift this catches is per view: the
-    // streams rail used to be written out in `shell.config.tsx` as well as in
-    // the panel, and the two had come to name different channels.
-    expect((config.views["flights"]?.rail ?? []).map((entry) => entry.id)).toEqual(
-      FLIGHT_RAIL.map((entry) => entry.id),
-    );
-    expect((config.views["streams"]?.rail ?? []).map((entry) => entry.id)).toEqual(
-      STREAM_RAIL.map((entry) => entry.id),
-    );
-  });
+  /**
+   * A rail tab and a chip both select on a group value, so the two vocabularies
+   * have to be the same list. A rail built from a hand-written copy of the kinds
+   * is a tab that opens an empty column the day a kind is renamed, and it was:
+   * the streams rail used to be written out in `shell.config.tsx` as well as in
+   * the panel, and the two had come to name different channels.
+   *
+   * Asserted against the shared vocabulary rather than a panel's export, because
+   * the vocabulary is what the service sends in `meta.groups` and what the chips
+   * are built from. Two copies of it would each pass a test that only compared
+   * them to each other.
+   */
+  const expectedRails: Record<string, readonly string[]> = {
+    infrastructure: ["all", ...NODE_KINDS],
+    settlement: ["all", ...SETTLEMENT_KINDS],
+    slas: ["all", ...SLA_STATES],
+    alerts: ["all", ...ALERT_SEVERITIES],
+    market: Object.keys(MARKET_POOL_TITLES),
+  };
 
-  // A rail entry is a tab, and the tab opens a panel that filters on the entry's
-  // carrier. Nothing in the app can check that there are flights behind it any
-  // more — the flights are the service's — but it can check that every entry
-  // names a carrier at all, and that "all" means the one entry that does not.
-  test("every flights rail entry names a carrier except the one that means all", () => {
-    for (const entry of config.views["flights"]?.rail ?? []) {
-      const opensOneCarrier = entry.id !== "all";
-      expect(
-        typeof FLIGHT_RAIL.find((candidate) => candidate.id === entry.id)?.carrier === "string",
-      ).toBe(opensOneCarrier);
+  test("every rail tab is a group the service can hold, or the one that means all", () => {
+    for (const [view, ids] of Object.entries(expectedRails)) {
+      expect((config.views[view]?.rail ?? []).map((entry) => entry.id)).toEqual(ids);
     }
   });
 
-  test("every streams rail entry names a channel except the one that means all", () => {
-    for (const entry of config.views["streams"]?.rail ?? []) {
-      const opensOneChannel = entry.id !== "all";
-      expect(
-        typeof STREAM_RAIL.find((candidate) => candidate.id === entry.id)?.channel === "string",
-      ).toBe(opensOneChannel);
+  test("the only tab that is not a group is the one that means every group", () => {
+    for (const view of ["infrastructure", "settlement", "slas", "alerts"]) {
+      const rail = config.views[view]?.rail ?? [];
+      expect(rail[0]?.id).toBe("all");
+      // `all` is not a kind, a state, a severity or a settlement kind, which is
+      // the whole reason it is spelled that way.
+      expect(consoleFixtures[view as "infrastructure"].meta.groups).not.toContain("all");
     }
   });
-  // Deliberately not asserted: that every tab's value is in `meta.groups`. The
-  // fixture models a flights feed that names `Unknown` with no tab for it and
-  // holds `Fly540` with no group for it, and both are states the panel is
-  // meant to survive — a tab the service does not offer falls back to the whole
-  // catalogue rather than opening an empty column. The duplicate hand-written
-  // rail that caused the streams drift is caught by the first test instead,
-  // which is where the fault actually was.
-  test("a group the service names but no tab opens still gets a chip", () => {
-    const groups = consoleFixtures["flights"].meta.groups;
-    const tabbed = FLIGHT_RAIL.map((entry) => entry.carrier);
 
-    expect(groups).toContain("Unknown");
-    expect(tabbed).not.toContain("Unknown");
-    expect(groups).not.toContain("all");
+  /**
+   * A pool id and a `SpotPoint.pool` have to be the same string, because the rail
+   * selection filters the series on it with no lookup between.
+   */
+  test("the market rail's ids are the pools the series carries", () => {
+    expect(MARKET_RAIL.map((entry) => entry.id)).toEqual(Object.keys(MARKET_POOL_TITLES));
+    for (const point of consoleFixtures.market.data.priceSeries) {
+      expect(MARKET_RAIL.map((entry) => entry.id)).toContain(point.pool);
+    }
+  });
+
+  /**
+   * A selection travels in the query string and outlives the vocabulary it names.
+   * An unknown pool resolves to the first one rather than to nothing, because a
+   * panel rendering empty would report a rename as an outage.
+   */
+  test("a stale pool selection falls back to a pool rather than to nothing", () => {
+    expect(poolFor("nairobi_ixp")).toBe("nairobi_ixp");
+    expect(poolFor("a_pool_that_was_renamed")).toBe(MARKET_RAIL[0]?.id);
+    expect(poolFor(null)).toBeNull();
   });
 });

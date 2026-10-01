@@ -1,6 +1,16 @@
 import { afterAll, beforeAll, describe, expect, test } from "vite-plus/test";
 import type { INestApplication } from "@nestjs/common";
-import { CONSOLE_VIEWS, consolePath, type ConsolePayload } from "@hewa/console-types";
+import {
+  ALERT_SEVERITIES,
+  CONSOLE_VIEWS,
+  consolePath,
+  NODE_KINDS,
+  SETTLEMENT_KINDS,
+  type ConsolePayload,
+  type ConsoleViewKey,
+  type MarketSection,
+} from "@hewa/console-types";
+import { SLA_STATES } from "@hewa/marketplace-types";
 import { ResponseCode } from "@hewa/response-codes";
 
 import {
@@ -43,6 +53,17 @@ describe("GET /api/v1/:view", () => {
   /** The view's own path, on the service's own origin. */
   const url = (view: (typeof CONSOLE_VIEWS)[number]): string => `${baseUrl}${consolePath(view)}`;
 
+  /**
+   * One labelled figure out of a market section.
+   *
+   * Read back out of the formatted string rather than from a typed field, because
+   * `MarketFigure.value` is pre-formatted by design — the assertion that the
+   * headline total and the section totals agree has to go through the same
+   * formatting the panel draws, or it is not testing the panel's number.
+   */
+  const figure = (section: MarketSection, label: string): string =>
+    section.figures.find((entry) => entry.label === label)?.value ?? "";
+
   test("every view answers with its envelope and no rows", async () => {
     for (const view of CONSOLE_VIEWS) {
       const response = await authorized(url(view));
@@ -68,20 +89,53 @@ describe("GET /api/v1/:view", () => {
   });
 
   test("the one ungrouped view carries an empty group vocabulary", async () => {
-    for (const view of ["economic"] as const) {
+    // `market` is the only view whose payload is a document rather than a list, so
+    // it is the only one whose bar is built from something other than its rows. The
+    // check is that it says so with `[]` — a bar that rendered four chips from an
+    // empty vocabulary would be a control invented from nothing.
+    for (const view of ["market"] as const) {
       const payload = (await (await authorized(url(view))).json()) as ConsolePayload[typeof view];
 
       expect(payload.meta.groups, `${view} groups`).toEqual([]);
     }
   });
 
-  test("the six grouped views carry a vocabulary that is not empty", async () => {
-    const grouped = ["alerts", "conflicts", "flights", "osint", "satellites", "streams"] as const;
+  test("the four grouped views carry a vocabulary that is not empty", async () => {
+    const grouped = ["infrastructure", "settlement", "slas", "alerts"] as const;
 
     for (const view of grouped) {
       const payload = (await (await authorized(url(view))).json()) as ConsolePayload[typeof view];
 
       expect(payload.meta.groups.length, `${view} has no groups`).toBeGreaterThan(0);
+    }
+  });
+
+  /**
+   * The vocabulary is the whole point of `meta.groups`, so it is asserted as a value
+   * and not as a length. A view that answered with the groups its rows happen to
+   * contain would pass a length check and fail this one — and that is the failure
+   * that produces a filter chip which appears and disappears as the data moves.
+   */
+  test("a grouped view names every group its column declares", async () => {
+    // The lists are imported rather than written out. A test that held its own
+    // copy of the four vocabularies would go on passing after one side added a
+    // group, which is the drift this is meant to catch: the service answers from
+    // its `ENUM` and the console builds its chips from the contract, and the only
+    // thing that holds them together is an assertion that compares the two.
+    const expected: Record<Exclude<ConsoleViewKey, "market">, readonly string[]> = {
+      infrastructure: NODE_KINDS,
+      settlement: SETTLEMENT_KINDS,
+      slas: SLA_STATES,
+      alerts: ALERT_SEVERITIES,
+    };
+
+    for (const [view, groups] of Object.entries(expected)) {
+      const payload = (await authorized(url(view as ConsoleViewKey))).json() as Promise<
+        ConsolePayload[Exclude<ConsoleViewKey, "market">]
+      >;
+      const resolved = await payload;
+
+      expect(resolved.meta.groups, view).toEqual(groups);
     }
   });
 
@@ -114,9 +168,219 @@ describe("GET /api/v1/:view", () => {
       expect(response.status, `${view} at /api/v1`).toBe(200);
     }
 
-    // And nothing answers at the old prefix, so a stale client gets a 404 rather
-    // than a view that silently stopped being guarded.
-    await expect(authorized(`${baseUrl}/console/alerts`)).resolves.toMatchObject({ status: 404 });
+    // And nothing answers at the prefix these views used to live under, so a stale
+    // client gets a 404 rather than a view that silently stopped being guarded.
+    for (const gone of ["conflicts", "flights", "osint", "satellites", "streams", "economic"]) {
+      await expect(
+        authorized(`${baseUrl}/api/v1/${gone}`),
+        `${gone} still answers`,
+      ).resolves.toMatchObject({ status: 404 });
+    }
+  });
+
+  /**
+   * What the database actually said.
+   *
+   * Everything above checks the *shape* of a response. This checks that the numbers
+   * in it came from rows and were derived, because the alternative failure is a
+   * service that answers a well-formed envelope full of literals — which is exactly
+   * what this service used to do, and which every shape assertion in this file would
+   * have accepted.
+   *
+   * The expected values are written out rather than recomputed from the fixture. A
+   * test that recomputed them would agree with any implementation of the same rule,
+   * including the wrong one; these are the figures of `seedRows` as a reader adds
+   * them up by hand.
+   */
+  describe("the rows it selects", () => {
+    test("the market headline is derived from the book, and matches the sections", async () => {
+      const { data } = (await (await authorized(url("market"))).json()) as ConsolePayload["market"];
+
+      // 40 + 25 + 100 + 60 + 30 + 80 + 200 + 400 + 150 + 12 + 45 + 20 committed Gbps.
+      expect(data.committedGbps).toBe(1_162);
+      expect(data.openOrders).toBe(12);
+      expect(data.currency).toBe("USD");
+
+      // 540_000 is the Mombasa corridor bid; 88_000 is the CDN edge offer. The best
+      // bid must be the *highest* of the four pools' bids and the best offer the
+      // *lowest* of their offers — swapped, the book reads as crossed.
+      expect(data.bestBid).toEqual({ amountMinor: 540_000, currency: "USD" });
+      expect(data.bestOffer).toEqual({ amountMinor: 88_000, currency: "USD" });
+
+      // And the headline is the same arithmetic as the rail beneath it, which is the
+      // reason the service has one aggregate rather than two.
+      const committed = data.sections.reduce(
+        (total, section) =>
+          total + Number(/^(\d+) Gbps$/.exec(figure(section, "Committed"))?.[1] ?? "0"),
+        0,
+      );
+      expect(committed).toBe(data.committedGbps);
+    });
+
+    test("every pool gets a section, including the ones with no orders", async () => {
+      const { data } = (await (await authorized(url("market"))).json()) as ConsolePayload["market"];
+
+      expect(data.sections.map((section) => section.id)).toEqual([
+        "nairobi_ixp",
+        "mombasa_corridor",
+        "east_africa_subsea",
+        "cdn_edge",
+      ]);
+      for (const section of data.sections) {
+        expect(section.title, section.id).toBeTruthy();
+        expect(section.figures.length, section.id).toBeGreaterThan(0);
+      }
+    });
+
+    /**
+     * The largest-remainder rule, on numbers that would fail the naive version.
+     *
+     * 225, 110, 750 and 77 of 1,162 are 19.36%, 9.47%, 64.54% and 6.63%. Rounding
+     * each independently gives 19 + 9 + 65 + 7 = 100 by luck here, so the assertion
+     * that matters is the sum, held for whatever the seed says: a pie whose slices
+     * do not fill the circle misreports its own data, and 100 is a promise the
+     * contract makes.
+     */
+    test("the venue shares are whole numbers that add up to a hundred", async () => {
+      const { data } = (await (await authorized(url("market"))).json()) as ConsolePayload["market"];
+
+      expect(data.venues.map((venue) => venue.pool).sort()).toEqual([
+        "cdn_edge",
+        "east_africa_subsea",
+        "mombasa_corridor",
+        "nairobi_ixp",
+      ]);
+      for (const venue of data.venues) {
+        expect(Number.isInteger(venue.share), `${venue.pool} share`).toBe(true);
+      }
+      expect(data.venues.reduce((points, venue) => points + venue.share, 0)).toBe(100);
+    });
+
+    test("the price series is per pool, bounded, and in time order", async () => {
+      const { data } = (await (await authorized(url("market"))).json()) as ConsolePayload["market"];
+
+      const perPool = new Map<string, number>();
+      for (const point of data.priceSeries) {
+        perPool.set(point.pool, (perPool.get(point.pool) ?? 0) + 1);
+        expect(Number.isSafeInteger(point.price.amountMinor)).toBe(true);
+      }
+
+      // 48 observations per pool, which is `SPOT_WINDOW`. The bound is the reason
+      // the query is per pool: a global limit on four pools with 48 rows each would
+      // hand all of it to whichever pools sort first.
+      expect([...perPool.values()].every((count) => count > 0)).toBe(true);
+      expect(Math.max(...perPool.values())).toBeLessThanOrEqual(48);
+
+      for (const [pool, count] of perPool) {
+        const times = data.priceSeries
+          .filter((point) => point.pool === pool)
+          .map((point) => Date.parse(point.at));
+
+        expect(count, pool).toBe(48);
+        expect(
+          [...times].sort((a, b) => a - b),
+          `${pool} is in time order`,
+        ).toEqual(times);
+      }
+    });
+
+    test("every order in the book is priced in the currency the payload declares", async () => {
+      const { data } = (await (await authorized(url("market"))).json()) as ConsolePayload["market"];
+
+      expect(data.book).toHaveLength(12);
+      for (const order of data.book) {
+        expect(order.unitPrice.currency, order.id).toBe(data.currency);
+        expect(order.submittedAt, `${order.id} has no instant`).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+      }
+    });
+
+    test("a node's availability is read as whole basis points", async () => {
+      const { data } = (await (
+        await authorized(url("infrastructure"))
+      ).json()) as ConsolePayload["infrastructure"];
+
+      expect(data.length).toBeGreaterThanOrEqual(10);
+      for (const node of data) {
+        expect(Number.isInteger(node.utilisationBps), node.id).toBe(true);
+        expect(node.utilisationBps, node.id).toBeLessThanOrEqual(10_000);
+      }
+      // The offline PoP is at 10 000, which is a stored figure rather than a
+      // computed one, and it is the row that proves utilisation came out of a column.
+      expect(data.find((node) => node.id === "nod-nbo-cdn")?.status).toBe("offline");
+    });
+
+    test("a settlement keeps its sign and its reason", async () => {
+      const { data } = (await (
+        await authorized(url("settlement"))
+      ).json()) as ConsolePayload["settlement"];
+
+      // `failed` and `reversed` are the two statuses where value did not move, and
+      // both say why. `completed` and `processing` never carry a reason: an empty
+      // string there would render as the same dash as a `null` on a line that never
+      // went wrong.
+      const stopped = new Set(["failed", "reversed"]);
+
+      expect(data.length).toBe(12);
+      for (const line of data) {
+        expect(line.fee.amountMinor, `${line.id} fee`).toBeGreaterThanOrEqual(0);
+        if (stopped.has(line.status)) {
+          expect(line.failureReason, `${line.id} is ${line.status} with no reason`).toBeTruthy();
+        } else {
+          expect(line.failureReason, `${line.id} is ${line.status} with a reason`).toBeNull();
+        }
+      }
+
+      // A payout is money going out, so its amount is negative. This is the
+      // assertion that the `bigint` column round-tripped through a JSON number with
+      // its sign intact — an unsigned read would show a payout as income.
+      const payout = data.find((line) => line.kind === "payout" && line.status === "completed");
+      expect(payout?.amount.amountMinor).toBeLessThan(0);
+    });
+
+    test("a commitment's state is the stored one, and it is the shared rule's", async () => {
+      const { data } = (await (await authorized(url("slas"))).json()) as ConsolePayload["slas"];
+
+      expect(data.length).toBeGreaterThan(0);
+      for (const monitor of data) {
+        // Recomputing here is the point: the service sends a stored value, and this
+        // says the stored value is still what the rule produces. A boundary moved in
+        // `marketplace-types` without a migration fails here rather than in a credit.
+        const shortfall = monitor.sla.targetBps - monitor.sla.actualBps;
+        const expected = shortfall === 0 ? "compliant" : shortfall < 100 ? "at_risk" : "breached";
+
+        expect(
+          monitor.state,
+          `${monitor.id} is ${monitor.sla.targetBps}/${monitor.sla.actualBps}`,
+        ).toBe(expected);
+        expect(monitor.sla.creditDenominator, `${monitor.id} has no credit rate`).toBeGreaterThan(
+          0,
+        );
+      }
+    });
+
+    test("commitments are ordered worst first", async () => {
+      const { data } = (await (await authorized(url("slas"))).json()) as ConsolePayload["slas"];
+
+      const ratios = data.map((monitor) => monitor.sla.actualBps / monitor.sla.targetBps);
+      expect(ratios).toEqual([...ratios].sort((a, b) => a - b));
+      // And the offline PoP, delivered at zero against a 9,999 target, is first.
+      expect(data[0]?.nodeId).toBe("nod-nbo-cdn");
+    });
+
+    test("alerts are ordered by severity, not alphabetically", async () => {
+      const { data } = (await (await authorized(url("alerts"))).json()) as ConsolePayload["alerts"];
+
+      const rank = { critical: 0, high: 1, medium: 2, low: 3 } as const;
+      expect(data.map((alert) => rank[alert.severity])).toEqual(
+        data.map((alert) => rank[alert.severity]).sort((a, b) => a - b),
+      );
+      expect(data[0]?.severity).toBe("critical");
+
+      for (const alert of data) {
+        expect(alert.entityLabel, alert.id).toBeTruthy();
+        expect(alert.impactedGbps, alert.id).toBeGreaterThanOrEqual(0);
+      }
+    });
   });
 
   describe("the guard", () => {

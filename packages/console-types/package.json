@@ -22,6 +22,7 @@
     "check": "vp check"
   },
   "dependencies": {
+    "@hewa/marketplace-types": "workspace:*",
     "@hewa/response-codes": "workspace:*"
   },
   "devDependencies": {

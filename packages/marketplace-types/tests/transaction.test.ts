@@ -1,14 +1,19 @@
 import { describe, expect, test } from "vite-plus/test";
 import {
+  AT_RISK_BPS,
   assertTransaction,
   assertTransition,
   canTransition,
   creditablePoints,
   hasSlaBreach,
+  isSlaState,
   isTerminal,
   money,
   slaCommitment,
+  SLA_STATES,
   slaShortfallBps,
+  slaState,
+  SLA_STATE_TITLES,
   type Transaction,
 } from "../src/index.ts";
 
@@ -46,6 +51,61 @@ describe("SLA", () => {
   test("credits a whole-point shortfall with no float tolerance", () => {
     // The case an epsilon had to paper over: exactly ten points.
     expect(creditablePoints(sla(10_000, 9_000))).toBe(10);
+  });
+});
+
+describe("slaState", () => {
+  test("is compliant when the target was met or beaten", () => {
+    expect(slaState(sla(9_995, 9_995))).toBe("compliant");
+    expect(slaState(sla(9_995, 10_000))).toBe("compliant");
+  });
+
+  test("is at risk just below the warning threshold", () => {
+    // 99.95% target, 99.90% actual: a 5 bps miss. It is not a breach, it is a
+    // line about to be one, and the chip has to say so.
+    expect(slaState(sla(9_995, 9_990))).toBe("at_risk");
+    expect(AT_RISK_BPS).toBe(100);
+  });
+
+  test("is breached from the threshold onwards, exactly", () => {
+    // One bps short of the threshold stays a warning; at it, it is a breach. As
+    // floats this boundary is the coin flip the whole representation exists to
+    // remove, so both sides of it are asserted.
+    expect(slaState(sla(9_995, 9_995 - (AT_RISK_BPS - 1)))).toBe("at_risk");
+    expect(slaState(sla(9_995, 9_995 - AT_RISK_BPS))).toBe("breached");
+  });
+
+  test("its vocabulary names every state it can return", () => {
+    // The list is handed to the console's filter bar, so a state missing from it
+    // is a state with no chip — which is the "control that is only sometimes
+    // there" this package's representation was chosen to prevent.
+    for (const state of SLA_STATES) {
+      expect(isSlaState(state), state).toBe(true);
+    }
+    for (const returned of [sla(9_995, 10_000), sla(9_995, 9_990), sla(9_995, 9_000)]) {
+      expect(SLA_STATES, slaState(returned)).toContain(slaState(returned));
+    }
+    expect(isSlaState("degraded")).toBe(false);
+  });
+
+  test("every state has a title, and the title map is keyed by the value not the name", () => {
+    // A rail tab and a filter chip read `SLA_STATE_TITLES[row.state]`. A state
+    // without an entry renders `undefined` rather than failing to compile — the
+    // map is a `Record`, so it is the *values* in `SLA_STATES` that have to be
+    // present, and that is what this asserts. The spellings are asserted because
+    // "at_risk" on a chip means the raw column value leaked into the UI, and
+    // "AT_RISK" means the label is built from the member name instead.
+    for (const state of SLA_STATES) {
+      expect(SLA_STATE_TITLES[state], state).toBeTypeOf("string");
+      expect(SLA_STATE_TITLES[state], state).not.toBe("");
+      expect(SLA_STATE_TITLES[state], state).not.toContain("_");
+    }
+    expect(Object.keys(SLA_STATE_TITLES).sort()).toEqual([...SLA_STATES].sort());
+    expect(SLA_STATE_TITLES).toEqual({
+      compliant: "Compliant",
+      at_risk: "At risk",
+      breached: "Breached",
+    });
   });
 });
 

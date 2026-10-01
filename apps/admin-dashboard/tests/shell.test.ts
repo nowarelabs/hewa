@@ -122,8 +122,8 @@ describe("the rail", () => {
   });
 
   test("presses the first item for a url naming an item the view does not have", () => {
-    // `safarilink` is a flights rail item. On alerts it resolves to `all`.
-    expect(pressed(mount("?view=alerts&item.alerts=safarilink"))).toBe(firstIn("alerts"));
+    // `ixp` is an infrastructure rail item. On alerts it resolves to `all`.
+    expect(pressed(mount("?view=alerts&item.alerts=ixp"))).toBe(firstIn("alerts"));
   });
 
   test("presses the first item when the view has nothing selected", () => {
@@ -135,24 +135,26 @@ describe("the rail", () => {
     // third button reopened on the first because the view you visited in between
     // had overwritten it.
     const container = mount("");
-    await chooseRail(container, "Safarilink");
-    expect(pressed(container)).toBe("Safarilink");
+    await chooseTab(container, "Network");
+    await chooseRail(container, "IXP");
+    expect(pressed(container)).toBe("IXP");
 
     await chooseTab(container, "Alerts");
     expect(pressed(container)).toBe(firstIn("alerts"));
 
-    await chooseTab(container, "Flights");
-    expect(pressed(container)).toBe("Safarilink");
+    await chooseTab(container, "Network");
+    expect(pressed(container)).toBe("IXP");
   });
 
   test("two views can hold two different rail items at once", async () => {
     const container = mount("");
-    await chooseRail(container, "Safarilink");
+    await chooseTab(container, "Network");
+    await chooseRail(container, "IXP");
     await chooseTab(container, "Alerts");
     await chooseRail(container, "High");
 
-    await chooseTab(container, "Flights");
-    expect(pressed(container)).toBe("Safarilink");
+    await chooseTab(container, "Network");
+    expect(pressed(container)).toBe("IXP");
 
     await chooseTab(container, "Alerts");
     expect(pressed(container)).toBe("High");
@@ -161,9 +163,9 @@ describe("the rail", () => {
   test("the url holds one key per view, so a link can reopen two of them", async () => {
     // Both selections in one link is the point of keying by view. With a single
     // `?item=` only one survives, so the link describes one view and not the other.
-    const container = mount("?view=alerts&item.alerts=high&item.flights=safarilink");
+    const container = mount("?view=alerts&item.alerts=high&item.infrastructure=ixp");
     expect(pressed(container)).toBe("High");
-    await chooseTab(container, "Flights");
-    expect(pressed(container)).toBe("Safarilink");
+    await chooseTab(container, "Network");
+    expect(pressed(container)).toBe("IXP");
   });
 });

@@ -1,12 +1,10 @@
 import type { ResponseCode } from "@hewa/response-codes";
 
 import type { Alert, AlertSeverity } from "./alerts.js";
-import type { Economy } from "./economic.js";
-import type { Flight } from "./flights.js";
-import type { Incident, IncidentKind } from "./conflicts.js";
-import type { Report, ReportCategory } from "./osint.js";
-import type { Satellite, SatelliteKind } from "./satellites.js";
-import type { Stream, StreamChannel } from "./streams.js";
+import type { BandwidthMarket } from "./market.js";
+import type { InfrastructureNode, NodeKind } from "./infrastructure.js";
+import type { SlaMonitor, SlaState } from "./slas.js";
+import type { Settlement, SettlementKind } from "./settlement.js";
 
 /**
  * The console's wire contract: one endpoint per view, one envelope for all of them.
@@ -49,7 +47,7 @@ export interface ConsoleEnvelope<TData, TGroup extends string = never> {
 }
 
 /**
- * The seven views, in the order the console's tab strip shows them.
+ * The five views, in the order the console's tab strip shows them.
  *
  * The runtime list is hand-written and the payload map below is the type, so the
  * two can drift — a view named here with no entry in `ConsolePayload` is an
@@ -58,35 +56,25 @@ export interface ConsoleEnvelope<TData, TGroup extends string = never> {
  * keys, and the service's e2e test walks this list asserting every one of them
  * routes.
  */
-export const CONSOLE_VIEWS = [
-  "alerts",
-  "conflicts",
-  "economic",
-  "flights",
-  "osint",
-  "satellites",
-  "streams",
-] as const;
+export const CONSOLE_VIEWS = ["market", "infrastructure", "settlement", "slas", "alerts"] as const;
 
 export type ConsoleViewKey = (typeof CONSOLE_VIEWS)[number];
 
 /**
  * What each view's endpoint answers with, and the groups its bar can name.
  *
- * `economic` is the one view that groups by nothing — it counts figures rather
- * than rows — so it takes `never`, and a chip built from its groups is a type
- * error rather than an empty bar that renders as if the groups were still
- * loading. `streams` was on that list until its channels became a vocabulary in
- * the same way `flights` carriers already were.
+ * `market` is the one view that groups by nothing — it counts figures and
+ * aggregates rather than filtering rows — so it takes `never`, and a chip built
+ * from its groups is a type error rather than an empty bar that renders as if the
+ * groups were still loading. The other four are lists, and each one's bar is a
+ * breakdown of the rows beneath it.
  */
 export interface ConsolePayload {
+  readonly market: ConsoleEnvelope<BandwidthMarket, never>;
+  readonly infrastructure: ConsoleEnvelope<InfrastructureNode[], NodeKind>;
+  readonly settlement: ConsoleEnvelope<Settlement[], SettlementKind>;
+  readonly slas: ConsoleEnvelope<SlaMonitor[], SlaState>;
   readonly alerts: ConsoleEnvelope<Alert[], AlertSeverity>;
-  readonly conflicts: ConsoleEnvelope<Incident[], IncidentKind>;
-  readonly economic: ConsoleEnvelope<Economy, never>;
-  readonly flights: ConsoleEnvelope<Flight[], string>;
-  readonly osint: ConsoleEnvelope<Report[], ReportCategory>;
-  readonly satellites: ConsoleEnvelope<Satellite[], SatelliteKind>;
-  readonly streams: ConsoleEnvelope<Stream[], StreamChannel>;
 }
 
 export type ConsoleData<K extends ConsoleViewKey> = ConsolePayload[K]["data"];
@@ -102,8 +90,8 @@ export type ConsoleGroups<K extends ConsoleViewKey> = ConsolePayload[K]["meta"][
  * waiting for a rename.
  *
  * The path is the same on both hops, and that is the point. The browser asks its
- * own origin for `/api/v1/alerts`; the Next handler that answers it asks
- * `CENTRAL_API_URL` for `/api/v1/alerts` and attaches the service token. So the
+ * own origin for `/api/v1/market`; the Next handler that answers it asks
+ * `CENTRAL_API_URL` for `/api/v1/market` and attaches the service token. So the
  * one function describes the whole route, and the only difference between the two
  * calls is the base URL — which the browser does not have and the server does.
  */

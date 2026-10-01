@@ -51,6 +51,26 @@ catalog:
   "@connectrpc/connect": ^2
   "@connectrpc/connect-node": ^2
 
+  # PostgreSQL
+  #
+  # `drizzle-orm` speaks to a real PostgreSQL server over `pg` in every service and
+  # to an in-process one over PGlite in the tests. Both are the same engine — PGlite
+  # is PostgreSQL compiled to WebAssembly — so the e2e suite applies the same
+  # generated SQL migrations a deploy runs, and no test needs a database server
+  # that the developer has to remember to start.
+  drizzle-orm: ^0.45.3
+  pg: ^8.23.1
+  "@electric-sql/pglite": ^0.5.8
+  # Generates the SQL migrations in `drizzle/` from `src/db/schema.ts`. A dev
+  # dependency: the migrations it writes are committed, so a consumer — a deploy,
+  # a test, the seed script — never has to run it.
+  drizzle-kit: ^0.31.11
+  # Runs the seed script and the migration tool over this workspace's TypeScript,
+  # which resolves the `.js` specifiers in the sources to the `.ts` files beside
+  # them. Node's own type stripping will not: it matches specifiers literally.
+  tsx: ^4
+  "@types/pg": ^8
+
   # Infrastructure services
   "@aws-sdk/client-s3": ^3
   bullmq: ^6
@@ -110,3 +130,7 @@ minimumReleaseAgeExclude:
   - "@voidzero-dev/vite-plus-linux-x64-musl@1.0.0"
   - "@voidzero-dev/vite-plus-win32-arm64-msvc@1.0.0"
   - "@voidzero-dev/vite-plus-win32-x64-msvc@1.0.0"
+  - pg-cloudflare@1.4.1
+  - pg-connection-string@2.14.1
+  - pg-protocol@1.16.1
+  - pg@8.23.1

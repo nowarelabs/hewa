@@ -2,25 +2,25 @@ import { Module } from "@nestjs/common";
 
 import { ServiceAuthModule } from "../service-auth.module.js";
 import { AlertsController } from "./alerts.controller.js";
+import { AlertsService } from "./alerts.service.js";
 
 /**
- * The `alerts` view: one controller, and the guard that protects it.
+ * The `alerts` view: one controller, one service, and the guard that protects them.
  *
- * `ServiceAuthModule` is imported here rather than only at the root so this
- * module is self-sufficient. A test that builds `AlertsModule` on its own still
- * gets a resolvable token provider, and the `@UseGuards` on the controller
- * cannot fail at resolution for want of one. `ServiceAuthModule` is `@Global`, so
- * importing it from seven modules still constructs it once.
+ * `ServiceAuthModule` is imported here rather than only at the root so this module is
+ * self-sufficient — a test that builds `alertsModule` on its own still gets a
+ * resolvable token provider, and the `@UseGuards` cannot fail at resolution for want
+ * of one. It is `@Global`, so importing it from five modules still constructs it
+ * once.
  *
- * There are no providers, and that is the right shape rather than a gap. The
- * records are constants, so the controller reads them directly and there is
- * nothing to inject; a provider here would be a layer whose only job was to be a
- * layer. What a view module *does* own is its own controller, so a view cannot
- * come to exist as a route with no module, or as a module whose controller was
- * added to the wrong one.
+ * Unlike the record modules this replaced, the view has a provider, because it now
+ * reads rows rather than importing a constant. That is the whole structural change:
+ * `DB` is `@Global`, so the service injects it without declaring it, and a view
+ * cannot come to exist as a route with no module behind it.
  */
 @Module({
   imports: [ServiceAuthModule],
   controllers: [AlertsController],
+  providers: [AlertsService],
 })
 export class AlertsModule {}

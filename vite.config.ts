@@ -7,8 +7,10 @@ export default defineConfig({
   fmt: {
     // buf owns the formatting of generated proto code. Templates *are* formatted
     // here, so a generated shell is born formatted and never needs a reformat
-    // commit.
-    ignorePatterns: ["packages/proto/src/gen/**"],
+    // commit. drizzle-kit owns `drizzle/meta`, which is its own snapshot of the
+    // schema and is rewritten on every `db:generate` — formatting it would commit a
+    // diff that the next generate throws away.
+    ignorePatterns: ["packages/proto/src/gen/**", "services/central-api/drizzle/meta/**"],
   },
   lint: {
     jsPlugins: [{ name: "vite-plus", specifier: "vite-plus/oxlint-plugin" }],
@@ -19,7 +21,11 @@ export default defineConfig({
       typeAware: true,
       typeCheck: true,
     },
-    ignorePatterns: ["packages/proto/src/gen/**", "tools/scaffold/templates/**"],
+    ignorePatterns: [
+      "packages/proto/src/gen/**",
+      "services/central-api/drizzle/meta/**",
+      "tools/scaffold/templates/**",
+    ],
   },
   run: {
     // Task definitions live in package.json scripts so that `pnpm run <name>`,

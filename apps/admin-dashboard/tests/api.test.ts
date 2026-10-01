@@ -125,35 +125,35 @@ describe("which paths exist", () => {
   });
 
   test("the upstream path is the one the browser used, and only the base differs", async () => {
-    await viewHandlers("conflicts").GET(get());
+    await viewHandlers("infrastructure").GET(get());
 
     // Same path, different base. That equality is the whole arrangement: the
     // service registers `consolePath`, the browser sends `consolePath`, and this
     // file builds `CENTRAL_API_URL + consolePath`. There is no second spelling.
-    expect(seen[0]?.url).toBe(`${BASE}/api/v1/conflicts`);
-    expect(seen[0]?.url.endsWith(consolePath("conflicts"))).toBe(true);
+    expect(seen[0]?.url).toBe(`${BASE}/api/v1/infrastructure`);
+    expect(seen[0]?.url.endsWith(consolePath("infrastructure"))).toBe(true);
   });
 
   test("the path comes from the contract, not from a string written out here", async () => {
     // `consolePath` is the one place the path exists, and the service's e2e test
     // asserts its routes against the same function — so a rename moves both sides
     // or fails one of them, instead of leaving a route that answers nothing.
-    expect(consolePath("osint")).toBe("/api/v1/osint");
+    expect(consolePath("slas")).toBe("/api/v1/slas");
   });
 
   test("a trailing slash on the base URL does not double up", async () => {
     process.env["CENTRAL_API_URL"] = "http://central.test/";
 
-    await viewHandlers("streams").GET(get());
+    await viewHandlers("settlement").GET(get());
 
-    expect(seen[0]?.url).toBe(`${BASE}/api/v1/streams`);
+    expect(seen[0]?.url).toBe(`${BASE}/api/v1/settlement`);
   });
 
   test("the upstream request is never a cached one", async () => {
     // A record changed in central-api would otherwise be served from a cache that
     // `fetch` on the server is free to keep, and the operator would watch their
     // own change not appear.
-    await viewHandlers("flights").GET(get());
+    await viewHandlers("market").GET(get());
 
     const [, init] = vi.mocked(fetch).mock.calls[0] ?? [];
     expect(init?.cache).toBe("no-store");
@@ -180,7 +180,7 @@ describe("what comes back", () => {
   test("the view's groups arrive, so the filter bar is not derived from the rows", async () => {
     stubService({ code: "0", data: [], meta: { groups: ["armed", "election"] } });
 
-    const response = await viewHandlers("conflicts").GET(get());
+    const response = await viewHandlers("infrastructure").GET(get());
 
     expect(await response.json()).toEqual({
       code: "0",

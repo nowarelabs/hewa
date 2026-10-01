@@ -5,9 +5,10 @@ import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { ResponseCode } from "@hewa/response-codes";
+import { MARKET_POOL_TITLES, type MarketPool } from "@hewa/console-types";
 
 import { useAlerts, type AlertView } from "../src/app/data/alerts";
-import { figuresFor, useEconomy, type EconomyView } from "../src/app/data/economic";
+import { useMarket, type MarketView } from "../src/app/data/market";
 import { emptyMessage } from "../src/app/ui/primitives";
 import { consoleFixtures } from "./fixtures";
 import { emptyQueryClient } from "./harness";
@@ -32,7 +33,7 @@ declare global {
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
-type AnyView = AlertView | EconomyView;
+type AnyView = AlertView | MarketView;
 
 /** Renders a view's hook and hands back whatever it last returned. */
 function probe<T extends AnyView>(useView: () => T): { read: () => T; flush: () => Promise<void> } {
@@ -210,28 +211,43 @@ describe("useConsoleView", () => {
   });
 });
 
-describe("useEconomy", () => {
-  test("has no figures at all before the service answers", () => {
-    // The other six views can honestly say "nothing to show" while waiting,
+describe("useMarket", () => {
+  test("has no document at all before the service answers", () => {
+    // The other four views can honestly say "nothing to show" while waiting,
     // because an empty list is what they would have been. This one cannot: its
-    // data is four shapes, and an empty economy drawn as two flat charts says
-    // the economy is flat rather than that nothing arrived.
-    const { read } = probe(useEconomy);
+    // data is one document, and an empty market drawn as a flat price line says
+    // the price is flat rather than that nothing arrived.
+    const { read } = probe(useMarket);
 
     expect(read().status).toBe("pending");
     expect(read().data).toBeUndefined();
   });
 
-  test("has the figures the service sent", async () => {
-    serve(consoleFixtures["economic"]);
+  test("has the document the service sent", async () => {
+    serve(consoleFixtures["market"]);
 
-    const { read, flush } = probe(useEconomy);
+    const { read, flush } = probe(useMarket);
     await flush();
 
     const view = read();
     expect(view.status).toBe("ready");
-    expect(view.data?.indicators).toEqual(consoleFixtures["economic"].data.indicators);
-    expect(view.data?.sections).toEqual(consoleFixtures["economic"].data.sections);
+    expect(view.data?.bestBid).toEqual(consoleFixtures["market"].data.bestBid);
+    expect(view.data?.sections).toEqual(consoleFixtures["market"].data.sections);
+    expect(view.data?.priceSeries).toEqual(consoleFixtures["market"].data.priceSeries);
+  });
+
+  test("is failed, not ready, when the document did not arrive", async () => {
+    // The distinction that matters most here. A zeroed market document is a
+    // plausible lie: no bid, no offer, nothing committed, a flat line. A panel
+    // drawing one because a request failed is reporting a market that stopped
+    // trading, which is a different and much worse claim than "we could not ask".
+    refuse(503);
+
+    const { read, flush } = probe(useMarket);
+    await flush();
+
+    expect(read().status).toBe("failed");
+    expect(read().data).toBeUndefined();
   });
 });
 
@@ -277,15 +293,43 @@ describe("emptyMessage", () => {
   });
 });
 
-describe("figuresFor", () => {
-  test("finds a rail section by id", () => {
-    expect(figuresFor(consoleFixtures["economic"].data.sections, "overview")).toEqual([
-      { label: "GDP growth", value: "5.1%" },
-    ]);
+describe("the market rail and the sections it selects", () => {
+  /**
+   * The rail picks a pool and the document holds one section per pool, so the
+   * join is the only thing between a tab and the figures it opens.
+   *
+   * Written against the fixture rather than a panel: the panel\'s job is to render
+   * whatever this returns, and the rule worth checking is that every id the rail
+   * can produce resolves to a section that names itself.
+   */
+  test("every rail id has a section whose id is the same value", () => {
+    const ids = consoleFixtures["market"].data.sections.map((section) => section.id);
+
+    for (const pool of Object.keys(MARKET_POOL_TITLES)) {
+      expect(ids).toContain(pool);
+    }
   });
 
-  test("has no figures for a section the service did not send", () => {
-    expect(figuresFor(consoleFixtures["economic"].data.sections, "trade")).toEqual([]);
-    expect(figuresFor([], "overview")).toEqual([]);
+  test("a section titles itself rather than borrowing the rail's label", () => {
+    // The two are allowed to differ — a rail tab says "Subsea" because that is
+    // what fits in an icon rail — so the payload carries the pool\'s own name and
+    // the panel renders that.
+    for (const section of consoleFixtures["market"].data.sections) {
+      // `satisfies` keeps the fixture's own literal types but does not widen them
+      // into the payload contract, so the id is `string` here and the lookup needs
+      // the pool it claims to be.
+      const pool = section.id as MarketPool;
+      expect(Object.keys(MARKET_POOL_TITLES)).toContain(pool);
+      expect(section.title).toBe(MARKET_POOL_TITLES[pool]);
+    }
+  });
+
+  test("the series names the pool it belongs to", () => {
+    // `SpotPoint.pool` rather than one series per pool: the document holds every
+    // pool\'s history and the chart draws a line per pool, so the rail selection
+    // has to be able to join against it.
+    for (const point of consoleFixtures["market"].data.priceSeries) {
+      expect(Object.keys(MARKET_POOL_TITLES)).toContain(point.pool);
+    }
   });
 });

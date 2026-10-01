@@ -297,17 +297,59 @@ export function SelectPrompt({ what }: { what: string }): ReactElement {
 }
 
 /**
- * The assistant column, which is currently a promise rather than a feature.
+ * One named analysis the assistant column can offer on a view.
  *
- * Seven files said "AI Assistant" and then one sentence about what it would do.
- * The sentence differs per view and the file did not, so the view declares the
- * sentence and this renders it.
+ * A widget is a **name and a sentence**, not a component and not a figure. The
+ * first version of this column wanted a card per view and put the card in each
+ * view's panel module, which meant the panel had to hold state the shell could
+ * not see and the shell had no way to know the column was more than a heading.
+ * Naming the analysis here keeps the column honest about what it is: it says
+ * what it would work out, and it does not pretend to have worked it out.
+ *
+ * `id` is stable because it is what a test asserts on and what a future wiring
+ * would key a result by; `name` is the heading, `summary` is the one sentence
+ * that says what the answer would be worth.
  */
-export function Assistant({ task }: { task: string }): ReactElement {
+export interface AssistantWidget {
+  readonly id: string;
+  readonly name: string;
+  readonly summary: string;
+}
+
+/**
+ * The assistant column: what this view would ask for, and nothing else.
+ *
+ * `widgets` is optional and is empty on the views with nothing to offer rather
+ * than hidden. A column that appears and disappears with the tab strip is chrome
+ * that moves, and the panel button would be answering to a layout that changes
+ * under the operator.
+ */
+export function Assistant({
+  task,
+  widgets = [],
+}: {
+  /** What the column is for on this view. One sentence, in the app's voice. */
+  task: string;
+  widgets?: readonly AssistantWidget[];
+}): ReactElement {
   return (
     <section className="p-4">
       <h3 className="mb-3 text-sm font-medium text-ink">AI assistant</h3>
-      <p className="text-xs text-ink-faint">{task}</p>
+      <p className="mb-4 text-xs text-ink-faint">{task}</p>
+      {widgets.length === 0 ? null : (
+        <ul className="space-y-2">
+          {widgets.map((widget) => (
+            <li
+              key={widget.id}
+              data-assistant-widget={widget.id}
+              className="rounded border border-line bg-surface-raised p-3"
+            >
+              <h4 className="text-sm font-medium text-ink">{widget.name}</h4>
+              <p className="mt-1 text-xs text-ink-faint">{widget.summary}</p>
+            </li>
+          ))}
+        </ul>
+      )}
     </section>
   );
 }

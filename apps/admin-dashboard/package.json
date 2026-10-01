@@ -15,6 +15,7 @@
   "dependencies": {
     "@hewa/app-shell": "workspace:*",
     "@hewa/console-types": "workspace:*",
+    "@hewa/marketplace-types": "workspace:*",
     "@hewa/response-codes": "workspace:*",
     "@tailwindcss/vite": "catalog:",
     "@tanstack/react-query": "catalog:",

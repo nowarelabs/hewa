@@ -1,8 +1,8 @@
 # Admin dashboard
 
-The internal operations console: flight tracking, satellite and stream
-monitoring, economic indicators, and an open-source intelligence feed, in one
-shell with seven views.
+The internal operations console for the bandwidth marketplace: the trading
+market, the network it rides on, the money owed across it, the commitments sold
+on it, and the alerts raised about it, in one shell with five views.
 
 ## Commands
 
@@ -34,9 +34,9 @@ src/app/state/             the fetch, the query status, and the URL filter
 src/app/App.tsx            <AppShell config={config} />
 ```
 
-A view and its module are one to one and share a name: the `conflicts` view is
-served by `panels/conflicts.tsx`, and the `economic` view by
-`panels/economic.tsx`. The directory listing is therefore a table of contents
+A view and its module are one to one and share a name: the `market` view is
+served by `panels/market.tsx`, and the `infrastructure` view by
+`panels/infrastructure.tsx`. The directory listing is therefore a table of contents
 for the console, which it was not when `panels/` also held a shared store and a
 set of primitives. `tests/views.test.ts` fails if a view has no module, a module
 has no view, or the two names drift apart.
@@ -57,41 +57,44 @@ state a URL cannot name, which is why `state/filter.ts` is the only writer.
 Every main panel has a `SummaryBar` between its header and its contents, and
 each one says something different, because the views show different things:
 
-| View         | Bar                                                     | As a control                 |
-| ------------ | ------------------------------------------------------- | ---------------------------- |
-| `alerts`     | a count per severity                                    | filters by severity          |
-| `conflicts`  | a count per incident kind                               | filters by kind              |
-| `osint`      | a count per report category                             | filters by category          |
-| `flights`    | a count per carrier, and how many countries are in view | filters by carrier           |
-| `satellites` | a count per satellite kind                              | filters by kind              |
-| `streams`    | a count per channel                                     | filters by channel           |
-| `economic`   | the headline figures, which have no rows to count       | a summary — nothing to count |
+| View             | Bar                                               | As a control                 |
+| ---------------- | ------------------------------------------------- | ---------------------------- |
+| `alerts`         | a count per severity                              | filters by severity          |
+| `infrastructure` | a count per node kind                             | filters by kind              |
+| `settlement`     | a count per settlement kind                       | filters by kind              |
+| `slas`           | a count per commitment state                      | filters by state             |
+| `market`         | the headline figures, which have no rows to count | a summary — nothing to count |
 
-The alerts view grew one of these by hand and the other six had nothing, so a
-view either had a summary or had no way to say what it was showing before you
-scrolled. `tests/summary.test.ts` asserts that all seven have one.
+The alerts view grew one of these by hand and the others had nothing, so a view
+either had a summary or had no way to say what it was showing before you
+scrolled. `tests/summary.test.ts` asserts that all five have one.
 
 Build the chips with `summaryCounts`, which counts out of the rows, and pass
 `keys` for the groups the view knows about. Those keys are no longer a constant
 in the app: `meta.groups` comes from the service with the rows, so a group the
 feed has nothing in still gets a chip at zero and can be pressed to say so.
 Anything found in the data is counted whether or not it is in `keys` — the
-conflicts feed names an `election` kind and holds no election, which is the case
+settlement feed names an `escrow` kind and holds no escrow, which is the case
 that keeps a bar from losing a control the operator can no longer find.
+
+A chip is labelled from a shared `*_TITLES` map and keyed on the row's value, and
+those are two different strings on purpose: `Data centre` on the chip, `data_center`
+in the query string, and `NODE_KIND_TITLES[node.kind]` is what joins them. A
+label the panel derived by upper-casing the first letter of the key said
+`Data_center`, which is the wire format wearing a display's clothes.
 
 ### When a bar is a filter
 
 A bar is a filter where it is a breakdown of the rows below it, and only there.
 That is the whole rule, and it is per view, so `tests/filters.test.ts` asserts
-it for all seven: nothing in a summary bar says what its rows are grouped by, so
+it for all five: nothing in a summary bar says what its rows are grouped by, so
 there is otherwise no way to tell from reading a panel whether the view that
-should have been a filter was left as a summary. Six are and one is not.
+should have been a filter was left as a summary. Four are and one is not.
 
-`economic` is the exclusion, and the reason is checkable rather than a matter of
-taste: its bar is a number with no list attached to it, so there is nothing a
-press could narrow. Adding a filter there would be a control that changes
-nothing. `streams` was the other one until its channels became a vocabulary, the
-way the flights carriers already were.
+`market` is the exclusion, and the reason is checkable rather than a matter of
+taste: its bar is a set of numbers with no list attached to it, so there is
+nothing a press could narrow. Adding a filter there would be a control that
+changes nothing.
 
 Where the bar is a filter, the chips are `FilterToggle`s in a `FilterBar`: a
 press narrows the list, a second press takes it off, and two presses in a row
@@ -101,17 +104,17 @@ place that decides, and the rule is that an empty selection is the whole list,
 because a filter that empties itself when its last chip comes off is a view the
 operator cannot get out of.
 
-No view has a second control. `flights` used to: a carrier chip said how many
-there were and a search box said which one you meant, and the bar had to become
-one or the other because a strip of five toggles beside a text field has no room
-for either. That arrangement cost `SummaryBar` a state machine, a second set of
-controls and a second copy of the filters, all of it for one view. A callsign is
-a column in the table, and the rows are the list to look a name up in.
+No view has a second control. The flights view used to: a carrier chip said how
+many there were and a search box said which one you meant, and the bar had to
+become one or the other because a strip of five toggles beside a text field has
+no room for either. That arrangement cost `SummaryBar` a state machine, a second
+set of controls and a second copy of the filters, all of it for one view. A
+callsign was a column in the table, and the rows were the list to look a name up
+in.
 
 A chip toggles on its **key**, not its label, and `summaryCounts` therefore
-carries the key it counted on. The osint view upper-cases its categories, and a
-filter keyed on `SOCIAL` is a filter keyed on a string someone has to keep in
-step with the display by hand.
+carries the key it counted on. A filter keyed on a display label is a filter
+keyed on a string someone has to keep in step with the data by hand.
 
 ### The filter is in the URL
 
@@ -128,21 +131,19 @@ groups a view filters on belongs to that view's module. It is the only hook in
 `state/`, and it is a filter — the text search that sat beside it went with the
 flights view's search box.
 
-| Key          | Held by                 |
-| ------------ | ----------------------- |
-| `alerts`     | `alerts` severity chips |
-| `conflicts`  | `conflicts` kind chips  |
-| `osint`      | `osint` category chips  |
-| `satellites` | `satellites` kind chips |
-| `flights`    | `flights` carrier chips |
-| `streams`    | `streams` channel chips |
+| Key              | Held by                     |
+| ---------------- | --------------------------- |
+| `alerts`         | `alerts` severity chips     |
+| `infrastructure` | `infrastructure` kind chips |
+| `settlement`     | `settlement` kind chips     |
+| `slas`           | `slas` state chips          |
 
 Each key is named after the view that owns it, not after the property being
-filtered. Conflicts and satellites both group their rows by _kind_, and a shared
-`?kind=` would carry the satellites view's `weather` into the conflicts view,
-match no incident, and show an empty list with no chip pressed — a filter nobody
-set and nobody can see to clear. Naming the key after the view also means the
-URL says which list it describes.
+filtered. Infrastructure and settlement both group their rows by _kind_, and a
+shared `?kind=` would carry the settlement view's `escrow` into the
+infrastructure view, match no node, and show an empty list with no chip pressed —
+a filter nobody set and nobody can see to clear. Naming the key after the view
+also means the URL says which list it describes.
 
 Three details of the URL are deliberate:
 
@@ -152,13 +153,6 @@ Three details of the URL are deliberate:
 - **History is `replace`**, which is nuqs' default and what the shell's own state
   does. The console keeps one history entry for the page, not one per press. The
   URL is an address to send, not a trail through what was pressed.
-- **The search is throttled** where the chips are not, because it is a different
-  input device: a chip is one press, a search box is a burst of keystrokes, and
-  each one reaching the History API is a rate-limited write the browser may drop.
-  Keystrokes land in the field immediately and the URL catches up when the burst
-  pauses. Its parser is built inside a `useMemo` for a related reason — a
-  throttler keeps its own timer, so a fresh one per render has never had a call
-  to time from and its trailing edge never fires.
 
 A key naming a group the view does not have filters to nothing and says so in the
 empty state, rather than being quietly ignored. The URL said something; showing a
@@ -322,7 +316,7 @@ the browser sends it, this app forwards `CENTRAL_API_URL + consolePath(view)`, a
 path a panel asks for and the path the service answers are the same string, and a
 rename that moved one without the other fails a test rather than returning a 404.
 
-Seven route files, one per view, and no `[...path]` catch-all. A catch-all would
+Five route files, one per view, and no `[...path]` catch-all. A catch-all would
 be an open relay with a token attached, forwarding whatever it was handed,
 including routes nobody reviewed. Each file exports only a `GET`; the surface is
 read-only, so a `POST` gets Next's own 405 and the service is never asked. The
@@ -335,13 +329,11 @@ module is now the seam between a panel and the network rather than a file of
 records. Each exports its row type and one hook, and nothing else:
 
 ```
-src/app/data/alerts.ts      AlertView, useAlerts
-src/app/data/conflicts.ts   IncidentView, useIncidents
-src/app/data/flights.ts     FlightView, useFlights
-src/app/data/osint.ts       ReportView, useReports
-src/app/data/satellites.ts  SatelliteView, useSatellites
-src/app/data/streams.ts     StreamView, useStreams
-src/app/data/economic.ts    EconomyView, useEconomy, figuresFor
+src/app/data/market.ts          MarketView, useMarket
+src/app/data/infrastructure.ts  InfrastructureView, useInfrastructure
+src/app/data/settlement.ts      SettlementView, useSettlements
+src/app/data/slas.ts            SlaView, useSlaMonitors
+src/app/data/alerts.ts          AlertView, useAlerts
 ```
 
 No runtime record arrays, no group constants. `tests/data.test.ts` fails if a
@@ -349,11 +341,17 @@ module exports a value that is not a function, because a module that still
 carries its own records has stopped being the thing it claims to be and the
 panel will read one while the test reads the other.
 
-`useEconomy` keeps its `data` as `Economy | undefined` rather than mapping a
+`useMarket` keeps its `data` as `MarketView | undefined` rather than mapping a
 missing payload to zero figures. Every other view is a list, and a list that has
-not loaded is legitimately empty; the economic view is one document, and a
-zeroed document is a plausible lie. Its figures are read through `figuresFor`,
-which returns nothing until there is something to read.
+not loaded is legitimately empty; the market view is one document, and a zeroed
+market document is a plausible lie — a spread of zero says a market is not
+trading rather than that it has not answered.
+
+The document also has to stay in one currency. A book with a USD price point and
+a USDC one cannot be summed, ranked or averaged into a headline figure, so the
+service refuses the mixed book rather than picking one. `tests/query.test.ts`
+asserts both the undefined document and the panel reading `undefined` as a dash
+rather than as a zero.
 
 ### Why the data moved
 
@@ -370,3 +368,18 @@ thing that was genuinely local, which channel in the streams view was selected,
 and went when the player that needed to know went.
 
 A record now arrives when the service says so, and it stays where it arrived.
+
+### Money on the way out
+
+A price, a spread and a headline figure are all `Money` — an integer count of a
+currency's minor units, rendered through `formatMoney` from
+`@hewa/marketplace-types`. Nothing in the console divides by a hundred to get
+dollars back, because a figure that has been through a `float` has lost the
+property that made it worth formatting in the first place: that it compares
+equal to itself. Utilisation and availability are basis points for the same
+reason, and the panels format them with `formatBps`.
+
+The rail panel for a pool reads the same `MarketSection` the service derived the
+figure from, so a tab cannot disagree with the bar above it. A pool with no rows
+still has a section, and its figures read `No bids` rather than nothing — an
+empty panel is not the same claim as a panel saying the pool is empty.

@@ -6,6 +6,17 @@ export interface Env {
   environment: string;
   logLevel: string;
   /**
+   * The PostgreSQL connection string.
+   *
+   * Required, and unlike the service token there is no "absent is survivable"
+   * branch for it. The token is a secret and can be missing while the process is
+   * genuinely useful; this is a dependency, and a service that boots without one
+   * answers `/health` with `ok` while every single query fails — which is a lie
+   * a load balancer believes and an operator debugs from the wrong end. So the
+   * boot stops here and the message names the variable.
+   */
+  databaseUrl: string;
+  /**
    * The shared secret the web app presents on `/api/v1`, or `undefined` if none
    * is configured.
    *
@@ -80,6 +91,25 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
   // rather than as a token nobody can guess but everybody can send.
   const serviceToken = source["CENTRAL_API_SERVICE_TOKEN"] || undefined;
 
+  // `||` rather than `??` for the same reason as the token: a variable set to ""
+  // is an unset variable, and `postgres:///db` is a valid-looking URL to the
+  // local socket that would fail on the first query rather than at boot.
+  const databaseUrl = source["CENTRAL_API_DATABASE_URL"] || "";
+
+  if (databaseUrl === "") {
+    // The fix is in the message rather than only in `details`, because the details
+    // are printed by the error filter and this is thrown at boot, where what
+    // reaches the terminal is `err.message` on its own. A configuration error that
+    // says "must be set" and stops there sends the reader to the repository to work
+    // out which of a dozen scripts runs the migrations.
+    throw new ValidationError(
+      "CENTRAL_API_DATABASE_URL must be a PostgreSQL connection string — copy " +
+        "services/central-api/.env.example to .env and run " +
+        "`pnpm --filter @hewa/central-api db:migrate`",
+      { received: source["CENTRAL_API_DATABASE_URL"] },
+    );
+  }
+
   const corsOrigins = (source["CENTRAL_API_CORS_ORIGINS"] ?? "http://localhost:3005")
     .split(",")
     .map((origin) => origin.trim())
@@ -102,6 +132,7 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
     port,
     environment,
     logLevel: source["CENTRAL_API_LOG_LEVEL"] ?? "info",
+    databaseUrl,
     serviceToken,
     corsOrigins,
   };

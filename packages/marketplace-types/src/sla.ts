@@ -115,3 +115,69 @@ export function formatBps(bps: number): string {
   const remainder = bps % BPS_PER_PERCENT;
   return `${whole}.${String(remainder).padStart(2, "0")}%`;
 }
+
+/**
+ * The three states a monitored SLA can be in, and the vocabulary for all of them.
+ *
+ * This is a list rather than a pair of booleans because it is a *vocabulary*: a
+ * filter bar builds one chip per entry, including the entries nothing is on. The
+ * console's `meta.groups` is handed this list, so a state with no rows this week
+ * still has a chip an operator can press.
+ */
+export const SLA_STATES = ["compliant", "at_risk", "breached"] as const;
+
+export type SlaState = (typeof SLA_STATES)[number];
+
+/**
+ * How each state is written where a human reads it.
+ *
+ * Beside the list rather than in the panel, keyed by the **value** a row carries
+ * rather than by the member name, so `at_risk` is "At risk" and a panel does not
+ * have to hold a second copy of the vocabulary to render a chip.
+ */
+export const SLA_STATE_TITLES: Readonly<Record<SlaState, string>> = {
+  compliant: "Compliant",
+  at_risk: "At risk",
+  breached: "Breached",
+};
+
+const SLA_STATE_SET: ReadonlySet<string> = new Set(SLA_STATES);
+
+export function isSlaState(value: unknown): value is SlaState {
+  return typeof value === "string" && SLA_STATE_SET.has(value);
+}
+
+/**
+ * How close to the target counts as at risk rather than breached.
+ *
+ * One percentage point, in basis points so the comparison stays integer. This is
+ * the threshold that decides whether a shortfall is a warning or an invoice, so
+ * it is named and exported rather than written into the comparison — a number
+ * typed inline is a number the next reader has to guess at.
+ */
+export const AT_RISK_BPS = BPS_PER_PERCENT;
+
+/**
+ * Classify a commitment as compliant, at risk, or breached.
+ *
+ * Derived here and nowhere else. The alternative was each surface deciding for
+ * itself, and the failure mode is quiet and expensive: an operations console
+ * counts its breach chips with one rule and a settlement run issues credits with
+ * another, so a commitment is "breached" on screen and not on the bill. One
+ * function, one definition of the boundary, and the service stores its answer so
+ * a record and the panel that draws it cannot disagree.
+ *
+ * Integer comparison throughout — {@link slaShortfallBps} is a subtraction of two
+ * whole basis-point counts — so the boundary lands exactly on
+ * `AT_RISK_BPS` rather than near it.
+ */
+export function slaState(sla: SlaCommitment): SlaState {
+  const shortfall = slaShortfallBps(sla);
+  if (shortfall === 0) {
+    return "compliant";
+  }
+  if (shortfall < AT_RISK_BPS) {
+    return "at_risk";
+  }
+  return "breached";
+}
