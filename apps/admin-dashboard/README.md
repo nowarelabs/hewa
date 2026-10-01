@@ -194,9 +194,9 @@ component state the second copy does not exist, so the conversation becomes
 It is the same decision the shell already makes about the view, the panel widths
 and the theme, through the same `nuqs` and the same `NuqsAdapter` in
 `providers.tsx`. `state/filter.ts` holds the mechanism and nothing else: which
-groups a view filters on belongs to that view's module. It is the only hook in
-`state/`, and it is a filter — the text search that sat beside it went with the
-flights view's search box.
+groups a section filters on, and under which key, belong to that section's panel.
+It is the only hook in `state/`, and it is a filter — the text search that sat
+beside it went with the flights view's search box.
 
 Each key is the section's own, with the view's separator flattened:
 
