@@ -1,50 +1,68 @@
 "use client";
 
 import type {
-  BandwidthMarket,
-  MarketFigure,
+  MarketBook,
   MarketOrder,
   MarketPool,
-  MarketSection,
+  MarketQuote,
   MarketSide,
+  PriceHistory,
   SpotPoint,
+  VenueBreakdown,
   VenueShare,
 } from "@hewa/console-types";
 
-import { useConsoleView, type ViewStatus } from "../state/query";
+import { useConsoleSection, type SectionStatus } from "../state/query";
 
 /**
- * The market view's half of the console.
+ * The `market` view's half of the console: three sections, three hooks.
  *
- * The market is a document rather than a list: headline figures, the price
- * series, venue shares, rail sections, and the full book travel together. The
- * other four views are grouped lists, so this module mirrors that shape.
+ * One hook per section rather than one per view, because a rail button is a
+ * destination with its own endpoint now. `useMarketBook` and `usePriceHistory`
+ * read different rows from different paths, and a single `useMarket` that fetched
+ * all three would be a second place where "what is on screen" is decided.
+ *
+ * The market's sections are the one place in this console where the payload is a
+ * document rather than a list, and that is why these hooks return `data` and not
+ * `rows`: a book with no orders and a book that has not loaded are not the same
+ * thing, and `undefined` is how the two stay apart.
  */
 
 export type {
-  BandwidthMarket,
-  MarketFigure,
+  MarketBook,
   MarketOrder,
   MarketPool,
-  MarketSection,
+  MarketQuote,
   MarketSide,
+  PriceHistory,
   SpotPoint,
+  VenueBreakdown,
   VenueShare,
 };
 
-export interface MarketView {
-  readonly data: BandwidthMarket | undefined;
-  readonly status: ViewStatus;
+export interface DocumentState<T> {
+  readonly data: T | undefined;
+  readonly status: SectionStatus;
   readonly refetch: () => void;
 }
 
-/** The market the service is holding right now, and whether it has answered. */
-export function useMarket(): MarketView {
-  const state = useConsoleView("market");
+/** `market/book`: the resting orders. */
+export function useMarketBook(): DocumentState<MarketBook> {
+  const state = useConsoleSection("market/book");
 
-  return {
-    data: state.data,
-    status: state.status,
-    refetch: state.refetch,
-  };
+  return { data: state.data, status: state.status, refetch: state.refetch };
+}
+
+/** `market/prices`: what each pool has been priced at, and the history behind it. */
+export function usePriceHistory(): DocumentState<PriceHistory> {
+  const state = useConsoleSection("market/prices");
+
+  return { data: state.data, status: state.status, refetch: state.refetch };
+}
+
+/** `market/venues`: which pools the committed capacity actually sits on. */
+export function useVenues(): DocumentState<VenueBreakdown> {
+  const state = useConsoleSection("market/venues");
+
+  return { data: state.data, status: state.status, refetch: state.refetch };
 }

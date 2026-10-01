@@ -6,27 +6,30 @@ import { ServiceTokenGuard } from "../service-token.guard.js";
 import { SlasService } from "./slas.service.js";
 
 /**
- * `api/v1/slas`.
+ * `api/v1/slas/{commitments,at_risk,credits}`.
  *
- * Every commitment being watched, worst first.
- *
- * One `@Get` and one delegation, awaited so a query failure is thrown from the
- * handler rather than floating out of it. The rows are selected in the service
- * because the
- * panel is not the only thing that asks this question — a settlement run, a test and
- * a future export all ask the same one — and a controller that assembled its own
- * answer would be a third place to keep it honest.
- *
- * The return type is `ConsolePayload["slas"]`, so a field renamed in the shared
- * contract is a build failure here rather than an `undefined` in a panel.
+ * Three routes over one table, each answering a different question: what is
+ * monitored, what is about to fail, and what failing would cost. The third carries
+ * no `Money` — see `SlasService.readCredits` for why a credit rate is published
+ * without the bill it applies to.
  */
 @Controller(`${API_V1_PREFIX}/slas`)
 @UseGuards(ServiceTokenGuard)
 export class SlasController {
   constructor(private readonly service: SlasService) {}
 
-  @Get()
-  async slas(): Promise<ConsolePayload["slas"]> {
-    return this.service.read();
+  @Get("commitments")
+  async commitments(): Promise<ConsolePayload["slas/commitments"]> {
+    return this.service.readCommitments();
+  }
+
+  @Get("at_risk")
+  async atRisk(): Promise<ConsolePayload["slas/at_risk"]> {
+    return this.service.readAtRisk();
+  }
+
+  @Get("credits")
+  async credits(): Promise<ConsolePayload["slas/credits"]> {
+    return this.service.readCredits();
   }
 }

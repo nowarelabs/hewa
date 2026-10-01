@@ -21,6 +21,7 @@
  */
 export * from "./alerts.js";
 export * from "./envelope.js";
+export * from "./sections.js";
 export * from "./infrastructure.js";
 export * from "./market.js";
 export * from "./settlement.js";

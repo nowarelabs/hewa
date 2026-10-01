@@ -7,10 +7,10 @@ import { toggleValue } from "../ui/controls";
 /**
  * Filter state, in the query string.
  *
- * The shell already puts its own state there — which view is open, which panel is
- * wide, whether it is dark — so this is the same mechanism applied to the state
- * that had been left out of it. Which groups a view filters on belongs to that
- * view's own module.
+ * The shell already puts its own state there — which view is open, which section
+ * is selected, which panel is wide, whether it is dark — so this is the same
+ * mechanism applied to the state that had been left out of it. Which groups a
+ * section filters on belongs to that section's own panel.
  *
  * There is one hook, and it is the filter. There was also a text search mirrored
  * the same way, for the one view that had a search box; that view counts and
@@ -27,17 +27,24 @@ export interface FilterParam {
   readonly clear: () => void;
 }
 
-/** `?alerts=high,critical` — a comma-separated list of the keys in force. */
+/** `?alerts-feed=high,critical` — a comma-separated list of the keys in force. */
 const groups = parseAsArrayOf(parseAsString).withDefault([]);
 
 /**
  * One group of toggles, mirrored into one query key.
  *
- * The key is named after the view that owns it — `?alerts=high,critical` — and
- * not after the property being filtered, because two of these views group their
- * rows by "kind". A shared `?kind=` would carry the satellite view's `weather`
- * into the conflicts view, match no incident, and show an empty list with no
- * chip pressed: a filter the operator did not set and cannot see to clear.
+ * The key is named after the **section** that owns it —
+ * `?alerts-feed=high,critical`, `?infrastructure-nodes=ixp` — and not after the
+ * property being filtered, because two sections group their rows by "kind" and
+ * four group theirs by "severity". A shared `?kind=` would carry one section's
+ * `payout` into another's, match no row, and show an empty list with no chip
+ * pressed: a filter the operator did not set and cannot see to clear.
+ *
+ * Section rather than view, because a section is the destination now and two
+ * sections of one view are as entitled to their own filter as two views are.
+ * `infrastructure/nodes` and `infrastructure/headroom` both filter by kind, and
+ * they answer different questions about the same rows — pressing `ixp` on one
+ * and arriving at the other is a fresh look, not a filter that followed them.
  *
  * Empty clears the key rather than writing `?alerts=`. History stays at nuqs'
  * default of `replace`: a chip press is not somewhere to navigate back to.

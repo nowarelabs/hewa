@@ -768,12 +768,117 @@ const ALERTS = [
     automatedAction: null,
     raisedAt: at(19),
   },
+  // Security alerts below, and they are here because `alerts/security` is a rail
+  // destination: a section with no rows in the seed is a section whose empty state
+  // is the only thing anyone ever sees of it, and an empty state proves the query
+  // compiles rather than that it answers. Three of them against one provider's edge,
+  // which is the shape that section exists to collapse.
+  {
+    id: "alt-0010",
+    title: "Unauthorised API session on the Equinix edge",
+    description:
+      "A session from an address block that has never appeared in this account's history, holding a token scoped to peering.",
+    category: "security",
+    severity: "critical",
+    entityId: "nod-nbo-01",
+    entityLabel: "Equinix Nairobi",
+    provider: "Equinix",
+    city: "Nairobi",
+    lat: -1.3052,
+    lng: 36.8146,
+    impactedGbps: 0,
+    affectedSlas: 0,
+    automatedAction: "Session revoked; token reissued to the peering automation only.",
+    raisedAt: at(6),
+  },
+  {
+    id: "alt-0011",
+    title: "Repeated peering-token authentication failures",
+    description:
+      "Fourteen failures in nine minutes from two source ranges, against a baseline of none in the trailing week.",
+    category: "security",
+    severity: "high",
+    entityId: "nod-nbo-01",
+    entityLabel: "Equinix Nairobi",
+    provider: "Equinix",
+    city: "Nairobi",
+    lat: -1.3052,
+    lng: 36.8146,
+    impactedGbps: 0,
+    affectedSlas: 0,
+    automatedAction: "Source ranges blocked pending the provider's case reference.",
+    raisedAt: at(5),
+  },
+  {
+    id: "alt-0012",
+    title: "Credentials older than the rotation window",
+    description: "Two peering credentials are past the 90-day window the control standard sets.",
+    category: "security",
+    severity: "medium",
+    entityId: "nod-nbo-01",
+    entityLabel: "Equinix Nairobi",
+    provider: "Equinix",
+    city: "Nairobi",
+    lat: -1.3052,
+    lng: 36.8146,
+    impactedGbps: 0,
+    affectedSlas: 0,
+    automatedAction: "Rotation scheduled into the next maintenance window.",
+    raisedAt: at(240),
+  },
+  {
+    id: "alt-0013",
+    title: "Unauthorised BGP session accepted at the Mombasa ring",
+    description:
+      "A peering session was established from an autonomous system not on the ring's approved list.",
+    category: "security",
+    severity: "high",
+    entityId: "nod-mba-02",
+    entityLabel: "Mombasa Metro Ring",
+    provider: "Sokowango Fiber",
+    city: "Mombasa",
+    lat: -4.0353,
+    lng: 39.6192,
+    impactedGbps: 0,
+    affectedSlas: 0,
+    automatedAction: "Session torn down; the ring re-converged in 40 seconds.",
+    raisedAt: at(3),
+  },
+  // A second outage against the Nairobi CDN PoP, so `alerts/outages` has a group
+  // with more than one alert in it and the count and the worst-severity rollup are
+  // both exercised by the seed rather than by a hand-written fixture.
+  {
+    id: "alt-0014",
+    title: "Nairobi CDN PoP still degraded after failover",
+    description:
+      "Failover held at 20 Gbps, but the origin's own health check has not recovered and the PoP is serving from cache.",
+    category: "outage",
+    severity: "medium",
+    entityId: "nod-nbo-cdn",
+    entityLabel: "Nairobi CDN PoP",
+    provider: "Akamai",
+    city: "Nairobi",
+    lat: -1.2864,
+    lng: 36.8172,
+    impactedGbps: 20,
+    affectedSlas: 1,
+    automatedAction: "Origin health check running every 30 seconds.",
+    raisedAt: at(14),
+  },
 ] as const;
 
 const CURRENCY = "USD" as const;
 
 /**
  * The rows a given connection should hold.
+ *
+ * ## Every alert category, and why that is asserted rather than assumed
+ *
+ * `alerts/{outages,capacity,security}` each filter on `category`, so a category with
+ * no rows in the seed is a section that can only ever render its empty state — and
+ * an empty state proves the query compiles, not that it answers. `tests/seed.test.ts`
+ * asserts every `ALERT_CATEGORIES` member is present, which is what turns "the
+ * security section is blank" from a mystery into a failed test.
  *
  * Assembled here rather than inline in {@link seedDatabase} so the shape is a value
  * that can be inspected, asserted on, and — in a test — compared against what came

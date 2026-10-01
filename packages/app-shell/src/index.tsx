@@ -6,7 +6,7 @@ export { SidePanel } from "./SidePanel";
 export { StatusBar } from "./StatusBar";
 export { TitleBar } from "./TitleBar";
 export { useShellState } from "./state";
-export { hasAssistant, resolveItem, resolveView } from "./resolve";
+export { hasAssistant, resolveContent, resolveItem, resolveView } from "./resolve";
 
 export type {
   BrandSpec,
@@ -20,5 +20,6 @@ export type {
   ShellTheme,
   ShellZoom,
   StatusSpec,
+  ViewContent,
   ViewSpec,
 } from "./types";

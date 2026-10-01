@@ -50,6 +50,23 @@ export const ALERT_CATEGORIES: readonly AlertCategory[] = [
   "security",
 ];
 
+/**
+ * How each category is written where a human reads it.
+ *
+ * The category decides who gets paged, so its label is read by whoever is on that
+ * rota rather than by whoever built the table, and `billing` is the one that most
+ * needs to be spelled out. Keyed by the value a row carries, like every other
+ * titles map in this package, and a `Record<AlertCategory, string>` so a category
+ * added to the union without a title is a compile error.
+ */
+export const ALERT_CATEGORY_TITLES: Readonly<Record<AlertCategory, string>> = {
+  sla: "SLA",
+  capacity: "Capacity",
+  outage: "Outage",
+  billing: "Billing",
+  security: "Security",
+};
+
 export interface Alert {
   readonly id: string;
   readonly title: string;
@@ -86,4 +103,92 @@ export interface Alert {
   readonly automatedAction: string | null;
   /** An ISO 8601 instant. The service sends the string; the panel formats it. */
   readonly raisedAt: string;
+}
+
+/**
+ * `alerts/outages`: what is down, grouped so one outage is not four alerts.
+ *
+ * The single most important thing this console has to stop doing is showing one
+ * outage four times. A subsea cable that drops raises an alert per commitment
+ * riding on it, per peering session and per customer, and a feed of those is a
+ * feed that hides its own severity behind repetition: the critical one is on row
+ * two of four identical rows.
+ *
+ * So this section groups by the thing that broke and sums the rest. `worstSeverity`
+ * is the group's most severe member, `alertCount` is how many alerts it produced,
+ * and the two together are what an operator actually needs — how bad, and how
+ * much of the same thing.
+ */
+export interface OutageGroup {
+  /** The entity the alerts are about, which is what they are grouped by. */
+  readonly entityId: string;
+  readonly entityLabel: string;
+  readonly provider: string;
+  readonly city: string;
+  readonly lat: number;
+  readonly lng: number;
+  readonly alertCount: number;
+  /** The most severe severity among the grouped alerts, worst first. */
+  readonly worstSeverity: AlertSeverity;
+  /** Traffic affected, summed across the group. */
+  readonly impactedGbps: number;
+  /** Commitments riding on it, taken as the worst member's count. */
+  readonly affectedSlas: number;
+  /** The first alert in the group. */
+  readonly firstRaisedAt: string;
+  /** The most recent, which is what makes this group the current state. */
+  readonly lastRaisedAt: string;
+  /** What the automation did, when it did something. */
+  readonly automatedAction: string | null;
+}
+
+/**
+ * `alerts/capacity`: alerts about running out, beside the headroom that is left.
+ *
+ * A join, and the join is the section. A capacity alert says "this node is at
+ * 97%", which is the alert's own account of a figure the infrastructure view also
+ * holds and may now disagree with. Reading the alert beside the node's *current*
+ * headroom is what turns "97%" into "97% and rising, 24 Gbps left", and the two
+ * numbers cannot come from two requests that ran at different times.
+ */
+export interface CapacityPressure {
+  readonly entityId: string;
+  readonly entityLabel: string;
+  readonly provider: string;
+  readonly city: string;
+  readonly alertCount: number;
+  readonly worstSeverity: AlertSeverity;
+  readonly impactedGbps: number;
+  /** Installed capacity of the node, or `null` when the alert names no known node. */
+  readonly capacityGbps: number | null;
+  /**
+   * Capacity still free, or `null` when the alert names no known node.
+   *
+   * `null` rather than zero: an alert about a corridor that is not one of our
+   * nodes has no headroom, and reporting zero would put an entry in a
+   * "nodes with room" table that has none at all.
+   */
+  readonly headroomGbps: number | null;
+  readonly lastRaisedAt: string;
+}
+
+/**
+ * `alerts/security`: who got in, and what was done about it.
+ *
+ * Grouped by the account rather than listed, because the same intrusion against a
+ * provider's edge raises one alert per affected customer and the operator's
+ * question is "how big is this and have we already answered it" — which is the
+ * count and the action, not forty rows saying "unauthorised access".
+ */
+export interface SecurityEvent {
+  readonly entityId: string;
+  readonly entityLabel: string;
+  readonly provider: string;
+  readonly city: string;
+  readonly eventCount: number;
+  readonly worstSeverity: AlertSeverity;
+  /** The most recent sighting, which is what makes this the current state. */
+  readonly lastSeenAt: string;
+  /** What the automation did, when it did something. */
+  readonly automatedAction: string | null;
 }

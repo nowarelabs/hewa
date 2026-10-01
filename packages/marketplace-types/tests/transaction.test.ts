@@ -14,6 +14,8 @@ import {
   slaShortfallBps,
   slaState,
   SLA_STATE_TITLES,
+  TRANSACTION_STATUSES,
+  TRANSACTION_STATUS_TITLES,
   type Transaction,
 } from "../src/index.ts";
 
@@ -164,5 +166,45 @@ describe("assertTransaction", () => {
     expect(() => assertTransaction({ ...transaction, status: "settled" as never })).toThrow(
       /Unsupported transaction status/,
     );
+  });
+});
+
+describe("TRANSACTION_STATUS_TITLES", () => {
+  /**
+   * Keyed by the value a row carries, which is the whole point of it.
+   *
+   * A payout's rail button says `Payouts`, its row says `payout`, and its filter
+   * is keyed on `payout`. A titles map built from the member name rather than the
+   * value would be keyed on `Payouts`, so `TRANSACTION_STATUS_TITLES[row.status]`
+   * would come back `undefined` on every row and the column would say nothing.
+   */
+  test("is keyed by the wire value, so a row's own status has a title", () => {
+    for (const status of TRANSACTION_STATUSES) {
+      expect(TRANSACTION_STATUS_TITLES[status], status).toBeTruthy();
+    }
+  });
+
+  test("has a distinct title per status", () => {
+    // Five statuses and five titles: a shared one would make two different states
+    // of a payout look the same in a status column, which is the whole thing the
+    // column is for.
+    const titles = Object.values(TRANSACTION_STATUS_TITLES);
+    expect(new Set(titles).size).toBe(titles.length);
+  });
+
+  test("no title is itself the wire value", () => {
+    // `processing` -> `Processing` reads as a display string rather than as the
+    // enum leaking into the UI. A title equal to its key is what a lookup written
+    // as a fallback produces, and it is wrong for every status here.
+    for (const status of TRANSACTION_STATUSES) {
+      expect(TRANSACTION_STATUS_TITLES[status], status).not.toBe(status);
+    }
+  });
+
+  test("is exhaustive, so a new status is a compile error rather than a blank cell", () => {
+    // The map's type is `Record<TransactionStatus, string>`, so this is already
+    // enforced at compile time. Asserted here because the failure it prevents is
+    // silent: an `undefined` in a status column renders as a gap, not as an error.
+    expect(Object.keys(TRANSACTION_STATUS_TITLES).sort()).toEqual([...TRANSACTION_STATUSES].sort());
   });
 });

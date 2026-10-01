@@ -1,77 +1,26 @@
 import { ResponseCode } from "@hewa/response-codes";
-import type { ConsoleEnvelope, ConsoleViewKey } from "@hewa/console-types";
+import type { ConsoleSectionKey, ConsolePayload } from "@hewa/console-types";
 
 /**
  * Console payloads for the app's tests, written here and not borrowed.
  *
  * These are deliberately not the service's records. A test that imports the
  * records it is asserting about is asserting that the records are the same as
- * themselves, and if it did, then adding a node to the service would move every
- * count in this suite — so a data change would look like a UI change and the
- * person reading the failure would be sent to the wrong file.
+ * themselves.
  *
- * Two rows per view is enough to make a filter do something. They are short and
- * ugly on purpose: nothing here is read by eye, only counted and filtered.
- *
- * Every view carries a group that no row is on, because "a chip the bar offers
- * that nothing is on" is a state the chips have to survive, and a fixture in
- * which every group is populated never puts it on screen.
+ * Two rows per section where relevant, with vocabularies that include groups
+ * nothing is on so chips survive when filtered.
  */
 export const consoleFixtures = {
-  market: {
+  "market/book": {
     code: ResponseCode.Ok,
     data: {
-      bestBid: { amountMinor: 540000, currency: "USD" },
-      bestOffer: { amountMinor: 88000, currency: "USD" },
+      bestBid: { amountMinor: 5400, currency: "USD" },
+      bestOffer: { amountMinor: 880, currency: "USD" },
       committedGbps: 1162,
       openOrders: 2,
       currency: "USD",
-      priceSeries: [
-        {
-          pool: "nairobi_ixp",
-          at: "2026-03-26T08:00:00Z",
-          price: { amountMinor: 900, currency: "USD" },
-        },
-        {
-          pool: "mombasa_corridor",
-          at: "2026-03-26T08:00:00Z",
-          price: { amountMinor: 700, currency: "USD" },
-        },
-      ],
-      venues: [
-        { pool: "nairobi_ixp", share: 65 },
-        { pool: "mombasa_corridor", share: 35 },
-        { pool: "east_africa_subsea", share: 0 },
-        { pool: "cdn_edge", share: 0 },
-      ],
-      // A section per pool, because the rail has a tab per pool and a tab with no
-      // section behind it is a tab that opens an empty panel. The two pools with
-      // nothing on them carry figures rather than blanks: the service derives a
-      // section for every pool it can hold, and a section with no figures would be
-      // a second way of saying "no rows", which the rail selection already says.
-      sections: [
-        {
-          id: "nairobi_ixp",
-          title: "Nairobi IXP",
-          figures: [{ label: "Best bid", value: "5,400.00 USD" }],
-        },
-        {
-          id: "mombasa_corridor",
-          title: "Mombasa corridor",
-          figures: [{ label: "Best offer", value: "880.00 USD" }],
-        },
-        {
-          id: "east_africa_subsea",
-          title: "East Africa subsea",
-          figures: [{ label: "Best bid", value: "No bids" }],
-        },
-        {
-          id: "cdn_edge",
-          title: "CDN edge",
-          figures: [{ label: "Best offer", value: "No offers" }],
-        },
-      ],
-      book: [
+      orders: [
         {
           id: "o1",
           pool: "nairobi_ixp",
@@ -94,11 +43,56 @@ export const consoleFixtures = {
         },
       ],
     },
-    // A document, not a list: it groups by nothing and takes no chip bar.
-    meta: { groups: [] },
-  },
+    meta: { groups: [] as never[] },
+  } as ConsolePayload["market/book"],
 
-  infrastructure: {
+  "market/prices": {
+    code: ResponseCode.Ok,
+    data: {
+      currency: "USD",
+      points: [
+        {
+          pool: "nairobi_ixp",
+          at: "2026-03-26T08:00:00Z",
+          price: { amountMinor: 900, currency: "USD" },
+        },
+        {
+          pool: "mombasa_corridor",
+          at: "2026-03-26T08:00:00Z",
+          price: { amountMinor: 700, currency: "USD" },
+        },
+      ],
+      latest: [
+        {
+          pool: "nairobi_ixp",
+          price: { amountMinor: 900, currency: "USD" },
+          observedAt: "2026-03-26T08:00:00Z",
+        },
+        {
+          pool: "mombasa_corridor",
+          price: { amountMinor: 700, currency: "USD" },
+          observedAt: "2026-03-26T08:00:00Z",
+        },
+      ],
+      changePct: 2,
+    },
+    meta: { groups: [] as never[] },
+  } as ConsolePayload["market/prices"],
+
+  "market/venues": {
+    code: ResponseCode.Ok,
+    data: {
+      currency: "USD",
+      totalCommittedGbps: 1162,
+      venues: [
+        { pool: "nairobi_ixp", committedGbps: 500, share: 65 },
+        { pool: "mombasa_corridor", committedGbps: 200, share: 35 },
+      ],
+    },
+    meta: { groups: [] as never[] },
+  } as ConsolePayload["market/venues"],
+
+  "infrastructure/nodes": {
     code: ResponseCode.Ok,
     data: [
       {
@@ -130,14 +124,76 @@ export const consoleFixtures = {
         observedAt: "2026-03-26T08:00:00Z",
       },
     ],
-    // Every kind, none of them empty here, so the bar's chips come from the
-    // service's vocabulary rather than from the rows.
     meta: {
       groups: ["data_center", "metro_fiber", "long_haul_fiber", "ixp", "subsea_cable", "cdn_edge"],
     },
-  },
+  } as ConsolePayload["infrastructure/nodes"],
 
-  settlement: {
+  "infrastructure/headroom": {
+    code: ResponseCode.Ok,
+    data: [
+      {
+        nodeId: "n1",
+        name: "Nairobi IXP",
+        kind: "ixp",
+        provider: "Kenya Exchange",
+        city: "Nairobi",
+        country: "Kenya",
+        capacityGbps: 800,
+        committedGbps: 790,
+        headroomGbps: 10,
+        utilisationBps: 9875,
+        status: "operational",
+        observedAt: "2026-03-26T08:00:00Z",
+      },
+      {
+        nodeId: "n2",
+        name: "Mombasa Cable Landing",
+        kind: "subsea_cable",
+        provider: "SEACOM",
+        city: "Mombasa",
+        country: "Kenya",
+        capacityGbps: 1200,
+        committedGbps: 505,
+        headroomGbps: 695,
+        utilisationBps: 4210,
+        status: "degraded",
+        observedAt: "2026-03-26T08:00:00Z",
+      },
+    ],
+    meta: {
+      groups: ["data_center", "metro_fiber", "long_haul_fiber", "ixp", "subsea_cable", "cdn_edge"],
+    },
+  } as ConsolePayload["infrastructure/headroom"],
+
+  "infrastructure/providers": {
+    code: ResponseCode.Ok,
+    data: [
+      {
+        provider: "Kenya Exchange",
+        nodeCount: 1,
+        kinds: ["ixp"],
+        countries: ["Kenya"],
+        capacityGbps: 800,
+        committedGbps: 790,
+        utilisationBps: 9875,
+        impaired: 0,
+      },
+      {
+        provider: "SEACOM",
+        nodeCount: 1,
+        kinds: ["subsea_cable"],
+        countries: ["Kenya"],
+        capacityGbps: 1200,
+        committedGbps: 505,
+        utilisationBps: 4210,
+        impaired: 1,
+      },
+    ],
+    meta: { groups: [] as never[] },
+  } as ConsolePayload["infrastructure/providers"],
+
+  "settlement/movements": {
     code: ResponseCode.Ok,
     data: [
       {
@@ -163,12 +219,47 @@ export const consoleFixtures = {
         failureReason: "Wallet rejected the payout",
       },
     ],
-    // `escrow` is a kind the bar offers and nothing is on: the state a chip has to
-    // survive.
     meta: { groups: ["clearing", "micro_payment", "escrow", "payout"] },
-  },
+  } as ConsolePayload["settlement/movements"],
 
-  slas: {
+  "settlement/runs": {
+    code: ResponseCode.Ok,
+    data: [
+      {
+        batch: "run-2026-03-26",
+        currency: "USD",
+        kinds: ["clearing", "payout"],
+        lineCount: 2,
+        failed: 1,
+        gross: { amountMinor: -167000, currency: "USD" },
+        fees: { amountMinor: 1460, currency: "USD" },
+        net: { amountMinor: -165540, currency: "USD" },
+        startedAt: "2026-03-26T05:55:00Z",
+        completedAt: "2026-03-26T06:10:00Z",
+      },
+    ],
+    meta: { groups: [] as never[] },
+  } as ConsolePayload["settlement/runs"],
+
+  "settlement/payouts": {
+    code: ResponseCode.Ok,
+    data: [
+      {
+        id: "p1",
+        batch: "run-2026-03-26",
+        counterparty: "Provider B",
+        amount: { amountMinor: -42000, currency: "USD" },
+        fee: { amountMinor: 210, currency: "USD" },
+        net: { amountMinor: -41790, currency: "USD" },
+        status: "failed",
+        occurredAt: "2026-03-26T06:05:00Z",
+        failureReason: "Wallet rejected the payout",
+      },
+    ],
+    meta: { groups: ["pending", "processing", "completed", "failed", "reversed"] },
+  } as ConsolePayload["settlement/payouts"],
+
+  "slas/commitments": {
     code: ResponseCode.Ok,
     data: [
       {
@@ -197,9 +288,48 @@ export const consoleFixtures = {
       },
     ],
     meta: { groups: ["compliant", "at_risk", "breached"] },
-  },
+  } as ConsolePayload["slas/commitments"],
 
-  alerts: {
+  "slas/at_risk": {
+    code: ResponseCode.Ok,
+    data: [
+      {
+        id: "q2",
+        account: "Beta ISP",
+        nodeId: "n2",
+        nodeName: "Mombasa Cable Landing",
+        provider: "SEACOM",
+        state: "breached",
+        sla: { targetBps: 9995, actualBps: 9820, creditNumerator: 1, creditDenominator: 20 },
+        shortfallBps: 175,
+        trendBps: 25,
+        measuredAt: "2026-03-26T08:00:00Z",
+      },
+    ],
+    meta: { groups: ["compliant", "at_risk", "breached"] },
+  } as ConsolePayload["slas/at_risk"],
+
+  "slas/credits": {
+    code: ResponseCode.Ok,
+    data: [
+      {
+        commitmentId: "q2",
+        account: "Beta ISP",
+        nodeName: "Mombasa Cable Landing",
+        provider: "SEACOM",
+        state: "breached",
+        targetBps: 9995,
+        actualBps: 9820,
+        creditablePoints: 1,
+        creditNumerator: 1,
+        creditDenominator: 20,
+        measuredAt: "2026-03-26T08:00:00Z",
+      },
+    ],
+    meta: { groups: ["compliant", "at_risk", "breached"] },
+  } as ConsolePayload["slas/credits"],
+
+  "alerts/feed": {
     code: ResponseCode.Ok,
     data: [
       {
@@ -238,5 +368,63 @@ export const consoleFixtures = {
       },
     ],
     meta: { groups: ["critical", "high", "medium", "low"] },
-  },
-} satisfies { [K in ConsoleViewKey]: ConsoleEnvelope<unknown, string> };
+  } as ConsolePayload["alerts/feed"],
+
+  "alerts/outages": {
+    code: ResponseCode.Ok,
+    data: [
+      {
+        entityId: "n2",
+        entityLabel: "Mombasa Cable Landing",
+        provider: "SEACOM",
+        city: "Mombasa",
+        lat: -4.0435,
+        lng: 39.6682,
+        alertCount: 1,
+        worstSeverity: "high",
+        impactedGbps: 210,
+        affectedSlas: 3,
+        firstRaisedAt: "2026-03-26T08:00:00Z",
+        lastRaisedAt: "2026-03-26T08:00:00Z",
+        automatedAction: "Failover path enabled",
+      },
+    ],
+    meta: { groups: ["critical", "high", "medium", "low"] },
+  } as ConsolePayload["alerts/outages"],
+
+  "alerts/capacity": {
+    code: ResponseCode.Ok,
+    data: [
+      {
+        entityId: "n2",
+        entityLabel: "Mombasa Cable Landing",
+        provider: "SEACOM",
+        city: "Mombasa",
+        alertCount: 1,
+        worstSeverity: "high",
+        impactedGbps: 210,
+        capacityGbps: 1200,
+        headroomGbps: 695,
+        lastRaisedAt: "2026-03-26T08:00:00Z",
+      },
+    ],
+    meta: { groups: ["critical", "high", "medium", "low"] },
+  } as ConsolePayload["alerts/capacity"],
+
+  "alerts/security": {
+    code: ResponseCode.Ok,
+    data: [
+      {
+        entityId: "edge-1",
+        entityLabel: "Edge gateway",
+        provider: "SEACOM",
+        city: "Nairobi",
+        eventCount: 1,
+        worstSeverity: "medium",
+        lastSeenAt: "2026-03-26T07:50:00Z",
+        automatedAction: null,
+      },
+    ],
+    meta: { groups: ["critical", "high", "medium", "low"] },
+  } as ConsolePayload["alerts/security"],
+} satisfies { [K in ConsoleSectionKey]: ConsolePayload[K] };

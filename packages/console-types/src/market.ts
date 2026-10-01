@@ -78,9 +78,16 @@ export interface SpotPoint {
   readonly price: Money;
 }
 
-/** One slice of the pie: how much of the traded volume a pool accounts for. */
+/**
+ * One slice of the pie: how much of the committed capacity a pool accounts for.
+ *
+ * The volume travels beside the share rather than being left in the orders table,
+ * because a percentage with nothing behind it cannot be checked. 35% of what?
+ */
 export interface VenueShare {
   readonly pool: MarketPool;
+  /** Committed capacity on this pool, in whole gigabits per second. */
+  readonly committedGbps: number;
   /** A whole percentage, and the whole set adds to 100 when there is volume to
    * share. An empty book is the one case where they add to 0, because there is no
    * volume and a pie showing 25% of nothing would be worse than an empty one.
@@ -88,40 +95,34 @@ export interface VenueShare {
   readonly share: number;
 }
 
-/** A label and a figure, for the rail column's key/value rows. */
-export interface MarketFigure {
-  readonly label: string;
-  /** Already formatted, units included, and formatted by the shared formatter. */
-  readonly value: string;
-}
-
 /**
- * One pool's figures, which the rail column picks between.
+ * `market/book`: the resting orders.
  *
- * `id` is looked up from the rail selection, so the panel resolves a stale id to
- * its fallback rather than rendering nothing. `title` is the pool's own name
- * rather than the rail entry's, because the two are allowed to differ — a rail
- * tab says "Subsea" because that is what fits in an icon rail.
- */
-export interface MarketSection {
-  readonly id: MarketPool;
-  readonly title: string;
-  readonly figures: MarketFigure[];
-}
-
-/**
- * The market, as the console shows it.
+ * A book rather than a document about a book, so the headline figures and the rows
+ * they were derived from are one payload. When `bestBid` sat in a document that also
+ * carried venue shares and a price series, the numbers were fine and the answer was
+ * not: a panel asking about the book had to receive the pie to get it.
  *
- * The headline figures are typed rather than pre-formatted — `bestBid` is a
- * {@link Money}, not `"$4,120.00"` — because they are aggregates that have to be
- * comparable, sumable and re-derived by whoever disputes them, and a string
- * cannot be summed. The rail's figures *are* pre-formatted, because they are
- * labels beside a value and nothing downstream does arithmetic on them.
+ * ## Why there is no spread
+ *
+ * Because the book spans four pools and they are priced on four different scales —
+ * a CDN edge giga-month is an order of magnitude below a Mombasa corridor's. A
+ * spread is the difference between *one* bid and *one* offer on *one* pool, and the
+ * highest bid anywhere in this book belongs to a different pool from the lowest
+ * offer anywhere in it, so subtracting them yields a negative number that reads as
+ * a price and is not one.
+ *
+ * The field was there and the arithmetic was honest, which is the worst combination
+ * available: `540_000 - 88_000` is a correct subtraction of two correct figures that
+ * do not mean the same thing. A `null` would not have been better — it would have
+ * said "no spread" about a book that has four of them. So the honest book-wide
+ * figures are the two extremes stated as what they are, and the comparison an
+ * operator actually wants is a row per pool, which `market/prices` already is.
  */
-export interface BandwidthMarket {
-  /** The highest standing bid, in minor units. `null` when nothing is bidding. */
+export interface MarketBook {
+  /** The highest standing bid anywhere in the book, or `null` when nothing is bidding. */
   readonly bestBid: Money | null;
-  /** The lowest standing offer, in minor units. `null` when nothing is offered. */
+  /** The lowest standing offer anywhere in the book, or `null` when nothing is offered. */
   readonly bestOffer: Money | null;
   /** Every order's committed capacity, in whole gigabits per second. */
   readonly committedGbps: number;
@@ -129,10 +130,53 @@ export interface BandwidthMarket {
   readonly openOrders: number;
   /** Which currency the book is quoted in. Every order is priced in this one. */
   readonly currency: Currency;
-  readonly priceSeries: SpotPoint[];
+  readonly orders: MarketOrder[];
+}
+
+/** One pool's most recent observation, which is what a "prices" table lists per pool. */
+export interface MarketQuote {
+  readonly pool: MarketPool;
+  readonly price: Money;
+  /** An ISO 8601 instant. */
+  readonly observedAt: string;
+}
+
+/**
+ * `market/prices`: what each pool has been priced at, and the history behind it.
+ *
+ * `latest` is derived from `points` by the same query, so the table of current
+ * prices cannot disagree with the lines drawn beneath it — which is the failure
+ * the old document invited, when the headline price and the chart were two
+ * fields filled by two queries.
+ */
+export interface PriceHistory {
+  readonly currency: Currency;
+  /** Every observation, every pool. The chart draws one line per pool. */
+  readonly points: SpotPoint[];
+  /** One entry per pool that has ever been observed. */
+  readonly latest: MarketQuote[];
+  /**
+   * The direction the last observation moved, in whole percent.
+   *
+   * An integer rather than a percentage string so a panel cannot round it
+   * differently from a table that shows the two prices it came from.
+   */
+  readonly changePct: number;
+}
+
+/**
+ * `market/venues`: which pools the committed capacity actually sits on.
+ *
+ * Shares rather than percentages of the pools themselves: a pie of "how much
+ * capacity is committed where", which is a different question from "what is it
+ * priced at", and was previously answered by a chart sitting inside a table of
+ * prices.
+ */
+export interface VenueBreakdown {
+  readonly currency: Currency;
+  /** Committed capacity across every pool, in whole gigabits per second. */
+  readonly totalCommittedGbps: number;
   readonly venues: VenueShare[];
-  readonly sections: MarketSection[];
-  readonly book: MarketOrder[];
 }
 
 /**
@@ -140,12 +184,7 @@ export interface BandwidthMarket {
  *
  * Keyed by the **value** a row carries rather than by the type's member name, and
  * typed `Record<MarketPool, string>` so adding a pool to the union without naming
- * it here is a compile error rather than a `undefined` beside a rail tab.
- *
- * It lives beside the type rather than in the panel because the service sends the
- * section title in the payload: `MarketSection.title` is the pool's own name, so a
- * stale rail selection resolves to the section that names itself, and no panel has
- * to carry a second copy of the vocabulary to render one.
+ * it here is a compile error rather than an `undefined` beside a rail tab.
  */
 export const MARKET_POOL_TITLES: Readonly<Record<MarketPool, string>> = {
   nairobi_ixp: "Nairobi IXP",

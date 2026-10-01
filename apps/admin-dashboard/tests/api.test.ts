@@ -1,7 +1,8 @@
+import { readdirSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vite-plus/test";
-import { CONSOLE_VIEWS, consolePath } from "@hewa/console-types";
+import { CONSOLE_SECTION_KEYS, consoleSectionPath, parseSectionKey } from "@hewa/console-types";
 
-import { viewHandlers } from "../src/app/api/v1/_handlers";
+import { sectionHandlers } from "../src/app/api/v1/_handlers";
 
 /**
  * The route handlers, and what they are for.
@@ -53,7 +54,7 @@ function stubService(body: unknown = { code: "0", data: [] }, status = 200): voi
 
 /** A `Request` to hand a `GET` handler, which ignores it. */
 function get(): Request {
-  return new Request("http://app.test/api/v1/alerts");
+  return new Request("http://app.test/api/v1/alerts/feed");
 }
 
 beforeEach(() => {
@@ -71,7 +72,7 @@ afterEach(() => {
 
 describe("the token", () => {
   test("it is attached to the service's request and is not the browser's to know", async () => {
-    await viewHandlers("alerts").GET(get());
+    await sectionHandlers("alerts", "feed").GET(get());
 
     expect(seen[0]?.token).toBe(TOKEN);
   });
@@ -79,7 +80,7 @@ describe("the token", () => {
   test("a missing token is a 500 that names the variable, not a request to the service", async () => {
     delete process.env["CENTRAL_API_SERVICE_TOKEN"];
 
-    const response = await viewHandlers("alerts").GET(get());
+    const response = await sectionHandlers("alerts", "feed").GET(get());
     const body = (await response.json()) as { code: string; message: string };
 
     // A default would be a known token in a repository. Failing here says which
@@ -95,7 +96,7 @@ describe("the token", () => {
     // attach an empty secret and be refused by the service's guard on every call.
     process.env["CENTRAL_API_SERVICE_TOKEN"] = "";
 
-    const response = await viewHandlers("alerts").GET(get());
+    const response = await sectionHandlers("alerts", "feed").GET(get());
 
     expect(response.status).toBe(500);
     expect(seen).toHaveLength(0);
@@ -103,15 +104,37 @@ describe("the token", () => {
 });
 
 describe("which paths exist", () => {
-  test("every view in the contract is routable, and answers", async () => {
-    // Checked against `CONSOLE_VIEWS` rather than a list written out here, so a
-    // view added to the contract and forgotten here fails rather than shipping
-    // with a panel that 404s.
-    for (const view of CONSOLE_VIEWS) {
-      const response = await viewHandlers(view).GET(get());
+  /**
+   * There is a route *file* per section and no catch-all, and the file is the
+   * thing that keeps the proxy from being an open relay. So the count is checked
+   * against the contract rather than against a list written out here: a section
+   * added to `CONSOLE_SECTIONS` and forgotten here would otherwise be a rail
+   * button that opens a panel which can never load.
+   */
+  test("every section in the contract has a route file, and answers", async () => {
+    const routes = new Set(
+      readdirSync(new URL("../src/app/api/v1/", import.meta.url), { withFileTypes: true })
+        .filter((entry) => entry.isDirectory() && !entry.name.startsWith("_"))
+        .flatMap((view) =>
+          readdirSync(new URL(`../src/app/api/v1/${view.name}/`, import.meta.url), {
+            withFileTypes: true,
+          })
+            .filter((entry) => entry.isDirectory())
+            .map((section) => `${view.name}/${section.name}`),
+        ),
+    );
 
-      expect(response.status, view).toBe(200);
-      expect(seen.at(-1)?.url, view).toBe(`${BASE}${consolePath(view)}`);
+    expect([...routes].toSorted()).toEqual([...CONSOLE_SECTION_KEYS].toSorted());
+  });
+
+  test("every section forwards to the path the contract names", async () => {
+    for (const section of CONSOLE_SECTION_KEYS) {
+      const { view, section: id } = parseSectionKey(section);
+
+      const response = await sectionHandlers(view, id as never).GET(get());
+
+      expect(response.status, section).toBe(200);
+      expect(seen.at(-1)?.url, section).toBe(`${BASE}${consoleSectionPath(view, id as never)}`);
     }
   });
 
@@ -119,44 +142,66 @@ describe("which paths exist", () => {
     // The read surface is the whole surface. A `POST` that is not exported gets
     // Next's own 405 and central-api is never asked — and the object a route file
     // exports is visible here, which is a cheaper place to check than a request.
-    const handlers = viewHandlers("alerts");
+    const handlers = sectionHandlers("alerts", "feed");
 
     expect(Object.keys(handlers)).toEqual(["GET"]);
   });
 
   test("the upstream path is the one the browser used, and only the base differs", async () => {
-    await viewHandlers("infrastructure").GET(get());
+    await sectionHandlers("infrastructure", "headroom").GET(get());
 
     // Same path, different base. That equality is the whole arrangement: the
-    // service registers `consolePath`, the browser sends `consolePath`, and this
-    // file builds `CENTRAL_API_URL + consolePath`. There is no second spelling.
-    expect(seen[0]?.url).toBe(`${BASE}/api/v1/infrastructure`);
-    expect(seen[0]?.url.endsWith(consolePath("infrastructure"))).toBe(true);
+    // service registers `consoleSectionPath`, the browser sends the same string,
+    // and this file builds `CENTRAL_API_URL + consoleSectionPath`. There is no
+    // second spelling.
+    expect(seen[0]?.url).toBe(`${BASE}/api/v1/infrastructure/headroom`);
+    expect(seen[0]?.url.endsWith(consoleSectionPath("infrastructure", "headroom"))).toBe(true);
   });
 
   test("the path comes from the contract, not from a string written out here", async () => {
-    // `consolePath` is the one place the path exists, and the service's e2e test
-    // asserts its routes against the same function — so a rename moves both sides
-    // or fails one of them, instead of leaving a route that answers nothing.
-    expect(consolePath("slas")).toBe("/api/v1/slas");
+    // `consoleSectionPath` is the one place the path exists, and the service's
+    // e2e test asserts its routes against the same function — so a rename moves
+    // both sides or fails one of them, instead of leaving a route that answers
+    // nothing.
+    expect(consoleSectionPath("slas", "at_risk")).toBe("/api/v1/slas/at_risk");
   });
 
   test("a trailing slash on the base URL does not double up", async () => {
     process.env["CENTRAL_API_URL"] = "http://central.test/";
 
-    await viewHandlers("settlement").GET(get());
+    await sectionHandlers("settlement", "runs").GET(get());
 
-    expect(seen[0]?.url).toBe(`${BASE}/api/v1/settlement`);
+    expect(seen[0]?.url).toBe(`${BASE}/api/v1/settlement/runs`);
   });
 
   test("the upstream request is never a cached one", async () => {
     // A record changed in central-api would otherwise be served from a cache that
     // `fetch` on the server is free to keep, and the operator would watch their
     // own change not appear.
-    await viewHandlers("market").GET(get());
+    await sectionHandlers("market", "book").GET(get());
 
     const [, init] = vi.mocked(fetch).mock.calls[0] ?? [];
     expect(init?.cache).toBe("no-store");
+  });
+});
+
+describe("the pair is checked before anything is forwarded", () => {
+  /**
+   * The literal types at the call site are checked by TypeScript; the *value* is
+   * not, because a directory name is a string at runtime. This is the check on
+   * the value, and it is here because this app is the only place that knows both
+   * halves of the path.
+   */
+  test("a section id that belongs to another view is refused here, not upstream", async () => {
+    const response = await sectionHandlers("market", "outages" as never).GET(get());
+    const body = (await response.json()) as { message: string; sections: readonly string[] };
+
+    expect(response.status).toBe(404);
+    expect(body.message).toContain("outages");
+    expect(body.sections).toEqual(["book", "prices", "venues"]);
+    // The point of refusing here: central-api is never asked, so a valid service
+    // token is never attached to a request for something that is not there.
+    expect(seen).toHaveLength(0);
   });
 });
 
@@ -165,10 +210,10 @@ describe("what comes back", () => {
     // One envelope in the system: a panel reads the same shape whether it reached
     // this app or the service. A 401 from the guard is the case that matters —
     // it means the token was wrong, and flattening it to a 200 with an empty
-    // envelope would show the operator an empty view instead.
+    // envelope would show the operator an empty panel instead.
     stubService({ code: "3000", message: "a valid service token is required" }, 401);
 
-    const response = await viewHandlers("alerts").GET(get());
+    const response = await sectionHandlers("alerts", "feed").GET(get());
 
     expect(response.status).toBe(401);
     expect(await response.json()).toEqual({
@@ -177,15 +222,15 @@ describe("what comes back", () => {
     });
   });
 
-  test("the view's groups arrive, so the filter bar is not derived from the rows", async () => {
-    stubService({ code: "0", data: [], meta: { groups: ["armed", "election"] } });
+  test("the section's groups arrive, so the filter bar is not derived from the rows", async () => {
+    stubService({ code: "0", data: [], meta: { groups: ["critical", "high"] } });
 
-    const response = await viewHandlers("infrastructure").GET(get());
+    const response = await sectionHandlers("infrastructure", "nodes").GET(get());
 
     expect(await response.json()).toEqual({
       code: "0",
       data: [],
-      meta: { groups: ["armed", "election"] },
+      meta: { groups: ["critical", "high"] },
     });
   });
 
@@ -203,7 +248,7 @@ describe("what comes back", () => {
       ),
     );
 
-    const response = await viewHandlers("alerts").GET(get());
+    const response = await sectionHandlers("alerts", "feed").GET(get());
 
     expect(response.headers.get("x-internal-upstream")).toBeNull();
     expect(response.headers.get("content-type")).toContain("application/json");
@@ -219,7 +264,7 @@ describe("what comes back", () => {
       }),
     );
 
-    const response = await viewHandlers("alerts").GET(get());
+    const response = await sectionHandlers("alerts", "feed").GET(get());
     const body = (await response.json()) as { code: string; message: string };
 
     expect(response.status).toBe(502);
@@ -235,7 +280,7 @@ describe("what comes back", () => {
       vi.fn(async () => new Response("<html>502 Bad Gateway</html>", { status: 200 })),
     );
 
-    const response = await viewHandlers("alerts").GET(get());
+    const response = await sectionHandlers("alerts", "feed").GET(get());
     const body = (await response.json()) as { code: string; message: string };
 
     expect(response.status).toBe(502);

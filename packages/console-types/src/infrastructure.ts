@@ -86,3 +86,60 @@ export interface InfrastructureNode {
   /** An ISO 8601 instant. The service sends the string; the panel formats it. */
   readonly observedAt: string;
 }
+
+/**
+ * `infrastructure/headroom`: how much room each node has left.
+ *
+ * The question is "where can the next order go", and it cannot be answered from
+ * `capacityGbps` and `utilisationBps` without arithmetic done in the panel — which
+ * is arithmetic that has to happen, because capacity * utilisation is not one of
+ * the two columns and a browser that computes it differently from the service is
+ * a browser reporting a node full when the service reports it half empty.
+ *
+ * Both figures are whole gigabits per second, because capacity is traded in whole
+ * gigabits and a headroom of 0.4 Gbps is a number nobody can sell.
+ */
+export interface NodeHeadroom {
+  readonly nodeId: string;
+  readonly name: string;
+  readonly kind: NodeKind;
+  readonly provider: string;
+  readonly city: string;
+  readonly country: string;
+  readonly capacityGbps: number;
+  /** Capacity already in use, in whole gigabits per second. */
+  readonly committedGbps: number;
+  /** Capacity still available. `capacityGbps - committedGbps`, floored at 0. */
+  readonly headroomGbps: number;
+  /** Utilisation in basis points, carried so a bar can be drawn without recomputing. */
+  readonly utilisationBps: number;
+  readonly status: NodeStatus;
+  /** An ISO 8601 instant. */
+  readonly observedAt: string;
+}
+
+/**
+ * `infrastructure/providers`: who supplies the network.
+ *
+ * The concentration view. One provider holding every subsea cable is the single
+ * fact that decides how much a corridor outage costs, and it is invisible in a
+ * table of nodes — it is only visible once the nodes are rolled up by who runs
+ * them.
+ *
+ * `utilisationBps` is capacity-weighted rather than the mean of the nodes', because
+ * a provider running one 10 Gbps node at 10% and one 1,000 Gbps node at 90% is a
+ * provider at 89%, and averaging the two says 50%.
+ */
+export interface ProviderFootprint {
+  readonly provider: string;
+  readonly nodeCount: number;
+  /** The kinds this provider runs, in vocabulary order. */
+  readonly kinds: NodeKind[];
+  /** Distinct countries, sorted, so two rows cannot disagree about where they are. */
+  readonly countries: string[];
+  readonly capacityGbps: number;
+  readonly committedGbps: number;
+  readonly utilisationBps: number;
+  /** How many of this provider's nodes are not `operational`. */
+  readonly impaired: number;
+}

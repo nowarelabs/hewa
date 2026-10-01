@@ -1,18 +1,15 @@
 import { readdirSync } from "node:fs";
 import { describe, expect, test } from "vite-plus/test";
 import {
-  ALERT_SEVERITIES,
+  CONSOLE_SECTION_KEYS,
   CONSOLE_VIEWS,
-  MARKET_POOL_TITLES,
-  NODE_KINDS,
-  SETTLEMENT_KINDS,
-  consolePath,
+  consoleSectionPath,
+  parseSectionKey,
   type ConsolePayload,
+  type ConsoleSectionKey,
 } from "@hewa/console-types";
-import { SLA_STATES } from "@hewa/marketplace-types";
 import { ResponseCode } from "@hewa/response-codes";
 import { config } from "../src/app/shell.config";
-import { MARKET_RAIL, poolFor } from "../src/app/panels/market";
 import { consoleFixtures } from "./fixtures";
 
 /**
@@ -27,8 +24,8 @@ import { consoleFixtures } from "./fixtures";
  *
  * What is left is what the app is actually responsible for: that `data/` is one
  * module per view, that those modules hold no records, that the app and the
- * service agree on what a view is, and that the rails still line up with the
- * vocabularies they select from.
+ * service agree on what a section is, and that each module exports a hook per
+ * section it owns.
  */
 
 /** `data/` is one module per view, named after it, like `panels/`. */
@@ -40,6 +37,15 @@ const modules = readdirSync(new URL("../src/app/data/", import.meta.url), {
   .sort();
 
 const keys = Object.keys(config.views).sort();
+
+/** The sections each view owns, keyed by the module that owns them. */
+const expectedSections: Record<string, readonly ConsoleSectionKey[]> = {
+  market: ["market/book", "market/prices", "market/venues"],
+  infrastructure: ["infrastructure/nodes", "infrastructure/headroom", "infrastructure/providers"],
+  settlement: ["settlement/movements", "settlement/runs", "settlement/payouts"],
+  slas: ["slas/commitments", "slas/at_risk", "slas/credits"],
+  alerts: ["alerts/feed", "alerts/outages", "alerts/capacity", "alerts/security"],
+};
 
 describe("data modules", () => {
   test("every view has exactly one module, named after its key", () => {
@@ -74,89 +80,171 @@ describe("data modules", () => {
   });
 });
 
+describe("one hook per section", () => {
+  /**
+   * A panel fetches by section, so the hooks a module exports have to cover the
+   * sections it owns and nothing else. The rule is written here rather than
+   * generated from the rail, because the point is that the two are checked against
+   * the *contract*: a module that grew a hook for a section the service does not
+   * serve, or a section with no hook, is a question that cannot be asked or a
+   * module that cannot answer one.
+   */
+  test("each view's module exports a hook for every section it owns", async () => {
+    for (const [view, sections] of Object.entries(expectedSections)) {
+      const loaded = (await import(`../src/app/data/${view}.ts`)) as Record<string, unknown>;
+      const hooks = Object.entries(loaded)
+        .filter(([, value]) => typeof value === "function")
+        .map(([name]) => name);
+
+      expect(hooks.length, `${view} exports ${hooks.length} hooks`).toBe(sections.length);
+    }
+  });
+
+  test("the sections a view owns are the ones the contract names", () => {
+    // `CONSOLE_SECTIONS` is the service's list; this is what the app agrees to.
+    expect(Object.keys(expectedSections).toSorted()).toEqual([...CONSOLE_VIEWS].toSorted());
+    for (const [view, sections] of Object.entries(expectedSections)) {
+      expect(
+        sections.map((section) => section.slice(view.length + 1)),
+        view,
+      ).toEqual(
+        CONSOLE_SECTION_KEYS.filter((key) => key.startsWith(`${view}/`)).map((key) =>
+          key.slice(view.length + 1),
+        ),
+      );
+    }
+  });
+
+  test("a section with no group vocabulary has none in its fixture", async () => {
+    // Four of the sixteen sections take no chips, and a chip bar built from a
+    // vocabulary the service did not send is a control over nothing.
+    const ungrouped: readonly ConsoleSectionKey[] = [
+      "market/book",
+      "market/prices",
+      "market/venues",
+      "infrastructure/providers",
+      "settlement/runs",
+    ];
+    for (const section of ungrouped) {
+      expect(consoleFixtures[section].meta.groups, section).toEqual([]);
+    }
+  });
+});
+
 describe("the response envelope", () => {
   test("a payload is a code, the data, and the group's vocabulary", () => {
-    const alerts: ConsolePayload["alerts"] = {
+    const feed: ConsolePayload["alerts/feed"] = {
       code: ResponseCode.Ok,
       data: [],
       meta: { groups: ["critical"] },
     };
 
-    expect(Object.keys(alerts).toSorted()).toEqual(["code", "data", "meta"]);
-    expect(alerts.code).toBe(ResponseCode.Ok);
+    expect(Object.keys(feed).toSorted()).toEqual(["code", "data", "meta"]);
+    expect(feed.code).toBe(ResponseCode.Ok);
   });
 
   /**
    * One path, two hops.
    *
-   * The browser asks its own origin for `/api/v1/alerts` and the route handler
-   * asks central-api for `/api/v1/alerts`; only the base URL differs. So the
-   * function that builds it is asserted here rather than trusted in two places,
-   * and the prefix is `api/v1` because that is where the controller registers.
+   * The browser asks its own origin for `/api/v1/alerts/feed` and the route handler
+   * asks central-api for the same path; only the base URL differs. So the function
+   * that builds it is asserted here rather than trusted in two places, and the
+   * prefix is `api/v1` because that is where the controller registers.
    */
-  test("every view's path is under /api/v1 and named after itself", () => {
-    for (const view of CONSOLE_VIEWS) {
-      expect(consolePath(view)).toBe(`/api/v1/${view}`);
+  test("every section's path is under /api/v1 and named after itself", () => {
+    for (const section of CONSOLE_SECTION_KEYS) {
+      const { view, section: id } = parseSectionKey(section);
+      expect(consoleSectionPath(view, id as never), section).toBe(`/api/v1/${section}`);
+    }
+  });
+
+  test("a section key splits back into the view and section that built it", () => {
+    // Round-tripped rather than spot-checked, because the split is what the query
+    // hook and the route handler both do to work out where to fetch.
+    for (const section of CONSOLE_SECTION_KEYS) {
+      const { view, section: id } = parseSectionKey(section);
+      expect(consoleSectionPath(view, id as never)).toBe(`/api/v1/${section}`);
     }
   });
 });
 
-describe("rails", () => {
+describe("the fixtures", () => {
+  test("there is one for every section, so a panel is never seeded from nothing", () => {
+    expect(Object.keys(consoleFixtures).toSorted()).toEqual([...CONSOLE_SECTION_KEYS].toSorted());
+  });
+
+  test("a grouped section's vocabulary includes a group nothing is on", () => {
+    // "a chip the bar offers that nothing is on" is a state the chips have to
+    // survive, and a fixture in which every group is populated never puts it on
+    // screen. `settlement/movements` is the one that has it: `escrow` is offered
+    // and no row is on it.
+    expect(consoleFixtures["settlement/movements"].meta.groups).toContain("escrow");
+    for (const row of consoleFixtures["settlement/movements"].data) {
+      expect(row.kind).not.toBe("escrow");
+    }
+  });
+
   /**
-   * A rail tab and a chip both select on a group value, so the two vocabularies
-   * have to be the same list. A rail built from a hand-written copy of the kinds
-   * is a tab that opens an empty column the day a kind is renamed, and it was:
-   * the streams rail used to be written out in `shell.config.tsx` as well as in
-   * the panel, and the two had come to name different channels.
+   * Which field each section's bar counts on, read from the panel rather than
+   * guessed.
    *
-   * Asserted against the shared vocabulary rather than a panel's export, because
-   * the vocabulary is what the service sends in `meta.groups` and what the chips
-   * are built from. Two copies of it would each pass a test that only compared
-   * them to each other.
+   * Guessing is what this assertion did, and it was wrong in a way worth
+   * keeping: it collected `status` from every row, and a node's `status` is
+   * `operational` — a health figure on a column the bar does not filter. So the
+   * test would have insisted a node's health were in the kind vocabulary, and
+   * `operational` being absent read as a fixture defect rather than as the test
+   * having picked the wrong column.
+   *
+   * Named per section, because "the field the bar counts on" is a decision each
+   * panel makes and none of them shares: `settlement/payouts` counts a
+   * transaction's `status`, `settlement/runs` has no field at all and derives a
+   * pair, and `slas/at_risk` counts the `state` of a group rather than of a
+   * monitor.
    */
-  const expectedRails: Record<string, readonly string[]> = {
-    infrastructure: ["all", ...NODE_KINDS],
-    settlement: ["all", ...SETTLEMENT_KINDS],
-    slas: ["all", ...SLA_STATES],
-    alerts: ["all", ...ALERT_SEVERITIES],
-    market: Object.keys(MARKET_POOL_TITLES),
-  };
+  const GROUPED_BY = {
+    "alerts/feed": "severity",
+    "alerts/outages": "worstSeverity",
+    "alerts/capacity": "severity",
+    "alerts/security": "severity",
+    "infrastructure/nodes": "kind",
+    "infrastructure/headroom": "kind",
+    "settlement/movements": "kind",
+    "settlement/payouts": "status",
+    "slas/commitments": "state",
+    "slas/at_risk": "state",
+    "slas/credits": "state",
+  } as const satisfies Partial<Record<ConsoleSectionKey, string>>;
 
-  test("every rail tab is a group the service can hold, or the one that means all", () => {
-    for (const [view, ids] of Object.entries(expectedRails)) {
-      expect((config.views[view]?.rail ?? []).map((entry) => entry.id)).toEqual(ids);
+  test("every grouped section names the field its bar counts on", () => {
+    // The complement of the test below: a section with rows and chips has to say
+    // which of its row fields the chips are built from, or this file cannot check
+    // it and the vocabulary goes unverified by accident.
+    for (const section of CONSOLE_SECTION_KEYS) {
+      const payload = consoleFixtures[section];
+      if (!Array.isArray(payload.data) || payload.meta.groups.length === 0) {
+        continue;
+      }
+      expect(GROUPED_BY, `${section} groups its rows but names no field`).toHaveProperty(section);
     }
   });
 
-  test("the only tab that is not a group is the one that means every group", () => {
-    for (const view of ["infrastructure", "settlement", "slas", "alerts"]) {
-      const rail = config.views[view]?.rail ?? [];
-      expect(rail[0]?.id).toBe("all");
-      // `all` is not a kind, a state, a severity or a settlement kind, which is
-      // the whole reason it is spelled that way.
-      expect(consoleFixtures[view as "infrastructure"].meta.groups).not.toContain("all");
+  test("every section's rows agree with the vocabulary sent beside them", () => {
+    // A group the rows contradict is a chip that shows zero, which is fine; a row
+    // whose value is not in the vocabulary is a row no chip can select.
+    for (const section of CONSOLE_SECTION_KEYS) {
+      const field = GROUPED_BY[section as keyof typeof GROUPED_BY];
+      if (field === undefined) {
+        continue;
+      }
+      const payload = consoleFixtures[section];
+      const groups = payload.meta.groups as readonly string[];
+      for (const row of payload.data as unknown as readonly Record<string, unknown>[]) {
+        const value = row[field];
+        if (typeof value !== "string") {
+          continue;
+        }
+        expect(groups, `${section}/${field}: ${value}`).toContain(value);
+      }
     }
-  });
-
-  /**
-   * A pool id and a `SpotPoint.pool` have to be the same string, because the rail
-   * selection filters the series on it with no lookup between.
-   */
-  test("the market rail's ids are the pools the series carries", () => {
-    expect(MARKET_RAIL.map((entry) => entry.id)).toEqual(Object.keys(MARKET_POOL_TITLES));
-    for (const point of consoleFixtures.market.data.priceSeries) {
-      expect(MARKET_RAIL.map((entry) => entry.id)).toContain(point.pool);
-    }
-  });
-
-  /**
-   * A selection travels in the query string and outlives the vocabulary it names.
-   * An unknown pool resolves to the first one rather than to nothing, because a
-   * panel rendering empty would report a rename as an outage.
-   */
-  test("a stale pool selection falls back to a pool rather than to nothing", () => {
-    expect(poolFor("nairobi_ixp")).toBe("nairobi_ixp");
-    expect(poolFor("a_pool_that_was_renamed")).toBe(MARKET_RAIL[0]?.id);
-    expect(poolFor(null)).toBeNull();
   });
 });

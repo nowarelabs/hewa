@@ -43,3 +43,64 @@ export interface SlaMonitor {
   /** An ISO 8601 instant. */
   readonly measuredAt: string;
 }
+
+/**
+ * `slas/at_risk`: the commitments closest to their threshold.
+ *
+ * A projection rather than a copy. `shortfallBps` is what the commitment is missing
+ * by, and `trend` is whether that gap is widening — a commitment sitting two basis
+ * points under target and stable is not the same problem as one two under and
+ * falling, and a list of both sorted by shortfall puts the stable one first.
+ */
+export interface SlaRisk {
+  readonly id: string;
+  readonly account: string;
+  readonly nodeId: string;
+  readonly nodeName: string;
+  readonly provider: string;
+  readonly state: SlaState;
+  readonly sla: SlaCommitment;
+  /** Basis points below target. `0` for a compliant commitment. */
+  readonly shortfallBps: number;
+  /**
+   * Basis points the gap moved over the window, negative when it closed.
+   *
+   * A signed whole number rather than a direction enum, because "is it getting
+   * worse" and "how much worse" are one measurement and a boolean would throw the
+   * second half away.
+   */
+  readonly trendBps: number;
+  readonly measuredAt: string;
+}
+
+/**
+ * `slas/credits`: what each shortfall would cost.
+ *
+ * ## Why there is no `Money` here
+ *
+ * A credit is a fraction of a bill, and this service holds no bills — it holds
+ * commitments, and what a commitment cost is the settlement view's question. So
+ * what travels is the rate (`creditNumerator` / `creditDenominator`) and the
+ * `creditablePoints` that `creditablePoints()` in `@hewa/marketplace-types`
+ * computes from it, both exact.
+ *
+ * Publishing an amount would mean inventing the base it applies to: multiplying a
+ * rate by a month nobody named produces a confident figure that is wrong, and
+ * wrong in the one direction an operator would act on. The points are the part that
+ * is knowable here; the money is somebody else's arithmetic.
+ */
+export interface SlaCredit {
+  readonly commitmentId: string;
+  readonly account: string;
+  readonly nodeName: string;
+  readonly provider: string;
+  readonly state: SlaState;
+  readonly targetBps: number;
+  readonly actualBps: number;
+  /** Whole percentage points missed, floored at 0. */
+  readonly creditablePoints: number;
+  /** The credit rate as an exact fraction: `creditNumerator / creditDenominator`. */
+  readonly creditNumerator: number;
+  readonly creditDenominator: number;
+  readonly measuredAt: string;
+}

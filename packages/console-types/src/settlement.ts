@@ -6,7 +6,7 @@
  * middle, and it is the only place in the console where a figure is a number
  * rather than a measurement.
  */
-import type { Money, TransactionStatus } from "@hewa/marketplace-types";
+import type { Currency, Money, TransactionStatus } from "@hewa/marketplace-types";
 
 /**
  * Why a line of value is moving at all.
@@ -66,5 +66,57 @@ export interface Settlement {
    * each of them is somebody's action, so the reason is the field and the status
    * is the filter.
    */
+  readonly failureReason: string | null;
+}
+
+/**
+ * `settlement/runs`: a batch read as a batch.
+ *
+ * One row per **(batch, currency)**, never one per batch, and that pair is the
+ * whole reason this type exists. A batch holding a USD clearing line and a USDC
+ * micro-payment has no net, no gross and no fee total: the three would be sums of
+ * two currencies, which is a number in minor units of nothing. Splitting the row
+ * by currency makes the impossible sum impossible to express rather than merely
+ * easy to get wrong.
+ */
+export interface SettlementRun {
+  readonly batch: string;
+  readonly currency: Currency;
+  /** The kinds of movement in this batch, in vocabulary order. */
+  readonly kinds: SettlementKind[];
+  readonly lineCount: number;
+  /** How many of those lines did not complete. */
+  readonly failed: number;
+  /** The value moved, signed, before fees. */
+  readonly gross: Money;
+  /** What the marketplace took across the batch. */
+  readonly fees: Money;
+  /** `gross - fees`. The same arithmetic a run signs off on. */
+  readonly net: Money;
+  /** The earliest line in the batch. */
+  readonly startedAt: string;
+  /** The latest, or `null` while the batch is still running. */
+  readonly completedAt: string | null;
+}
+
+/**
+ * `settlement/payouts`: money leaving for an ISP.
+ *
+ * A payout is a settlement line with `kind: "payout"`, and this type adds the two
+ * things an operator asks about it that the movements list cannot answer: what
+ * actually arrived, net of the fee, and why the ones that did not arrive did not.
+ */
+export interface Payout {
+  readonly id: string;
+  readonly batch: string;
+  readonly counterparty: string;
+  /** What was sent. Signed, by the ledger's convention. */
+  readonly amount: Money;
+  /** What the marketplace took. */
+  readonly fee: Money;
+  /** `amount - fee`. */
+  readonly net: Money;
+  readonly status: TransactionStatus;
+  readonly occurredAt: string;
   readonly failureReason: string | null;
 }

@@ -5,6 +5,8 @@ import { createRoot, type Root } from "react-dom/client";
 import { NuqsTestingAdapter } from "nuqs/adapters/testing";
 import { afterEach, describe, expect, test } from "vite-plus/test";
 import { QueryClientProvider } from "@tanstack/react-query";
+import type { ConsoleSectionKey } from "@hewa/console-types";
+
 import { config } from "../src/app/shell.config";
 import { visibleBy } from "../src/app/ui/primitives";
 import { consoleFixtures } from "./fixtures";
@@ -129,12 +131,21 @@ afterEach(() => {
   document.body.replaceChildren();
 });
 
-const view = (key: string): ReactElement => {
-  const found = config.views[key];
-  if (found === undefined) {
-    throw new Error(`no view called ${key}`);
+/**
+ * One section's main column, taken from the rail item that opens it.
+ *
+ * Through the config rather than by importing the panel directly, so these tests
+ * exercise the same wiring the shell renders: a section whose rail item points at
+ * the wrong panel fails here rather than counting the rows of a neighbour.
+ */
+const section = (key: ConsoleSectionKey): ReactElement => {
+  for (const spec of Object.values(config.views)) {
+    const item = spec.rail.find((entry) => entry.section === key);
+    if (item !== undefined) {
+      return createElement(item.main.render);
+    }
   }
-  return createElement(found.main.render);
+  throw new Error(`no rail item for ${key}`);
 };
 
 const query = <T extends Element>(root: ParentNode, selector: string): T => {
@@ -180,39 +191,39 @@ const rows = (root: ParentNode): number => root.querySelectorAll("[data-row]").l
  * prove that an empty list renders as an empty list.
  */
 const FILTERS = [
-  // Every one of these lists groups its rows, so every one of these bars is a
-  // filter; `market` is the document, and its bar holds figures instead.
-  { view: "alerts", group: "high", field: "severity" },
-  { view: "infrastructure", group: "ixp", field: "kind" },
-  { view: "settlement", group: "payout", field: "kind" },
-  { view: "slas", group: "breached", field: "state" },
+  // Every one of these sections groups its rows, so every one of these bars is a
+  // filter. The five sections that take no chips are not here: a bar holding
+  // figures rather than toggles is asserted on its own further down.
+  { section: "alerts/feed", group: "high", field: "severity" },
+  { section: "infrastructure/nodes", group: "ixp", field: "kind" },
+  { section: "settlement/movements", group: "payout", field: "kind" },
+  { section: "slas/commitments", group: "breached", field: "state" },
 ] as const;
 
-/** How many of a view's fixture rows are on `group`. */
-function remainingIn(view: string, field: string, group: string): number {
-  const rows = consoleFixtures[view as keyof typeof consoleFixtures].data as {
-    [key: string]: unknown;
-  }[];
+/** How many of a section's fixture rows are on `group`. */
+function remainingIn(section: ConsoleSectionKey, field: string, group: string): number {
+  const rows = consoleFixtures[section].data as unknown as Record<string, unknown>[];
   return rows.filter((row) => row[field] === group).length;
 }
 
-/** How many rows a view has before anything is filtered. */
-function totalIn(view: string): number {
-  return (consoleFixtures[view as keyof typeof consoleFixtures].data as unknown[]).length;
+/** How many rows a section has before anything is filtered. */
+function totalIn(section: ConsoleSectionKey): number {
+  const rows = consoleFixtures[section].data;
+  return Array.isArray(rows) ? rows.length : 0;
 }
 
 describe("a bar that filters", () => {
-  for (const { view: name, group, field: groupField } of FILTERS) {
+  for (const { section: name, group, field: groupField } of FILTERS) {
     const remaining = remainingIn(name, groupField, group);
     const total = totalIn(name);
     test(`the ${name} list is the whole list to begin with`, () => {
-      const container = mount(view(name));
+      const container = mount(section(name));
       expect(rows(container)).toBe(total);
       expect(chip(container, group).getAttribute("aria-pressed")).toBe("false");
     });
 
     test(`the ${name} bar filters the list beneath it`, async () => {
-      const container = mount(view(name));
+      const container = mount(section(name));
       await click(chip(container, group));
       expect(rows(container)).toBe(remaining);
       expect(chip(container, group).getAttribute("aria-pressed")).toBe("true");
@@ -222,7 +233,7 @@ describe("a bar that filters", () => {
       // Union, not replace. Filtering by two severities has to show both, and a
       // bar where the last chip wins reads as a dropdown that forgot it is
       // multi-select.
-      const container = mount(view(name));
+      const container = mount(section(name));
       const first = chip(container, group);
       await click(first);
       const other = query<HTMLButtonElement>(
@@ -238,7 +249,7 @@ describe("a bar that filters", () => {
     });
 
     test(`clicking a chip in ${name} again takes the filter off`, async () => {
-      const container = mount(view(name));
+      const container = mount(section(name));
       const target = chip(container, group);
       await click(target);
       const filtered = rows(container);
@@ -251,8 +262,8 @@ describe("a bar that filters", () => {
   test("a filter says so rather than going quiet", () => {
     // Every chip is a button with aria-pressed, and every bar is marked. A chip
     // that looks like a toggle and is a <span> is the failure this rules out.
-    for (const { view: name } of FILTERS) {
-      const container = mount(view(name));
+    for (const { section: name } of FILTERS) {
+      const container = mount(section(name));
       const bar = query(container, "[data-summary-bar]");
       expect(bar.hasAttribute("data-filterable")).toBe(true);
       const chips = bar.querySelectorAll("[data-summary-item][aria-pressed]");
@@ -264,11 +275,11 @@ describe("a bar that filters", () => {
   });
 
   test("a bar that is not a filter holds no toggles of its own", () => {
-    // The market view is the one left: it counts aggregates rather than rows, so
-    // there is nothing for a chip to filter. Asserted for the view that has the
-    // least reason to grow one.
-    for (const name of ["market"]) {
-      const container = mount(view(name));
+    // The market sections and `infrastructure/providers` count figures or already
+    // are one row per thing, so there is nothing for a chip to select. Asserted
+    // for the sections that have the least reason to grow one.
+    for (const name of ["market/book", "infrastructure/providers"] as const) {
+      const container = mount(section(name));
       const bar = query(container, "[data-summary-bar]");
       expect(bar.hasAttribute("data-filterable")).toBe(false);
       expect(bar.querySelectorAll("[aria-pressed]").length).toBe(0);
@@ -287,53 +298,64 @@ describe("the filter in the address bar", () => {
    * browser, which is the half that was the reason for putting it there.
    */
   test("a press writes the group into the query string", async () => {
-    const container = mount(view("alerts"));
+    const container = mount(section("alerts/feed"));
     await click(chip(container, "high"));
-    expect(await url(container)).toBe("?alerts=high");
+    expect(await url(container)).toBe("?alerts-feed=high");
   });
 
   test("two groups are one key, in the order they were pressed", async () => {
-    const container = mount(view("alerts"));
+    const container = mount(section("alerts/feed"));
     await click(chip(container, "high"));
     await click(chip(container, "critical"));
-    expect(await url(container)).toBe("?alerts=high,critical");
+    expect(await url(container)).toBe("?alerts-feed=high,critical");
   });
 
   test("taking the last group off takes the key with it", async () => {
-    // Not `?alerts=`. A key left sitting there empty is a URL that reads as
+    // Not `?alerts-feed=`. A key left sitting there empty is a URL that reads as
     // though something were filtered, and it is the first thing anyone
     // hand-cleans off a link before sending it.
-    const container = mount(view("alerts"));
+    const container = mount(section("alerts/feed"));
     await click(chip(container, "high"));
     await click(chip(container, "high"));
     expect(await url(container)).toBe("");
   });
 
   test("a link arrives with its filter already in force", () => {
-    const container = mount(view("alerts"), "?alerts=high");
-    expect(rows(container)).toBe(remainingIn("alerts", "severity", "high"));
+    const container = mount(section("alerts/feed"), "?alerts-feed=high");
+    expect(rows(container)).toBe(remainingIn("alerts/feed", "severity", "high"));
     expect(chip(container, "high").getAttribute("aria-pressed")).toBe("true");
   });
 
-  test("one view's key does not filter another", () => {
-    // The infrastructure view and the settlement view both group their rows by
-    // "kind", which is why the key is named after the view. A shared `?kind=`
-    // would carry the settlement view's `payout` into the infrastructure view,
-    // match no node, and show an empty list with no chip pressed: a filter nobody
-    // set and nobody can see.
-    const container = mount(view("infrastructure"), "?settlement=payout");
-    expect(rows(container)).toBe(totalIn("infrastructure"));
+  test("one section's key does not filter another", () => {
+    // `infrastructure/nodes` and `settlement/movements` both filter on "kind",
+    // and four sections filter on "severity", so a shared `?kind=` would carry
+    // the settlement section's `payout` into the infrastructure one, match no
+    // node, and show an empty list with no chip pressed: a filter nobody set and
+    // nobody can see.
+    const container = mount(section("infrastructure/nodes"), "?settlement-movements=payout");
+    expect(rows(container)).toBe(totalIn("infrastructure/nodes"));
     for (const element of container.querySelectorAll("[data-summary-item]")) {
       expect(element.getAttribute("aria-pressed")).toBe("false");
     }
   });
 
-  test("a link naming a group this view does not have says so", () => {
-    // Honest rather than forgiving. The URL says `?infrastructure=nonsense`, so
-    // the list is empty and the empty state explains it. Quietly ignoring the key
-    // would show a list that does not match the address bar being looked at, which
-    // is the one thing an address bar must never do.
-    const container = mount(view("infrastructure"), "?infrastructure=nonsense");
+  test("one section of a view does not filter its sibling", () => {
+    // `nodes` and `headroom` are the same rows and the same kind vocabulary, and
+    // they are still two destinations with two filters. Arriving at headroom is a
+    // fresh look at the network's room, not the nodes list with a filter on it.
+    const container = mount(section("infrastructure/headroom"), "?infrastructure-nodes=ixp");
+    expect(rows(container)).toBe(totalIn("infrastructure/headroom"));
+    for (const element of container.querySelectorAll("[data-summary-item]")) {
+      expect(element.getAttribute("aria-pressed")).toBe("false");
+    }
+  });
+
+  test("a link naming a group this section does not have says so", () => {
+    // Honest rather than forgiving. The URL says `?infrastructure-nodes=nonsense`,
+    // so the list is empty and the empty state explains it. Quietly ignoring the
+    // key would show a list that does not match the address bar being looked at,
+    // which is the one thing an address bar must never do.
+    const container = mount(section("infrastructure/nodes"), "?infrastructure-nodes=nonsense");
     expect(rows(container)).toBe(0);
     expect(container.textContent).toContain("No nodes match these kinds");
   });
@@ -350,15 +372,19 @@ describe("a filter that matches nothing", () => {
    * somewhere to be pressed into.
    */
   const EMPTY_CASES = [
-    { view: "infrastructure", group: "cdn_edge", message: "No nodes match these kinds" },
-    { view: "settlement", group: "escrow", message: "No movements match these kinds" },
-    { view: "slas", group: "at_risk", message: "No commitments match these states" },
-    { view: "alerts", group: "medium", message: "No alerts match these severities" },
-  ] as const;
+    {
+      section: "infrastructure/nodes",
+      group: "cdn_edge",
+      message: "No nodes match these kinds",
+    },
+    { section: "settlement/movements", group: "escrow", message: "No movements match the filter" },
+    { section: "slas/commitments", group: "at_risk", message: "No commitments match these states" },
+    { section: "alerts/feed", group: "medium", message: "No alerts match these severities" },
+  ] as const satisfies readonly { section: ConsoleSectionKey; group: string; message: string }[];
 
-  for (const { view: name, group, message } of EMPTY_CASES) {
-    test(`the ${name} view says so rather than leaving an empty column`, async () => {
-      const container = mount(view(name));
+  for (const { section: name, group, message } of EMPTY_CASES) {
+    test(`the ${name} section says so rather than leaving an empty column`, async () => {
+      const container = mount(section(name));
       await click(chip(container, group));
       expect(rows(container)).toBe(0);
       expect(container.textContent).toContain(message);
@@ -368,7 +394,7 @@ describe("a filter that matches nothing", () => {
       // The chip exists because the service sent the group, not because a row
       // does. This is asserted against `meta.groups` rather than against the
       // rendered bar, because it is the payload that has to carry it.
-      expect(consoleFixtures[name].meta.groups).toContain(group);
+      expect(consoleFixtures[name].meta.groups as readonly string[]).toContain(group);
     });
   }
 });
@@ -388,15 +414,15 @@ describe("the SLA bar", () => {
    */
   test("it draws the vocabulary, so the counts below are about the filter", () => {
     // Without this the rest of these pass on an empty list.
-    const container = mount(view("slas"));
-    expect(rows(container)).toBe(consoleFixtures.slas.data.length);
+    const container = mount(section("slas/commitments"));
+    expect(rows(container)).toBe(consoleFixtures["slas/commitments"].data.length);
   });
 
   test("it is a chip per state, with nothing in it that is not one", () => {
     // Asserted as the absence of a second control, because that is what a bar
     // that grew a search field again would look like: a toggle per state, plus a
     // text box sharing the strip with them.
-    const container = mount(view("slas"));
+    const container = mount(section("slas/commitments"));
     for (const state of ["compliant", "at_risk", "breached"]) {
       expect(query(container, `[data-summary-item="${state}"]`)).not.toBeNull();
     }
@@ -404,10 +430,10 @@ describe("the SLA bar", () => {
   });
 
   test("a state chip narrows the list", async () => {
-    const container = mount(view("slas"));
+    const container = mount(section("slas/commitments"));
     await click(chip(container, "breached"));
     expect(rows(container)).toBe(
-      consoleFixtures.slas.data.filter((row) => row.state === "breached").length,
+      consoleFixtures["slas/commitments"].data.filter((row) => row.state === "breached").length,
     );
   });
 
@@ -415,32 +441,52 @@ describe("the SLA bar", () => {
     // A state the service's vocabulary names and this fixture has nothing on, so
     // this is the filter that opens a panel with nothing in it. Driven from the
     // URL because the fixture's two rows are compliant and breached.
-    const container = mount(view("slas"), "?slas=at_risk");
+    const container = mount(section("slas/commitments"), "?slas-commitments=at_risk");
     expect(rows(container)).toBe(0);
     expect(container.textContent).toContain("No commitments match these states");
   });
 });
 
-describe("the market has no chip bar", () => {
+describe("the sections that have no chip bar", () => {
   /**
-   * The market is a document, so its bar holds aggregates and takes no `filter`.
+   * Five of the sixteen sections take no `filter`, and the reasons are not the
+   * same reason. The market's are documents whose bar holds figures;
+   * `infrastructure/providers` is one row per provider, so a chip keyed on the
+   * column it is keyed on would select the row it was built from.
    *
-   * A chip there would have nothing to filter: the rail already picks the pool,
-   * and a toggle that hid half the book on a click would leave an operator
-   * wondering which half. A control that hides nothing is a control that lies,
-   * which is why `SummaryBar` refuses the combination.
+   * A chip there would have nothing to filter, and a toggle that hid nothing is a
+   * control that lies — which is why `SummaryBar` refuses the combination rather
+   * than rendering a bar of dead buttons.
    */
-  test("its bar counts figures and holds no toggles", () => {
-    const container = mount(view("market"));
+  test("the market bar counts figures and holds no toggles", () => {
+    const container = mount(section("market/book"));
     const bar = query(container, "[data-summary-bar]");
     expect(bar.hasAttribute("data-filterable")).toBe(false);
     expect(bar.querySelectorAll("[aria-pressed]").length).toBe(0);
   });
 
-  test("its groups are empty, and a chip built from them would be a type error", () => {
-    // `meta.groups: never` for this view is the compile-time half; this is the
+  test("their vocabularies are empty, and a chip built from them would be a type error", () => {
+    // `meta.groups: never` for these is the compile-time half; this is the
     // payload half, and it is what a chip bar would read to build itself.
-    expect(consoleFixtures.market.meta.groups).toEqual([]);
+    for (const key of [
+      "market/book",
+      "market/prices",
+      "market/venues",
+      "infrastructure/providers",
+      "settlement/runs",
+    ] as const) {
+      expect(consoleFixtures[key].meta.groups, key).toEqual([]);
+    }
+  });
+
+  test("a section with no vocabulary still draws its bar", () => {
+    // Skipped rather than blank: the counts are figures the operator reads, and a
+    // section that renders nothing because it has no chips to draw is a section
+    // that looks broken.
+    for (const key of ["market/book", "infrastructure/providers"] as const) {
+      const container = mount(section(key));
+      expect(query(container, "[data-summary-bar]"), key).not.toBeNull();
+    }
   });
 });
 

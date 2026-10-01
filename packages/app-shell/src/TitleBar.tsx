@@ -1,15 +1,6 @@
 import { useState } from "react";
 import type { ReactElement } from "react";
-import {
-  LayoutGrid,
-  Menu,
-  Moon,
-  PanelLeftClose,
-  PanelRightClose,
-  Settings,
-  Sparkles,
-  Sun,
-} from "lucide-react";
+import { LayoutGrid, Menu, Moon, PanelRightClose, Settings, Sparkles, Sun } from "lucide-react";
 
 import { ActionGroup } from "./ActionGroup";
 import { useShellState } from "./state";
@@ -63,15 +54,6 @@ export function TitleBar({
         <ViewTabs entries={entries} active={view} onSelect={selectView} />
         <div className="flex-1" />
         <div aria-hidden="true" className="h-6 border-l border-line" />
-        <button
-          type="button"
-          className={ICON_BUTTON}
-          onClick={() => togglePanel("left")}
-          aria-pressed={panels.left}
-          title="Toggle left panel"
-        >
-          <PanelLeftClose className="h-4 w-4" />
-        </button>
         <button
           type="button"
           className={ICON_BUTTON}
@@ -211,10 +193,10 @@ function MobileMenu({
   entries: [string, ViewSpec][];
   active: string;
   hasAssistant: boolean;
-  panels: { left: boolean; right: boolean; assistant: boolean };
+  panels: { right: boolean; assistant: boolean };
   theme: "light" | "dark";
   onChooseView: (id: string) => void;
-  onTogglePanel: (panel: "left" | "right" | "assistant") => void;
+  onTogglePanel: (panel: "right" | "assistant") => void;
   onToggleTheme: () => void;
   onClose: () => void;
 }): ReactElement {
@@ -279,16 +261,6 @@ function MobileMenu({
       {row(
         "Panels",
         <>
-          <button
-            type="button"
-            role="menuitem"
-            onClick={() => onTogglePanel("left")}
-            className={MENU_ITEM}
-          >
-            <PanelLeftClose className="h-4 w-4" />
-            Left panel
-            <PanelState open={panels.left} />
-          </button>
           <button
             type="button"
             role="menuitem"

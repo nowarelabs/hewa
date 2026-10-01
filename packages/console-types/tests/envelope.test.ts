@@ -1,17 +1,24 @@
 import { describe, expect, test } from "vite-plus/test";
 import {
   ALERT_CATEGORIES,
+  ALERT_CATEGORY_TITLES,
   ALERT_SEVERITIES,
   ALERT_SEVERITY_TITLES,
+  CONSOLE_SECTION_KEYS,
+  CONSOLE_SECTIONS,
   CONSOLE_VIEWS,
-  consolePath,
+  consoleSectionPath,
   NODE_KINDS,
   NODE_KIND_TITLES,
   NODE_STATUSES,
+  parseSectionKey,
+  SECTION_TITLES,
   SETTLEMENT_KINDS,
   SETTLEMENT_KIND_TITLES,
   type ConsoleGroups,
   type ConsolePayload,
+  type ConsoleSectionId,
+  type ConsoleSectionKey,
   type ConsoleViewKey,
 } from "../src/index.ts";
 
@@ -19,93 +26,196 @@ import {
  * The contract's own internal consistency.
  *
  * A types-only package has very little to assert at runtime, so this is mostly
- * about the two places a hand-written list can lie: the views named in
- * `CONSOLE_VIEWS` and the views typed in `ConsolePayload`. They are written out
- * separately — one has to be, because a type is erased — and the app's
+ * about the two places a hand-written list can lie: the sections named in
+ * `CONSOLE_SECTIONS` and the sections typed in `ConsolePayload`. They are written
+ * out separately — one has to be, because a type is erased — and the app's
  * `tests/data.test.ts` and the service's e2e test each hold one end of the pair.
  * This holds them together at build time, so the disagreement is a failed type
  * check rather than a 404.
  */
 
-const typed: Record<ConsoleViewKey, keyof ConsolePayload> = {
-  market: "market",
-  infrastructure: "infrastructure",
-  settlement: "settlement",
-  slas: "slas",
-  alerts: "alerts",
+const typed: Record<ConsoleSectionKey, keyof ConsolePayload> = {
+  "market/book": "market/book",
+  "market/prices": "market/prices",
+  "market/venues": "market/venues",
+  "infrastructure/nodes": "infrastructure/nodes",
+  "infrastructure/headroom": "infrastructure/headroom",
+  "infrastructure/providers": "infrastructure/providers",
+  "settlement/movements": "settlement/movements",
+  "settlement/runs": "settlement/runs",
+  "settlement/payouts": "settlement/payouts",
+  "slas/commitments": "slas/commitments",
+  "slas/at_risk": "slas/at_risk",
+  "slas/credits": "slas/credits",
+  "alerts/feed": "alerts/feed",
+  "alerts/outages": "alerts/outages",
+  "alerts/capacity": "alerts/capacity",
+  "alerts/security": "alerts/security",
 };
 
 /**
  * The other direction.
  *
- * Without this, a key added to `ConsolePayload` and forgotten in `CONSOLE_VIEWS`
- * is a payload no view can name and nothing complains: `typed` satisfies its
- * annotation with the extra key simply absent, because a `Record` annotation
- * checks the keys that are there.
+ * Without this, a key added to `ConsolePayload` and forgotten in
+ * `CONSOLE_SECTIONS` is a payload no section key can name and nothing complains:
+ * `typed` satisfies its annotation with the extra key simply absent, because a
+ * `Record` annotation checks the keys that are there.
  */
-const viewed: Record<keyof ConsolePayload, ConsoleViewKey> = typed;
+const viewed: Record<keyof ConsolePayload, ConsoleSectionKey> = typed;
 
-describe("the console's views", () => {
-  test("the payload map and the view list name the same five", () => {
-    expect(Object.keys(typed).toSorted()).toEqual([...CONSOLE_VIEWS].toSorted());
-    expect(Object.keys(viewed).toSorted()).toEqual([...CONSOLE_VIEWS].toSorted());
+describe("the console's sections", () => {
+  test("the payload map and the section registry name the same sixteen", () => {
+    expect(Object.keys(typed).toSorted()).toEqual([...CONSOLE_SECTION_KEYS].toSorted());
+    expect(Object.keys(viewed).toSorted()).toEqual([...CONSOLE_SECTION_KEYS].toSorted());
   });
 
-  test("a view is listed once", () => {
-    expect(new Set(CONSOLE_VIEWS).size).toBe(CONSOLE_VIEWS.length);
+  test("every view owns at least one section", () => {
+    // A rail column with nothing in it is a navigation dead end, and nothing in
+    // the shell treats one differently from a populated one — it just renders.
+    for (const view of CONSOLE_VIEWS) {
+      expect(CONSOLE_SECTIONS[view].length, view).toBeGreaterThan(0);
+    }
+    expect(Object.keys(CONSOLE_SECTIONS).toSorted()).toEqual([...CONSOLE_VIEWS].toSorted());
+  });
+
+  test("a section key is named once", () => {
+    expect(new Set(CONSOLE_SECTION_KEYS).size).toBe(CONSOLE_SECTION_KEYS.length);
+  });
+
+  test("the flattened key list is the registry, in registry order", () => {
+    // `CONSOLE_SECTION_KEYS` is derived rather than hand-listed, so the assertion
+    // that matters is that the derivation is total: every section in every view
+    // appears, and none appears under a view it does not belong to.
+    const expected = CONSOLE_VIEWS.flatMap((view) =>
+      CONSOLE_SECTIONS[view].map((section) => `${view}/${section}`),
+    );
+    expect(CONSOLE_SECTION_KEYS).toEqual(expected);
+  });
+
+  test("a key parses back into the view and section it was built from", () => {
+    for (const key of CONSOLE_SECTION_KEYS) {
+      const { view, section } = parseSectionKey(key);
+      expect(section, key).toBe(key.slice(view.length + 1));
+      expect(CONSOLE_VIEWS as readonly string[], key).toContain(view);
+      expect(CONSOLE_SECTIONS[view as ConsoleViewKey] as readonly string[], key).toContain(section);
+    }
   });
 });
 
-describe("consolePath", () => {
-  test("a view's endpoint hangs off the versioned prefix", () => {
+describe("consoleSectionPath", () => {
+  test("a section's endpoint hangs off the versioned prefix and names both halves", () => {
     // `api/v1` rather than `console`, and the reason is the two hops. The browser
     // asks its own origin for this path and the app's route handler asks
     // central-api for the same one, so the prefix is the app's public API and not a
     // name for one service behind it. Renaming the prefix moves both sides because
     // both read it here.
-    expect(consolePath("market")).toBe("/api/v1/market");
-    expect(consolePath("alerts")).toBe("/api/v1/alerts");
+    expect(consoleSectionPath("market", "book")).toBe("/api/v1/market/book");
+    expect(consoleSectionPath("alerts", "security")).toBe("/api/v1/alerts/security");
   });
 
-  test("every view has a path, and no two share one", () => {
-    const paths = CONSOLE_VIEWS.map(consolePath);
-    expect(new Set(paths).size).toBe(CONSOLE_VIEWS.length);
+  test("every section has a path, and no two share one", () => {
+    // Two sections sharing a path would mean one section's rows answering for
+    // another, which is the failure the whole split exists to prevent.
+    const paths = CONSOLE_SECTION_KEYS.map((key) => {
+      const { view, section } = parseSectionKey(key);
+      return consoleSectionPath(
+        view as ConsoleViewKey,
+        section as ConsoleSectionId<ConsoleViewKey>,
+      );
+    });
+    expect(new Set(paths).size).toBe(CONSOLE_SECTION_KEYS.length);
+    expect(paths).toEqual(CONSOLE_SECTION_KEYS.map((key) => `/api/v1/${key}`));
   });
 });
 
-describe("the view that groups by nothing", () => {
-  /**
-   * `market` counts figures and draws a book rather than filtering a list, so it
-   * has no group vocabulary. `never` is the honest annotation for that: a chip
-   * built from its groups does not compile, where `string[]` would compile into an
-   * empty bar that reads as "still loading" on a view that has nothing to load.
-   */
-  test("its group list holds no group at all", () => {
-    const groups: ConsoleGroups<"market"> = [];
-    expect([...groups]).toEqual([]);
+describe("section titles", () => {
+  test("every section has a title, and no two share one", () => {
+    expect(Object.keys(SECTION_TITLES).toSorted()).toEqual([...CONSOLE_SECTION_KEYS].toSorted());
+    const titles = Object.values(SECTION_TITLES);
+    expect(new Set(titles).size).toBe(titles.length);
   });
 
-  test("every other view names a group type, so none of them is accidentally ungrouped", () => {
-    // The inverse of the assertion above, and the reason it is worth writing: a
-    // list view whose groups became `never` would stop offering filters and
-    // nothing would say so except an operator discovering it.
-    const groups: ConsoleGroups<"infrastructure"> = ["ixp"];
-    const more: ConsoleGroups<"settlement"> = ["clearing"];
-    const states: ConsoleGroups<"slas"> = ["breached"];
-    const severities: ConsoleGroups<"alerts"> = ["critical"];
+  test("a title is written for a reader", () => {
+    // The wire id is `at_risk` and the title is "At risk". A title that still
+    // holds the wire format is the raw column value leaking into the rail, so the
+    // underscore check is the assertion.
+    for (const [key, title] of Object.entries(SECTION_TITLES)) {
+      expect(title, key).toBeTypeOf("string");
+      expect(title, key).not.toBe("");
+      expect(title, key).not.toContain("_");
+      expect(title, key).not.toContain("/");
+    }
+  });
 
-    expect([...groups, ...more, ...states, ...severities]).toHaveLength(4);
+  test("a title does not restate the view it sits under", () => {
+    // The view already has a tab above it with the rail's own heading, so a
+    // section called "Alerts" inside the alerts view prints its own name twice.
+    // `alert`/`alerts` is the only one that would, which is why this is a case
+    // rather than a loop.
+    expect(SECTION_TITLES["alerts/feed"]).not.toMatch(/^alerts?$/i);
+  });
+});
+
+describe("sections that group by nothing", () => {
+  /**
+   * The three market sections, the provider rollup and the settlement runs
+   * answer a question rather than showing a filtered list, so they have no group
+   * vocabulary. `never` is the honest annotation for that: a chip built from
+   * their groups does not compile, where `string[]` would compile into an empty
+   * bar that reads as "still loading" on a view that has nothing to load.
+   */
+  const ungrouped = [
+    "market/book",
+    "market/prices",
+    "market/venues",
+    "infrastructure/providers",
+    "settlement/runs",
+  ] as const;
+
+  test("their group list holds no group at all", () => {
+    const book: ConsoleGroups<"market/book"> = [];
+    const venues: ConsoleGroups<"market/venues"> = [];
+    const providers: ConsoleGroups<"infrastructure/providers"> = [];
+    const runs: ConsoleGroups<"settlement/runs"> = [];
+    expect([...book, ...venues, ...providers, ...runs]).toEqual([]);
+  });
+
+  test("every other section names a group type, so none is accidentally ungrouped", () => {
+    // The inverse of the assertion above, and the reason it is worth writing: a
+    // list section whose groups became `never` would stop offering filters and
+    // nothing would say so except an operator discovering it.
+    const nodes: ConsoleGroups<"infrastructure/nodes"> = ["ixp"];
+    const headroom: ConsoleGroups<"infrastructure/headroom"> = ["subsea_cable"];
+    const movements: ConsoleGroups<"settlement/movements"> = ["clearing"];
+    const payouts: ConsoleGroups<"settlement/payouts"> = ["completed"];
+    const states: ConsoleGroups<"slas/at_risk"> = ["breached"];
+    const severities: ConsoleGroups<"alerts/feed"> = ["critical"];
+
+    expect([
+      ...nodes,
+      ...headroom,
+      ...movements,
+      ...payouts,
+      ...states,
+      ...severities,
+    ]).toHaveLength(6);
+  });
+
+  test("the ungrouped list names only sections that really are ungrouped", () => {
+    // If a section is added to `ungrouped` by accident the assertion above stops
+    // compiling in a way that is easy to read as "the test is broken". This names
+    // the count instead, so the list cannot quietly grow.
+    expect(ungrouped).toHaveLength(5);
   });
 });
 
 describe("the group vocabularies a filter bar is built from", () => {
   /**
-   * Each of these is a list the console turns into chips and a rail tabs, and
-   * each is a *value* the rows carry. The assertions below are the ones that hold
-   * when someone adds a member to the list and forgets everything else: a title
-   * map is a `Record`, so a missing entry renders `undefined` instead of failing
-   * to compile, and a list that drifts from the union means a row can hold a
-   * group no chip offers.
+   * Each of these is a list the console turns into chips, and each is a *value*
+   * the rows carry. The assertions below are the ones that hold when someone adds
+   * a member to the list and forgets everything else: a title map is a `Record`,
+   * so a missing entry renders `undefined` instead of failing to compile, and a
+   * list that drifts from the union means a row can hold a group no chip offers.
    */
   // Widened rather than `as const` on the entries: each case carries a different
   // union as its keys, so a narrower annotation makes `titles[value]` a union of
@@ -122,7 +232,7 @@ describe("the group vocabularies a filter bar is built from", () => {
     { name: "node statuses", values: NODE_STATUSES, titles: null },
     { name: "settlement kinds", values: SETTLEMENT_KINDS, titles: SETTLEMENT_KIND_TITLES },
     { name: "alert severities", values: ALERT_SEVERITIES, titles: ALERT_SEVERITY_TITLES },
-    { name: "alert categories", values: ALERT_CATEGORIES, titles: null },
+    { name: "alert categories", values: ALERT_CATEGORIES, titles: ALERT_CATEGORY_TITLES },
   ];
 
   for (const { name, values, titles } of cases) {

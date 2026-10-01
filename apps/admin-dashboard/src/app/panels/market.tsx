@@ -1,121 +1,68 @@
 "use client";
 
 import type { ReactElement } from "react";
-import { TrendingUp } from "lucide-react";
+import { BookOpen, LineChart, PieChart } from "lucide-react";
 import {
   CartesianGrid,
   Line,
-  LineChart,
+  LineChart as RechartLineChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
 } from "recharts";
+import { MARKET_POOL_TITLES, type MarketOrder } from "@hewa/console-types";
 import { formatMoney } from "@hewa/marketplace-types";
 
-import type { PanelProps } from "@hewa/app-shell";
-import type { MarketPool } from "../data/market";
-import { MARKET_POOL_TITLES } from "@hewa/console-types";
-import { useMarket } from "../data/market";
+import { useMarketBook, usePriceHistory, useVenues } from "../data/market";
 import { Empty, KeyValues, Panel, SummaryBar, emptyMessage } from "../ui/primitives";
 
 /**
- * The `market` view: every panel the Market tab can show.
+ * The `market` view's panels: two per section, and the middle column of each.
  *
- * One view, one module, named for the key it is registered under in
- * `shell.config.tsx`. The rail picks the pool, the middle column shows the book
- * and the price series, and the right column describes the selection.
+ * One module for the view, one exported panel per column per section. The rule the
+ * shell config is checked against is that a panel and the section it serves share a
+ * name — `BookPanel` and `market/book`, `VenuesPanel` and `market/venues` — so a
+ * section added to the contract without a panel here fails the config rather than
+ * rendering an empty column.
  */
 
 /**
- * The rail's entries, which are the pools themselves.
+ * `market/book`, middle column.
  *
- * Ids are the `MarketPool` values rather than slugs, so the rail selection joins
- * against `SpotPoint.pool` and `MarketSection.id` with no lookup table. The
- * titles come from the service's own vocabulary, so the rail and the section that
- * names itself cannot drift.
+ * The headline chips are read off the payload the book came with rather than
+ * recomputed here, so the header and the table under it are one answer. There is
+ * deliberately no spread chip: the book spans four pools at four price scales, so
+ * its best bid and best offer are not comparable and their difference is not a
+ * price. `market/prices` is where a pool's two sides sit next to each other.
  */
-export const MARKET_RAIL: readonly { id: MarketPool; label: string }[] = Object.entries(
-  MARKET_POOL_TITLES,
-).map(([id, label]) => ({ id: id as MarketPool, label }));
-
-/**
- * The pool a rail selection means.
- *
- * A stale selection resolves to the first pool rather than to nothing: the rail
- * selection travels in the query string and outlives the vocabulary it names, and
- * a panel that rendered nothing would be reporting a rename as an outage.
- */
-export function poolFor(item: string | null): MarketPool | null {
-  if (item === null) {
-    return null;
-  }
-  return MARKET_RAIL.find((entry) => entry.id === item)?.id ?? MARKET_RAIL[0]?.id ?? null;
-}
-
-/** The left column: one pool's figures, resolved from the rail selection. */
-export function MarketRailPanel({ item }: PanelProps): ReactElement {
-  const { data, status } = useMarket();
-  const pool = poolFor(item);
-  const section = data?.sections.find((candidate) => candidate.id === pool);
-
-  return (
-    <Panel title={section?.title ?? MARKET_POOL_TITLES[pool ?? "nairobi_ixp"]}>
-      {section === undefined ? (
-        <Empty>
-          {status !== "ready"
-            ? emptyMessage({ status, filtered: false, noun: "market figures" })
-            : "No figures for this pool"}
-        </Empty>
-      ) : (
-        <KeyValues rows={[...section.figures]} />
-      )}
-    </Panel>
-  );
-}
-
-/**
- * The main column: the headline figures, the price series, and the book.
- *
- * Every figure below is read from the document the service sent, and the headline
- * is the same aggregate the rail sections were derived from. There is no second
- * copy of the totals in this file to fall out of step with the rows drawn
- * underneath them.
- */
-export function MarketTable({ item }: PanelProps): ReactElement {
-  const { data, status } = useMarket();
-  const pool = poolFor(item);
-  const series = (data?.priceSeries ?? []).filter((point) => pool === null || point.pool === pool);
-  const book = (data?.book ?? []).filter((order) => pool === null || order.pool === pool);
-  const axis = { stroke: "#64748b", fontSize: 12 };
-  const tooltip = {
-    contentStyle: { backgroundColor: "#111827", border: "1px solid #374151", borderRadius: 8 },
-    labelStyle: { color: "#f1f5f9" },
-  };
+export function BookPanel(): ReactElement {
+  const { data, status } = useMarketBook();
+  const orders = data?.orders ?? [];
 
   return (
     <div className="flex h-full flex-col bg-surface">
       <header className="flex items-center gap-2 border-b border-line p-4">
-        <TrendingUp className="h-5 w-5 text-accent" />
-        <h1 className="text-lg font-semibold text-ink">Bandwidth market</h1>
+        <BookOpen className="h-5 w-5 text-accent" />
+        <h1 className="text-lg font-semibold text-ink">Order book</h1>
         <span className="rounded bg-accent/15 px-2 py-0.5 text-xs text-accent">
           {data?.openOrders ?? 0} orders
         </span>
       </header>
 
-      {/* No `filter`: this view's bar is aggregates, not groups. A chip with a
-          toggle on it would hide half the book on a click, and the pool it would
-          filter is already the rail's job. */}
+      {/* No `filter`: the two figures here bound the book rather than break it down,
+          and a chip that hid orders would answer a question the section already
+          answers. The pool is a column, not a toggle. */}
       <SummaryBar
         items={[
           {
             label: "Best bid",
-            value: data?.bestBid === null || data === undefined ? "—" : formatMoney(data.bestBid),
+            value: data === undefined || data.bestBid === null ? "—" : formatMoney(data.bestBid),
           },
           {
             label: "Best offer",
             value:
-              data?.bestOffer === null || data === undefined ? "—" : formatMoney(data.bestOffer),
+              data === undefined || data.bestOffer === null ? "—" : formatMoney(data.bestOffer),
           },
           { label: "Committed", value: `${data?.committedGbps ?? 0} Gbps` },
           { label: "Currency", value: data?.currency ?? "—" },
@@ -124,48 +71,21 @@ export function MarketTable({ item }: PanelProps): ReactElement {
 
       <div className="min-h-0 flex-1 space-y-4 overflow-auto p-4">
         {data === undefined ? (
-          <Empty>{emptyMessage({ status, filtered: false, noun: "the market" })}</Empty>
+          <Empty>{emptyMessage({ status, filtered: false, noun: "the book" })}</Empty>
         ) : (
-          <>
-            <article className="rounded-lg border border-line bg-surface-raised p-4">
-              <h2 className="mb-2 text-sm font-medium text-ink">Spot price</h2>
-              <div className="h-56">
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={series}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
-                    <XAxis dataKey="at" {...axis} />
-                    <YAxis {...axis} />
-                    <Tooltip {...tooltip} />
-                    <Line
-                      type="monotone"
-                      dataKey="price.amountMinor"
-                      stroke="#3b82f6"
-                      strokeWidth={2}
-                      dot={{ fill: "#3b82f6", strokeWidth: 2 }}
-                    />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
-            </article>
-
-            <BookTable rows={book} />
-          </>
+          <BookTable rows={orders} />
         )}
       </div>
     </div>
   );
 }
 
-function BookTable({
-  rows,
-}: {
-  rows: readonly import("@hewa/console-types").MarketOrder[];
-}): ReactElement {
+function BookTable({ rows }: { rows: readonly MarketOrder[] }): ReactElement {
   return (
     <article className="rounded-lg border border-line bg-surface-raised p-4">
-      <h2 className="mb-3 text-sm font-medium text-ink">Order book</h2>
+      <h2 className="mb-3 text-sm font-medium text-ink">Resting orders</h2>
       {rows.length === 0 ? (
-        <Empty>No orders on this side of the book</Empty>
+        <Empty>No orders resting</Empty>
       ) : (
         <table className="w-full text-left text-xs">
           <thead className="text-ink-faint">
@@ -200,29 +120,228 @@ function BookTable({
   );
 }
 
-/** The right column: the pool the rail has selected, and what it holds. */
-export function MarketDetailsPanel({ item }: PanelProps): ReactElement {
-  const { data, status } = useMarket();
-  const pool = poolFor(item);
-  const section = data?.sections.find((candidate) => candidate.id === pool);
-  const orders = (data?.book ?? []).filter((order) => order.pool === pool);
+/** `market/book`, right column: what the book holds, in figures. */
+export function BookDetails(): ReactElement {
+  const { data, status } = useMarketBook();
+  const bids = (data?.orders ?? []).filter((order) => order.side === "bid");
+  const offers = (data?.orders ?? []).filter((order) => order.side === "offer");
 
   return (
-    <Panel title={section?.title ?? "Pool"}>
-      {section === undefined ? (
-        <Empty>
-          {status !== "ready"
-            ? emptyMessage({ status, filtered: false, noun: "pool figures" })
-            : "Select a pool to view details"}
-        </Empty>
+    <Panel title="Book">
+      {data === undefined ? (
+        <Empty>{emptyMessage({ status, filtered: false, noun: "the book" })}</Empty>
       ) : (
         <KeyValues
           rows={[
-            ...section.figures,
-            { label: "Orders", value: orders.length },
+            { label: "Best bid", value: data.bestBid === null ? "—" : formatMoney(data.bestBid) },
             {
-              label: "Venue share",
-              value: `${data?.venues.find((entry) => entry.pool === pool)?.share ?? 0}%`,
+              label: "Best offer",
+              value: data.bestOffer === null ? "—" : formatMoney(data.bestOffer),
+            },
+            { label: "Bids", value: bids.length },
+            { label: "Offers", value: offers.length },
+            { label: "Committed", value: `${data.committedGbps} Gbps` },
+            {
+              label: "Pools",
+              value: data.orders.length === 0 ? 0 : new Set(data.orders.map((o) => o.pool)).size,
+            },
+          ]}
+        />
+      )}
+    </Panel>
+  );
+}
+
+/**
+ * `market/prices`, middle column: one line per pool, and the latest quote each.
+ *
+ * The chart draws from `points` and the table from `latest`, and the service derives
+ * the second from the first in the same query — so the price in the table is a point
+ * on the line above it rather than a second reading of the market.
+ */
+export function PricesPanel(): ReactElement {
+  const { data, status } = usePriceHistory();
+  const axis = { stroke: "#64748b", fontSize: 12 };
+  const tooltip = {
+    contentStyle: { backgroundColor: "#111827", border: "1px solid #374151", borderRadius: 8 },
+    labelStyle: { color: "#f1f5f9" },
+  };
+
+  return (
+    <div className="flex h-full flex-col bg-surface">
+      <header className="flex items-center gap-2 border-b border-line p-4">
+        <LineChart className="h-5 w-5 text-accent" />
+        <h1 className="text-lg font-semibold text-ink">Prices</h1>
+        <span className="rounded bg-accent/15 px-2 py-0.5 text-xs text-accent">
+          {data?.latest.length ?? 0} pools
+        </span>
+      </header>
+
+      {/* `changePct` is a figure rather than a count, so this bar passes no `filter`:
+          a chip built from a percentage would hide rows on a click and answer
+          nothing. */}
+      <SummaryBar
+        items={[
+          { label: "Change", value: `${data?.changePct ?? 0}%` },
+          { label: "Observations", value: data?.points.length ?? 0 },
+          { label: "Currency", value: data?.currency ?? "—" },
+        ]}
+      />
+
+      <div className="min-h-0 flex-1 space-y-4 overflow-auto p-4">
+        {data === undefined ? (
+          <Empty>{emptyMessage({ status, filtered: false, noun: "prices" })}</Empty>
+        ) : (
+          <>
+            <article className="rounded-lg border border-line bg-surface-raised p-4">
+              <h2 className="mb-2 text-sm font-medium text-ink">Spot price</h2>
+              <div className="h-56">
+                <ResponsiveContainer width="100%" height="100%">
+                  <RechartLineChart data={data.points}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
+                    <XAxis dataKey="at" {...axis} />
+                    <YAxis {...axis} />
+                    <Tooltip {...tooltip} />
+                    <Line
+                      type="monotone"
+                      dataKey="price.amountMinor"
+                      stroke="#3b82f6"
+                      strokeWidth={2}
+                      dot={{ fill: "#3b82f6", strokeWidth: 2 }}
+                    />
+                  </RechartLineChart>
+                </ResponsiveContainer>
+              </div>
+            </article>
+
+            <article className="rounded-lg border border-line bg-surface-raised p-4">
+              <h2 className="mb-3 text-sm font-medium text-ink">Latest by pool</h2>
+              <table className="w-full text-left text-xs">
+                <thead className="text-ink-faint">
+                  <tr>
+                    <th className="py-1 font-medium">Pool</th>
+                    <th className="py-1 text-right font-medium">Price</th>
+                    <th className="py-1 font-medium">Observed</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.latest.map((quote) => (
+                    <tr
+                      key={quote.pool}
+                      data-row={quote.pool}
+                      className="border-t border-line text-ink-muted"
+                    >
+                      <td className="py-1">{MARKET_POOL_TITLES[quote.pool]}</td>
+                      <td className="py-1 text-right tabular-nums">{formatMoney(quote.price)}</td>
+                      <td className="py-1">{new Date(quote.observedAt).toLocaleString()}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </article>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** `market/prices`, right column: one pool's quote and its movement. */
+export function PricesDetails(): ReactElement {
+  const { data, status } = usePriceHistory();
+
+  return (
+    <Panel title="Price movement">
+      {data === undefined ? (
+        <Empty>{emptyMessage({ status, filtered: false, noun: "prices" })}</Empty>
+      ) : (
+        <KeyValues
+          rows={[
+            { label: "Change", value: `${data.changePct}%` },
+            { label: "Pools quoted", value: data.latest.length },
+            { label: "Observations", value: data.points.length },
+            { label: "Currency", value: data.currency },
+          ]}
+        />
+      )}
+    </Panel>
+  );
+}
+
+/** `market/venues`, middle column: where the committed capacity sits. */
+export function VenuesPanel(): ReactElement {
+  const { data, status } = useVenues();
+
+  return (
+    <div className="flex h-full flex-col bg-surface">
+      <header className="flex items-center gap-2 border-b border-line p-4">
+        <PieChart className="h-5 w-5 text-accent" />
+        <h1 className="text-lg font-semibold text-ink">Venues</h1>
+        <span className="rounded bg-accent/15 px-2 py-0.5 text-xs text-accent">
+          {data?.venues.length ?? 0} pools
+        </span>
+      </header>
+
+      {/* Shares add to 100, so this bar is a breakdown and passes no filter: a
+          percentage is a figure, and toggling one would hide the pool it describes. */}
+      <SummaryBar
+        items={[
+          { label: "Committed", value: `${data?.totalCommittedGbps ?? 0} Gbps` },
+          { label: "Currency", value: data?.currency ?? "—" },
+        ]}
+      />
+
+      <div className="min-h-0 flex-1 overflow-auto p-4">
+        {data === undefined ? (
+          <Empty>{emptyMessage({ status, filtered: false, noun: "venues" })}</Empty>
+        ) : (
+          <article className="rounded-lg border border-line bg-surface-raised p-4">
+            <table className="w-full text-left text-xs">
+              <thead className="text-ink-faint">
+                <tr>
+                  <th className="py-1 font-medium">Pool</th>
+                  <th className="py-1 text-right font-medium">Committed</th>
+                  <th className="py-1 text-right font-medium">Share</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.venues.map((venue) => (
+                  <tr
+                    key={venue.pool}
+                    data-row={venue.pool}
+                    className="border-t border-line text-ink-muted"
+                  >
+                    <td className="py-1">{MARKET_POOL_TITLES[venue.pool]}</td>
+                    <td className="py-1 text-right tabular-nums">{venue.committedGbps} Gbps</td>
+                    <td className="py-1 text-right tabular-nums">{venue.share}%</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </article>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** `market/venues`, right column: the concentration figures. */
+export function VenuesDetails(): ReactElement {
+  const { data, status } = useVenues();
+  const top = [...(data?.venues ?? [])].toSorted((a, b) => b.share - a.share)[0];
+
+  return (
+    <Panel title="Where capacity sits">
+      {data === undefined ? (
+        <Empty>{emptyMessage({ status, filtered: false, noun: "venues" })}</Empty>
+      ) : (
+        <KeyValues
+          rows={[
+            { label: "Committed", value: `${data.totalCommittedGbps} Gbps` },
+            { label: "Pools", value: data.venues.length },
+            {
+              label: "Largest",
+              value: top === undefined ? "—" : `${MARKET_POOL_TITLES[top.pool]} · ${top.share}%`,
             },
           ]}
         />

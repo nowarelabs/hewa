@@ -1,7 +1,7 @@
 import type { ReactElement, ReactNode } from "react";
 
 import { IconRail } from "./IconRail";
-import { hasAssistant, resolveItem, resolveView } from "./resolve";
+import { hasAssistant, resolveContent, resolveItem, resolveView } from "./resolve";
 import { ShellStateProvider, useShellState } from "./state";
 import { SidePanel } from "./SidePanel";
 import { StatusBar } from "./StatusBar";
@@ -46,12 +46,12 @@ function ShellBody({
   config: ShellConfig;
   children?: ReactNode;
 }): ReactElement {
-  const { view, item, panels, togglePanel, theme } = useShellState();
+  const { view, section, panels, togglePanel, theme } = useShellState();
 
   const resolved = resolveView(config, view);
-  const active = resolveItem(resolved.rail, item);
-  const activeId = active?.id ?? null;
-  const panelProps: PanelProps = { view, item: activeId, theme };
+  const active = resolveItem(resolved.rail, section);
+  const content = resolveContent(resolved, active);
+  const panelProps: PanelProps = { view, section: active?.id ?? null, theme };
 
   return (
     <div className={`${theme} h-screen overflow-hidden`} data-shell-theme={theme}>
@@ -60,41 +60,32 @@ function ShellBody({
           brand={config.brand}
           actions={config.actions ?? []}
           views={config.views}
-          hasAssistant={resolved.assistant !== undefined}
+          hasAssistant={content.assistant !== undefined}
         />
         <div className="flex min-h-0 flex-1">
           <IconRail items={resolved.rail} activeId={active?.id ?? null} />
-          {active !== null ? (
-            <SidePanel
-              side="left"
-              open={panels.left}
-              onToggle={() => togglePanel("left")}
-              spec={active.panel}
-              props={panelProps}
-            />
-          ) : null}
           <main className="flex min-w-0 flex-1 flex-col">
-            <PanelHost spec={resolved.main} props={panelProps} />
+            <PanelHost spec={content.main} props={panelProps} />
             {children}
           </main>
-          <SidePanel
-            side="right"
-            open={panels.right}
-            onToggle={() => togglePanel("right")}
-            spec={resolved.right}
-            props={panelProps}
-          />
-          {resolved.assistant !== undefined ? (
+          {content.right === undefined ? null : (
             <SidePanel
-              side="right"
-              open={panels.assistant}
-              onToggle={() => togglePanel("assistant")}
-              spec={resolved.assistant}
+              open={panels.right}
+              onToggle={() => togglePanel("right")}
+              spec={content.right}
               props={panelProps}
             />
-          ) : null}
+          )}
+          {content.assistant === undefined ? null : (
+            <SidePanel
+              open={panels.assistant}
+              onToggle={() => togglePanel("assistant")}
+              spec={content.assistant}
+              props={panelProps}
+            />
+          )}
         </div>
-        <StatusBar spec={resolved.status ?? {}} />
+        <StatusBar spec={content.status ?? {}} />
       </div>
     </div>
   );

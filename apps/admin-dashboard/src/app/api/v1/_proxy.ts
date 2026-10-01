@@ -1,6 +1,11 @@
 import "server-only";
 
-import { consolePath, type ConsoleViewKey } from "@hewa/console-types";
+import {
+  CONSOLE_SECTIONS,
+  consoleSectionPath,
+  type ConsoleSectionId,
+  type ConsoleViewKey,
+} from "@hewa/console-types";
 import { ResponseCode, httpStatusFor } from "@hewa/response-codes";
 
 /**
@@ -22,16 +27,23 @@ import { ResponseCode, httpStatusFor } from "@hewa/response-codes";
  * the route handlers are what make it unreachable rather than merely discouraged.
  *
  * The path is the same on both hops. The browser asks its own origin for
- * `/api/v1/alerts`; this handler asks `CENTRAL_API_URL` for `/api/v1/alerts` and
- * attaches the token. So the only difference between the two `fetch` calls is the
- * base URL, which the browser does not have and this file reads from the
+ * `/api/v1/alerts/outages`; this handler asks `CENTRAL_API_URL` for the same path
+ * and attaches the token. So the only difference between the two `fetch` calls is
+ * the base URL, which the browser does not have and this file reads from the
  * environment.
  *
- * Each view gets its own route file, so adding a view is adding one file. There is
- * deliberately no `[...path]` catch-all that forwards whatever it is handed: a
- * proxy that accepts any path on any method is an open relay with a token
- * attached, and it would keep forwarding routes that were never reviewed. That
- * also means there is nothing here to relay a write — the whole surface is a
+ * ## Why there is a route file per section
+ *
+ * Sixteen of them, one per destination, and there is deliberately no `[...path]`
+ * catch-all that forwards whatever it is handed. A proxy that accepts any path on
+ * any method is an open relay with a token attached, and it would keep forwarding
+ * routes that were never reviewed. A concrete route file per section is a list of
+ * the paths this app is allowed to ask for, written out and diffable — adding a
+ * destination to the contract means adding a file here, and a file here that names
+ * a section the contract does not have is a compile error rather than a route that
+ * quietly 404s upstream.
+ *
+ * That also means there is nothing here to relay a write — the whole surface is a
  * `GET`, and a `POST` gets Next's own 405 without central-api being asked.
  */
 
@@ -63,8 +75,8 @@ function serviceToken(): string {
 }
 
 /**
- * Forward one view's request to central-api and answer the browser with what came
- * back.
+ * Forward one section's request to central-api and answer the browser with what
+ * came back.
  *
  * The status and the JSON body pass through unchanged, so there is exactly one
  * envelope in the system and a panel reads the same shape whether it called this
@@ -77,8 +89,11 @@ function serviceToken(): string {
  * shown a stack trace, and they should not be shown the URL that failed to resolve
  * either.
  */
-export async function forwardViewRequest(view: ConsoleViewKey): Promise<Response> {
-  const path = consolePath(view);
+export async function forwardSectionRequest<TSection extends ConsoleSectionId<ConsoleViewKey>>(
+  view: ConsoleViewKey,
+  section: TSection,
+): Promise<Response> {
+  const path = consoleSectionPath(view, section);
 
   let url: string;
   let headers: Headers;
@@ -125,6 +140,22 @@ export async function forwardViewRequest(view: ConsoleViewKey): Promise<Response
   }
 
   return Response.json(payload, { status: upstream.status });
+}
+
+/**
+ * Whether a section id is one the contract declares for a view.
+ *
+ * Checked here rather than left to the type alone, because a route file's segment
+ * is a `string` at runtime — TypeScript cannot see the literal `"outages"` in a
+ * directory name, so the cast above it is unchecked by construction and this is
+ * what makes it safe. It is a `Set` lookup because the answer is whether a value is
+ * in a short list, and the list is small enough that a linear scan would also be
+ * fine, which is worth saying because the fast version is not obviously the fast one
+ * at this size.
+ */
+export function isSectionOf(view: ConsoleViewKey, section: string): boolean {
+  const sections: readonly string[] = CONSOLE_SECTIONS[view];
+  return sections.includes(section);
 }
 
 /**

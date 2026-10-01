@@ -1,4 +1,5 @@
 import { describe, expect, test } from "vite-plus/test";
+import { ALERT_CATEGORIES } from "@hewa/console-types";
 import { SLA_STATES, TRANSACTION_STATUSES, slaCommitment, slaState } from "@hewa/marketplace-types";
 
 import * as schema from "../src/db/schema.js";
@@ -134,6 +135,50 @@ describe("the stored SLA states", () => {
 });
 
 describe("the seeded rows", () => {
+  /**
+   * Every alert category is present, because three of the four alert sections
+   * filter on one.
+   *
+   * `alerts/outages` filters on `outage`, `alerts/capacity` on `capacity`,
+   * `alerts/security` on `security`. A category the seed leaves out is a rail
+   * destination that can only render its empty state, and an empty state proves the
+   * query compiles rather than that it answers — so the section would look built
+   * and be unexercised. This is the test that makes "the security section is blank"
+   * a failure rather than a puzzle.
+   */
+  test("every alert category has at least one row", () => {
+    const seeded = new Set(rows.alerts.map((alert) => alert.category));
+    expect([...seeded].toSorted()).toEqual([...ALERT_CATEGORIES].toSorted());
+  });
+
+  /**
+   * And at least one category has more than one row for one entity, because the
+   * grouping sections exist to collapse repeats.
+   *
+   * `alertCount` and `worstSeverity` are the two columns that distinguish an
+   * outage *group* from an outage row, and both are constant on a group of one. A
+   * seed where every group has a single member cannot tell a rollup that summed
+   * correctly from one that did not sum at all.
+   */
+  test("some entity carries more than one alert, so the grouped sections have something to group", () => {
+    const counts = new Map<string, number>();
+    for (const alert of rows.alerts) {
+      counts.set(alert.category, (counts.get(alert.category) ?? 0) + 1);
+    }
+    expect(counts.get("outage"), "outage alerts").toBeGreaterThan(1);
+    expect(counts.get("security"), "security alerts").toBeGreaterThan(1);
+
+    const entities = new Map<string, Set<string>>();
+    for (const alert of rows.alerts) {
+      const seen = entities.get(alert.category) ?? new Set<string>();
+      seen.add(alert.entityId);
+      entities.set(alert.category, seen);
+    }
+    // Fewer entities than alerts in at least one grouped category: that is the
+    // repeat the `outages` and `security` sections collapse.
+    expect((entities.get("outage")?.size ?? 0) < (counts.get("outage") ?? 0)).toBe(true);
+  });
+
   test("every figure is a whole number where the contract says it is", () => {
     // Capacity and utilisation are integers all the way down, because `(1 - 0.9) *
     // 100` is `9.999999999999998` and a basis-point boundary decided by a float is

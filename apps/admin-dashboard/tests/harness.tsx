@@ -8,7 +8,7 @@ import { consoleFixtures } from "./fixtures";
 /**
  * Mounting a panel now means giving it a service to talk to.
  *
- * Every panel reads its rows through `useConsoleView`, which is a React Query
+ * Every panel reads its rows through `useConsoleSection`, which is a React Query
  * hook, so a panel rendered without a `QueryClientProvider` throws — and a panel
  * rendered under one with nothing in the cache renders "Loading alerts…" instead
  * of a table. Both would have made this suite fail for the wrong reason, so the
@@ -21,14 +21,14 @@ import { consoleFixtures } from "./fixtures";
  * it is the first render, which is the one worth asserting on.
  */
 
-/** A client with every view's rows already in it, and nothing left to fetch. */
+/** A client with every section's rows already in it, and nothing left to fetch. */
 export function seededQueryClient(): QueryClient {
   const client = new QueryClient({
     defaultOptions: { queries: { staleTime: Number.POSITIVE_INFINITY, retry: false } },
   });
 
-  for (const [view, payload] of Object.entries(consoleFixtures)) {
-    client.setQueryData(["console", view], payload);
+  for (const [section, payload] of Object.entries(consoleFixtures)) {
+    client.setQueryData(["console", section], payload);
   }
 
   return client;

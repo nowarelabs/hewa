@@ -20,14 +20,13 @@ import type { ShellTheme } from "./types";
 export interface ShellState {
   view: string;
   selectView: (view: string) => void;
-  item: string | null;
-  selectItem: (item: string) => void;
+  section: string | null;
+  selectSection: (section: string) => void;
   panels: {
-    left: boolean;
     right: boolean;
     assistant: boolean;
   };
-  togglePanel: (panel: "left" | "right" | "assistant") => void;
+  togglePanel: (panel: "right" | "assistant") => void;
   theme: ShellTheme;
   setTheme: (theme: ShellTheme) => void;
 }
@@ -90,7 +89,6 @@ function LocalShellState({
 }: InternalStateOptions): ReactNode {
   const [view, setView] = useState(defaultView);
   const [items, setItems] = useState<Record<string, string>>({});
-  const [left, setLeft] = useState(false);
   const [right, setRight] = useState(false);
   const [assistant, setAssistant] = useState(false);
   const [dark, setDark] = useState(defaultTheme === "dark");
@@ -99,11 +97,12 @@ function LocalShellState({
     () => ({
       view,
       selectView: setView,
-      item: items[view] ?? null,
-      selectItem: (next) => setItems({ ...items, [view]: next }),
-      panels: { left, right, assistant: hasAssistant && assistant },
+      section: items[view] ?? null,
+      selectSection: (next) => {
+        setItems((prev) => ({ ...prev, [view]: next }));
+      },
+      panels: { right, assistant: hasAssistant && assistant },
       togglePanel: (panel) => {
-        if (panel === "left") setLeft(!left);
         if (panel === "right") setRight(!right);
         if (panel === "assistant") setAssistant(!assistant);
       },
@@ -113,7 +112,7 @@ function LocalShellState({
         onThemeChange?.(next);
       },
     }),
-    [view, items, left, right, assistant, dark, hasAssistant, onThemeChange],
+    [view, items, right, assistant, dark, hasAssistant, onThemeChange],
   );
 
   return <ShellStateContext.Provider value={value}>{children}</ShellStateContext.Provider>;
@@ -123,7 +122,7 @@ function LocalShellState({
  * State mirrored into the query string, so a link reopens what you were looking
  * at.
  *
- * The rail selection is keyed by view: `?item.flights=jambo`, `?item.alerts=high`.
+ * The rail selection is keyed by view: `?item.flights=book`, `?item.alerts=feed` (or new section key).
  * One `?item=` for the whole shell cannot hold where you were in two views at
  * once, so leaving a view either wrote its first item over the one you came
  * from — a tab you had put on the third button opening on the first — or carried
@@ -138,8 +137,7 @@ function UrlShellState({
 }: InternalStateOptions): ReactNode {
   const [view, setView] = useQueryState("view", { defaultValue: defaultView });
   const openView = view ?? defaultView;
-  const [item, setItem] = useQueryState(`item.${openView}`, { defaultValue: EMPTY_ITEM });
-  const [left, setLeft] = useQueryState("left", { defaultValue: "0" });
+  const [selected, setItem] = useQueryState(`section.${openView}`, { defaultValue: EMPTY_ITEM });
   const [right, setRight] = useQueryState("right", { defaultValue: "0" });
   const [assistant, setAssistant] = useQueryState("assistant", { defaultValue: "0" });
   const [dark, setDark] = useQueryState("dark", {
@@ -150,15 +148,13 @@ function UrlShellState({
     () => ({
       view: openView,
       selectView: (next) => void setView(next),
-      item: item === EMPTY_ITEM || item === null ? null : item,
-      selectItem: (next) => void setItem(next === EMPTY_ITEM ? EMPTY_ITEM : next),
+      section: selected === EMPTY_ITEM || selected === null ? null : selected,
+      selectSection: (next) => void setItem(next === EMPTY_ITEM ? EMPTY_ITEM : next),
       panels: {
-        left: decodeFlag(left, false),
         right: decodeFlag(right, false),
         assistant: hasAssistant && decodeFlag(assistant, false),
       },
       togglePanel: (panel) => {
-        if (panel === "left") void setLeft(encodeFlag(!decodeFlag(left, false)));
         if (panel === "right") void setRight(encodeFlag(!decodeFlag(right, false)));
         if (panel === "assistant") {
           void setAssistant(encodeFlag(!decodeFlag(assistant, false)));
@@ -172,8 +168,7 @@ function UrlShellState({
     }),
     [
       openView,
-      item,
-      left,
+      selected,
       right,
       assistant,
       dark,
@@ -181,7 +176,6 @@ function UrlShellState({
       hasAssistant,
       setView,
       setItem,
-      setLeft,
       setRight,
       setAssistant,
       setDark,

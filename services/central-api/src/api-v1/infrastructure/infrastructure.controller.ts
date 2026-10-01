@@ -6,27 +6,34 @@ import { ServiceTokenGuard } from "../service-token.guard.js";
 import { InfrastructureService } from "./infrastructure.service.js";
 
 /**
- * `api/v1/infrastructure`.
+ * `api/v1/infrastructure/{nodes,headroom,providers}`.
  *
- * Every node, and the group vocabulary that outlives the rows.
+ * The return types are `ConsolePayload["infrastructure/nodes"]` and its siblings,
+ * so a field renamed in the shared contract is a build failure here rather than an
+ * `undefined` in a panel.
  *
- * One `@Get` and one delegation, awaited so a query failure is thrown from the
- * handler rather than floating out of it. The rows are selected in the service
- * because the
- * panel is not the only thing that asks this question — a settlement run, a test and
- * a future export all ask the same one — and a controller that assembled its own
- * answer would be a third place to keep it honest.
- *
- * The return type is `ConsolePayload["infrastructure"]`, so a field renamed in the shared
- * contract is a build failure here rather than an `undefined` in a panel.
+ * The three sections share a table and none of them shares a payload: `headroom`
+ * derives a column the nodes table does not have, and `providers` groups rows
+ * into rows about something else entirely. One endpoint returning all three would
+ * be a document two of them have to receive in order to use their own half.
  */
 @Controller(`${API_V1_PREFIX}/infrastructure`)
 @UseGuards(ServiceTokenGuard)
 export class InfrastructureController {
   constructor(private readonly service: InfrastructureService) {}
 
-  @Get()
-  async infrastructure(): Promise<ConsolePayload["infrastructure"]> {
-    return this.service.read();
+  @Get("nodes")
+  async nodes(): Promise<ConsolePayload["infrastructure/nodes"]> {
+    return this.service.readNodes();
+  }
+
+  @Get("headroom")
+  async headroom(): Promise<ConsolePayload["infrastructure/headroom"]> {
+    return this.service.readHeadroom();
+  }
+
+  @Get("providers")
+  async providers(): Promise<ConsolePayload["infrastructure/providers"]> {
+    return this.service.readProviders();
   }
 }

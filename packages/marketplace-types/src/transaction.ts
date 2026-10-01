@@ -37,6 +37,26 @@ export type TransactionStatus = (typeof TRANSACTION_STATUSES)[number];
 
 const TRANSACTION_STATUS_SET: ReadonlySet<string> = new Set(TRANSACTION_STATUSES);
 
+/**
+ * How each status is written where a human reads it.
+ *
+ * Keyed by the **value** a row carries, like every other titles map here, so a
+ * panel writes `Failed` while its filter is keyed on `failed`. Built from the
+ * member name it would read `Failed` for two of the five and `Reversed` for
+ * three, which is a coincidence rather than a decision.
+ *
+ * A `Record<TransactionStatus, string>` rather than a partial one, so a status
+ * added to `TRANSACTION_STATUSES` without a title is a compile error here and not
+ * an `undefined` in a status column.
+ */
+export const TRANSACTION_STATUS_TITLES: Readonly<Record<TransactionStatus, string>> = {
+  pending: "Pending",
+  processing: "Processing",
+  completed: "Completed",
+  failed: "Failed",
+  reversed: "Reversed",
+};
+
 export function isTransactionStatus(value: unknown): value is TransactionStatus {
   return typeof value === "string" && TRANSACTION_STATUS_SET.has(value);
 }

@@ -22,8 +22,14 @@ export type ShellIcon = LucideIcon;
 export interface PanelProps {
   /** The view currently open in the shell. */
   view: string;
-  /** The rail item selected within that view, or `null` when the view has none. */
-  item: string | null;
+  /**
+   * The selected destination's id, or `null` for a view with no rail.
+   *
+   * This is what the panel is being rendered *for*, so a panel keys its fetch on
+   * it. It is an id rather than a component deliberately: the shell hands panels
+   * the selected id and the app decides what that id means.
+   */
+  section: string | null;
   /** The theme the shell is currently painted in. */
   theme: ShellTheme;
 }
@@ -75,14 +81,43 @@ export interface ShellStat {
   value: string | number;
 }
 
-/** An item in the vertical icon rail, and the panel it opens in the left column. */
+/**
+ * An item in the vertical icon rail: one destination within a view.
+ *
+ * A rail button navigates. It is not a filter over the view's rows, it is a
+ * different set of rows with a different question behind it, and it owns the
+ * panels that answer it. `main` and `right` are therefore per-rail-item rather
+ * than per-view: two items in the same view are as entitled to different centre
+ * columns as two views are, which is the whole difference between a rail that
+ * navigates and one that filters.
+ *
+ * Each item carries its own {@link ShellIcon}. An icon that is shared across
+ * items tells the reader the buttons are variants of one thing, and here they
+ * are not.
+ */
 export interface RailItem {
   id: string;
-  /** Tooltip and the collapsed left panel's heading. */
+  /** Tooltip, accessible name, and the section's heading. */
   label: string;
+  /** This destination's own icon. */
   icon: ShellIcon;
-  /** The left column's content while this item is active. */
-  panel: PanelSpec;
+  /**
+   * The stable key of what this item shows, which is what a panel fetches by.
+   *
+   * Distinct from {@link RailItem.id}, which is only unique within the view. The
+   * console's ids are already globally unique (`market/book`), so the two happen
+   * to agree there; they are not required to, and a panel is told `item`, not
+   * `section`, precisely so the app is the only one that has to know.
+   */
+  section: string;
+  /** The middle column while this item is active. */
+  main: PanelSpec;
+  /** The column right of centre while this item is active. */
+  right?: PanelSpec;
+  /** The outermost column while this item is active. */
+  assistant?: PanelSpec;
+  /** The status bar while this item is active. */
+  status?: StatusSpec;
 }
 
 /** A zoom cluster in the status bar. Rendered only when `onZoomIn` or friends are given. */
@@ -108,9 +143,17 @@ export interface StatusSpec {
 }
 
 /**
- * A view: one tab in the title bar, one set of rail items, and the content of
- * all three panels plus the status bar. Declaring a view is the whole of an
- * app's navigation; the shell does the rest.
+ * A view: one tab in the title bar, and the rail of destinations it holds.
+ *
+ * The view no longer declares panels of its own. It used to, and that was what
+ * made a rail a filter: with `main` and `right` living here, every rail item in
+ * the view drew the same two columns and the rail could only swap which rows
+ * were in them. A view is now the grouping of its destinations, and the
+ * destination owns the content.
+ *
+ * A view with no rail is still supported, and renders `fallback`: which is what a
+ * single-screen view declares rather than manufacturing a rail for the sake of
+ * one button.
  */
 export interface ViewSpec {
   /** Tab label. Keep it to one or two words, the tab strip is narrow. */
@@ -123,14 +166,21 @@ export interface ViewSpec {
   icon: ShellIcon;
   /** The rail. An empty array renders no rail. */
   rail: RailItem[];
-  /** The middle column. */
-  main: PanelSpec;
-  /** The column right of centre, toggled by the panel button. */
-  right: PanelSpec;
   /**
-   * The outermost column. Omit to leave it out entirely rather than rendering
-   * an always-empty one.
+   * The view's defaults, and the whole content of a view that declares no rail.
+   *
+   * A rail item declares the columns it wants and inherits any it omits, which
+   * is how several sections share one legend without repeating it. The `main`
+   * column is required on a rail item and optional here because a rail item with
+   * no main column would be a button that navigates nowhere.
    */
+  fallback: ViewContent;
+}
+
+/** The columns and the status bar that a single destination renders. */
+export interface ViewContent {
+  main: PanelSpec;
+  right?: PanelSpec;
   assistant?: PanelSpec;
   status?: StatusSpec;
 }
