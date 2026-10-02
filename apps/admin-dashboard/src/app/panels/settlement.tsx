@@ -11,25 +11,18 @@ import {
 
 import { useMovements, usePayouts, useRuns } from "../data/settlement";
 import { useFilterParam } from "../state/filter";
-import {
-  Empty,
-  KeyValues,
-  Panel,
-  SummaryBar,
-  emptyMessage,
-  summaryCounts,
-  visibleBy,
-} from "../ui/primitives";
+import { Empty, KeyValues, Panel, emptyMessage, summaryCounts, visibleBy } from "../ui/primitives";
+import { ScopePanel } from "../ui/scope";
 
 /**
- * The `settlement` view's panels: two per section, and the middle column of each.
+ * The `settlement` view's panels: three per section, and the middle column of each.
  *
- * The three sections filter on different axes, and that is the difference between
- * them: `movements` chips by kind because the question is "what is this flow", `runs`
- * chips by status because the question is "did it balance", and `payouts` chips by
- * status because the question is "did the money arrive". A chip that narrowed runs by
- * kind would select nothing useful — a batch's kinds are an array, not a group the row
- * belongs to.
+ * The three sections narrow on different axes, and that is the difference between
+ * them: `movements` narrows by kind because the question is "what is this flow", `runs`
+ * narrows by state because the question is "did it balance", and `payouts` narrows by
+ * transaction status because the question is "did the money arrive". A toggle that
+ * narrowed runs by kind would select nothing useful — a batch's kinds are an array, not
+ * a group the row belongs to.
  */
 
 /**
@@ -54,9 +47,81 @@ function ListEmpty({
   return <Empty>{emptyMessage({ status, filtered, noun, filter: "the filter" })}</Empty>;
 }
 
+/** `settlement/movements`, left column: what kind of movement. */
+export function MovementsScope(): ReactElement {
+  const { rows, groups, status } = useMovements();
+  const filter = useFilterParam("settlement-movements");
+
+  return (
+    <ScopePanel
+      label="Filter by kind"
+      noun="movements"
+      status={status}
+      items={summaryCounts(rows, (row) => row.kind, {
+        keys: groups,
+        label: (kind) => SETTLEMENT_KIND_TITLES[kind],
+      })}
+      selected={filter.selected}
+      onToggle={filter.toggle}
+      onClear={filter.clear}
+    />
+  );
+}
+
+/**
+ * `settlement/runs`, left column: the derived state pair.
+ *
+ * A run has no status of its own — a batch is a mix of completed and failed lines, so
+ * its state is this pair rather than the transaction vocabulary `meta.groups` names.
+ * Both are stated outright instead of being derived from the rows: a run that
+ * currently holds no failed line would otherwise lose its "failed" toggle, and a
+ * control that appears and disappears with the data is a control that is only
+ * sometimes there.
+ */
+export function RunsScope(): ReactElement {
+  const { rows, status } = useRuns();
+  const filter = useFilterParam("settlement-runs");
+
+  return (
+    <ScopePanel
+      label="Filter runs"
+      noun="runs"
+      status={status}
+      items={summaryCounts(rows, (row) => (row.failed > 0 ? "failed" : "completed"), {
+        keys: RUN_STATES,
+        label: (key) => TRANSACTION_STATUS_TITLES[key],
+      })}
+      selected={filter.selected}
+      onToggle={filter.toggle}
+      onClear={filter.clear}
+    />
+  );
+}
+
+/** `settlement/payouts`, left column: where the money got to. */
+export function PayoutsScope(): ReactElement {
+  const { rows, groups, status } = usePayouts();
+  const filter = useFilterParam("settlement-payouts");
+
+  return (
+    <ScopePanel
+      label="Filter by status"
+      noun="payouts"
+      status={status}
+      items={summaryCounts(rows, (row) => row.status, {
+        keys: groups,
+        label: (value) => TRANSACTION_STATUS_TITLES[value],
+      })}
+      selected={filter.selected}
+      onToggle={filter.toggle}
+      onClear={filter.clear}
+    />
+  );
+}
+
 /** `settlement/movements`, middle column: every movement of value. */
 export function MovementsPanel(): ReactElement {
-  const { rows, groups, status } = useMovements();
+  const { rows, status } = useMovements();
   const filter = useFilterParam("settlement-movements");
   const shown = visibleBy(rows, (row) => row.kind, filter.selected);
 
@@ -70,19 +135,7 @@ export function MovementsPanel(): ReactElement {
         </span>
       </header>
 
-      <SummaryBar
-        items={summaryCounts(rows, (row) => row.kind, {
-          keys: groups,
-          label: (kind) => SETTLEMENT_KIND_TITLES[kind],
-        })}
-        filter={{
-          label: "Filter by kind",
-          selected: filter.selected,
-          onToggle: filter.toggle,
-        }}
-      />
-
-      <div className="min-h-0 flex-1 overflow-auto p-4">
+      <div className="min-h-0 flex-1 overflow-auto main-inset">
         {shown.length === 0 ? (
           <ListEmpty status={status} filtered={filter.selected.length > 0} noun="movements" />
         ) : (
@@ -187,25 +240,9 @@ export function RunsPanel(): ReactElement {
         </span>
       </header>
 
-      {/* A run has no status of its own — a batch is a mix of completed and failed
-          lines, so its state is the derived pair below rather than the transaction
-          vocabulary `meta.groups` names. The two chips are stated outright instead of
-          derived from the rows: a run that currently holds no failed line would
-          otherwise lose its "failed" chip, and a control that appears and disappears
-          with the data is a control that is only sometimes there. */}
-      <SummaryBar
-        items={summaryCounts(rows, (row) => (row.failed > 0 ? "failed" : "completed"), {
-          keys: RUN_STATES,
-          label: (key) => TRANSACTION_STATUS_TITLES[key],
-        })}
-        filter={{
-          label: "Filter runs",
-          selected: filter.selected,
-          onToggle: filter.toggle,
-        }}
-      />
-
-      <div className="min-h-0 flex-1 overflow-auto p-4">
+      {/* A run has no status of its own, so its vocabulary is the derived pair in the
+          left column rather than anything `meta.groups` names. */}
+      <div className="min-h-0 flex-1 overflow-auto main-inset">
         {shown.length === 0 ? (
           <ListEmpty status={status} filtered={filter.selected.length > 0} noun="runs" />
         ) : (
@@ -295,7 +332,7 @@ export function RunFigures({ row }: { row: SettlementRun }): ReactElement {
 
 /** `settlement/payouts`, middle column: money leaving for an ISP. */
 export function PayoutsPanel(): ReactElement {
-  const { rows, groups, status } = usePayouts();
+  const { rows, status } = usePayouts();
   const filter = useFilterParam("settlement-payouts");
   const shown = visibleBy(rows, (row) => row.status, filter.selected);
 
@@ -309,19 +346,7 @@ export function PayoutsPanel(): ReactElement {
         </span>
       </header>
 
-      <SummaryBar
-        items={summaryCounts(rows, (row) => row.status, {
-          keys: groups,
-          label: (value) => TRANSACTION_STATUS_TITLES[value],
-        })}
-        filter={{
-          label: "Filter by status",
-          selected: filter.selected,
-          onToggle: filter.toggle,
-        }}
-      />
-
-      <div className="min-h-0 flex-1 overflow-auto p-4">
+      <div className="min-h-0 flex-1 overflow-auto main-inset">
         {shown.length === 0 ? (
           <ListEmpty status={status} filtered={filter.selected.length > 0} noun="payouts" />
         ) : (

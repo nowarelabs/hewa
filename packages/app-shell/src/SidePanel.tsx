@@ -1,40 +1,84 @@
 import type { ReactElement } from "react";
-import { ChevronLeft } from "lucide-react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 
+import type { PanelSide, ShellLayout } from "./layout";
 import type { PanelProps, PanelSpec } from "./types";
 
 /**
- * The column right of the main one, and the collapsed handle that stands in for
- * it.
+ * A column beside the main one, and the collapsed handle that stands in for it.
  *
- * There is only one of these. The shell used to render a left column holding the
- * selected rail item's own panel, which is the one piece of chrome that only
- * makes sense if a rail item is a filter; a destination owns the main column, so
- * the column beside it is detail about that destination and nothing else.
+ * `side` is not decoration. A column left of the main one has its rule on its
+ * right and its handle opens towards the right, and getting either backwards
+ * makes the handle look like it belongs to the column on its other side — which
+ * is how a reader reopens the wrong panel and concludes the shell is broken.
  *
- * The handle is a real button rather than a decorative div: it is the only way
- * to reopen a panel once collapsed, and a click target a keyboard user cannot
- * reach is a panel they can never get back.
+ * The handle is a real button rather than a decorative div: on a wide screen it is
+ * the only way to reopen a panel once collapsed, and a click target a keyboard
+ * user cannot reach is a panel they can never get back.
+ *
+ * ## A sheet has no handle
+ *
+ * A closed sheet renders nothing at all, so the main column gets the width a
+ * handle would have taken — 24px of a 320px screen, or 36px if it were given the
+ * target size a sheet once had. The title bar's own toggle opens the panel on that
+ * layout and is named after what the panel holds, so the handle would be a second
+ * control for one panel, in the one place on the screen that is worth the space.
+ * The title bar keeps it on a wide screen, where it is the only way back and the
+ * reader has the width to spare.
+ *
+ * ## One element, two layouts
+ *
+ * `layout` changes the classes and nothing else. The same `<aside>` is rendered
+ * either way, so a panel holding state survives the crossing — which matters for
+ * the panels that hold more than a filter: a create-or-update panel with a typed-in
+ * value, or a search with a half-written term, is thrown away by a remount when
+ * the reader rotates a phone. Sizing it as a sheet rather than as a column is the
+ * difference; so is deciding which of the two it is in the shell state rather than
+ * in here.
  */
 export function SidePanel({
+  side,
   open,
+  layout,
   onToggle,
   spec,
   props,
 }: {
+  side: PanelSide;
   open: boolean;
+  layout: ShellLayout;
   onToggle: () => void;
   spec: PanelSpec;
   props: PanelProps;
 }): ReactElement {
+  const isSheet = layout === "sheet";
+
+  // Nothing, rather than a handle: the toggle in the title bar opens the sheet, and
+  // the strip a handle would occupy is content. See "A sheet has no handle" above.
+  if (!open && isSheet) {
+    return <></>;
+  }
+
   if (!open) {
-    return <PanelHandle onToggle={onToggle} spec={spec} />;
+    return <PanelHandle side={side} onToggle={onToggle} spec={spec} />;
   }
 
   const { title, render: Content, bodyClassName = "p-4 overflow-y-auto", empty } = spec;
+  const isLeft = side === "left";
+  // A sheet is anchored to its own edge and floats above the main column; a
+  // column is in the flow and takes its width from it. `max-w-[85vw]` rather than
+  // a fixed width so a sheet on a 320px phone still leaves a strip of the content
+  // visible, which is what tells the reader they are looking at an overlay.
+  const placement = isSheet
+    ? `absolute inset-y-0 z-40 w-72 max-w-[85vw] shadow-2xl ${isLeft ? "left-0" : "right-0"}`
+    : `w-64 shrink-0`;
 
   return (
-    <aside className="flex w-64 shrink-0 flex-col border-s border-line bg-surface">
+    <aside
+      className={`flex flex-col border-line bg-surface ${placement} ${isLeft ? "border-r" : "border-s"}`}
+      data-panel-side={side}
+      data-panel-layout={layout}
+    >
       {title ? (
         <header className="flex items-center justify-between gap-2 border-b border-line px-3 py-2">
           <h2 className="truncate text-sm font-medium text-ink">{title}</h2>
@@ -53,17 +97,39 @@ export function SidePanel({
   );
 }
 
-function PanelHandle({ onToggle, spec }: { onToggle: () => void; spec: PanelSpec }): ReactElement {
+/**
+ * A collapsed column, as one pressable strip.
+ *
+ * Column-only — see "A sheet has no handle" — so there is no layout to read and no
+ * wider variant to size.
+ */
+function PanelHandle({
+  side,
+  onToggle,
+  spec,
+}: {
+  side: PanelSide;
+  onToggle: () => void;
+  spec: PanelSpec;
+}): ReactElement {
   const label = spec.title ?? "panel";
+  const isLeft = side === "left";
+  const Glyph = isLeft ? ChevronRight : ChevronLeft;
+
   return (
     <button
       type="button"
       onClick={onToggle}
       title={`Show ${label}`}
       aria-label={`Show ${label}`}
-      className="flex w-6 shrink-0 cursor-pointer items-center justify-center border-s border-line bg-surface text-ink-faint transition-colors hover:bg-accent hover:text-accent-ink"
+      // The same marker the open panel carries, because the two are the same
+      // panel: without it a collapsed column is the only part of the shell with no
+      // way to say which side it is, and `aria-label` alone cannot tell a left
+      // handle from a right one when both are collapsed.
+      data-panel-side={side}
+      className={`flex w-6 shrink-0 cursor-pointer items-center justify-center border-line bg-surface text-ink-faint transition-colors hover:bg-accent hover:text-accent-ink ${isLeft ? "border-r" : "border-s"}`}
     >
-      <ChevronLeft className="w-4 h-4" />
+      <Glyph className="w-4 h-4" />
     </button>
   );
 }

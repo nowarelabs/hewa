@@ -11,11 +11,19 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { MARKET_POOL_TITLES, type MarketOrder } from "@hewa/console-types";
+import {
+  MARKET_POOL_TITLES,
+  type MarketOrder,
+  type MarketQuote,
+  type VenueShare,
+} from "@hewa/console-types";
 import { formatMoney } from "@hewa/marketplace-types";
 
 import { useMarketBook, usePriceHistory, useVenues } from "../data/market";
+import { useSearchParam } from "../state/filter";
+import type { SectionStatus } from "../state/query";
 import { Empty, KeyValues, Panel, SummaryBar, emptyMessage } from "../ui/primitives";
+import { SearchPanel, searchRows } from "../ui/search";
 
 /**
  * The `market` view's panels: two per section, and the middle column of each.
@@ -25,7 +33,75 @@ import { Empty, KeyValues, Panel, SummaryBar, emptyMessage } from "../ui/primiti
  * name — `BookPanel` and `market/book`, `VenuesPanel` and `market/venues` — so a
  * section added to the contract without a panel here fails the config rather than
  * rendering an empty column.
+ *
+ * All three sections search rather than filter: the service publishes no vocabulary
+ * for any of them, so there is no group to toggle and the column beside the rail
+ * finds rows by name instead — a book and a price series are documents rather than
+ * lists of things, and a toggle over a document narrows nothing.
  */
+
+/**
+ * A section's search, over whatever it lists.
+ *
+ * One wrapper over three sections rather than three copies, and the rows are
+ * counted here rather than by the panel it draws: the column is the one place that
+ * says how many rows are in force, so it needs the count and the main column needs
+ * the rows, and neither should be the place the other reads from.
+ */
+function PoolSearch<TRow>({
+  rows,
+  status,
+  section,
+  noun,
+  fields,
+}: {
+  rows: readonly TRow[];
+  status: SectionStatus;
+  section: string;
+  noun: string;
+  fields: (row: TRow) => readonly string[];
+}): ReactElement {
+  const search = useSearchParam(section);
+
+  return (
+    <SearchPanel
+      noun={noun}
+      status={status}
+      query={search.query}
+      onChange={search.set}
+      onClear={search.clear}
+      matched={searchRows(rows, search.query, fields).length}
+      total={rows.length}
+    />
+  );
+}
+
+/** What a pool's latest quote is found by. */
+const quoteFields = (quote: MarketQuote): readonly string[] => [MARKET_POOL_TITLES[quote.pool]];
+
+/** What a venue's share is found by. */
+const venueFields = (venue: VenueShare): readonly string[] => [MARKET_POOL_TITLES[venue.pool]];
+
+/** What an order is found by: the pool it is in, who offers it, and which side. */
+const orderFields = (order: MarketOrder): readonly string[] => [
+  MARKET_POOL_TITLES[order.pool],
+  order.provider,
+  order.side,
+];
+
+/** `market/book`, left column: find an order. */
+export function BookSearch(): ReactElement {
+  const { data, status } = useMarketBook();
+  return (
+    <PoolSearch
+      rows={data?.orders ?? []}
+      status={status}
+      section="market/book"
+      noun="orders"
+      fields={orderFields}
+    />
+  );
+}
 
 /**
  * `market/book`, middle column.
@@ -38,7 +114,8 @@ import { Empty, KeyValues, Panel, SummaryBar, emptyMessage } from "../ui/primiti
  */
 export function BookPanel(): ReactElement {
   const { data, status } = useMarketBook();
-  const orders = data?.orders ?? [];
+  const search = useSearchParam("market/book");
+  const shown = searchRows(data?.orders ?? [], search.query, orderFields);
 
   return (
     <div className="flex h-full flex-col bg-surface">
@@ -69,11 +146,20 @@ export function BookPanel(): ReactElement {
         ]}
       />
 
-      <div className="min-h-0 flex-1 space-y-4 overflow-auto p-4">
+      <div className="min-h-0 flex-1 space-y-4 overflow-auto main-inset">
         {data === undefined ? (
           <Empty>{emptyMessage({ status, filtered: false, noun: "the book" })}</Empty>
+        ) : shown.length === 0 ? (
+          <Empty>
+            {emptyMessage({
+              status,
+              filtered: search.query.trim() !== "",
+              noun: "orders",
+              filter: `“${search.query.trim()}”`,
+            })}
+          </Empty>
         ) : (
-          <BookTable rows={orders} />
+          <BookTable rows={shown} />
         )}
       </div>
     </div>
@@ -84,38 +170,30 @@ function BookTable({ rows }: { rows: readonly MarketOrder[] }): ReactElement {
   return (
     <article className="rounded-lg border border-line bg-surface-raised p-4">
       <h2 className="mb-3 text-sm font-medium text-ink">Resting orders</h2>
-      {rows.length === 0 ? (
-        <Empty>No orders resting</Empty>
-      ) : (
-        <table className="w-full text-left text-xs">
-          <thead className="text-ink-faint">
-            <tr>
-              <th className="py-1 font-medium">Pool</th>
-              <th className="py-1 font-medium">Side</th>
-              <th className="py-1 font-medium">Provider</th>
-              <th className="py-1 text-right font-medium">Committed</th>
-              <th className="py-1 text-right font-medium">Burst</th>
-              <th className="py-1 text-right font-medium">Unit price</th>
+      <table className="w-full text-left text-xs">
+        <thead className="text-ink-faint">
+          <tr>
+            <th className="py-1 font-medium">Pool</th>
+            <th className="py-1 font-medium">Side</th>
+            <th className="py-1 font-medium">Provider</th>
+            <th className="py-1 text-right font-medium">Committed</th>
+            <th className="py-1 text-right font-medium">Burst</th>
+            <th className="py-1 text-right font-medium">Unit price</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((order) => (
+            <tr key={order.id} data-row={order.id} className="border-t border-line text-ink-muted">
+              <td className="py-1">{MARKET_POOL_TITLES[order.pool]}</td>
+              <td className="py-1">{order.side}</td>
+              <td className="py-1">{order.provider}</td>
+              <td className="py-1 text-right tabular-nums">{order.committedGbps} Gbps</td>
+              <td className="py-1 text-right tabular-nums">{order.burstGbps} Gbps</td>
+              <td className="py-1 text-right tabular-nums">{formatMoney(order.unitPrice)}</td>
             </tr>
-          </thead>
-          <tbody>
-            {rows.map((order) => (
-              <tr
-                key={order.id}
-                data-row={order.id}
-                className="border-t border-line text-ink-muted"
-              >
-                <td className="py-1">{MARKET_POOL_TITLES[order.pool]}</td>
-                <td className="py-1">{order.side}</td>
-                <td className="py-1">{order.provider}</td>
-                <td className="py-1 text-right tabular-nums">{order.committedGbps} Gbps</td>
-                <td className="py-1 text-right tabular-nums">{order.burstGbps} Gbps</td>
-                <td className="py-1 text-right tabular-nums">{formatMoney(order.unitPrice)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
+          ))}
+        </tbody>
+      </table>
     </article>
   );
 }
@@ -161,11 +239,13 @@ export function BookDetails(): ReactElement {
  */
 export function PricesPanel(): ReactElement {
   const { data, status } = usePriceHistory();
+  const search = useSearchParam("market/prices");
   const axis = { stroke: "#64748b", fontSize: 12 };
   const tooltip = {
     contentStyle: { backgroundColor: "#111827", border: "1px solid #374151", borderRadius: 8 },
     labelStyle: { color: "#f1f5f9" },
   };
+  const shown = searchRows(data?.latest ?? [], search.query, quoteFields);
 
   return (
     <div className="flex h-full flex-col bg-surface">
@@ -188,11 +268,16 @@ export function PricesPanel(): ReactElement {
         ]}
       />
 
-      <div className="min-h-0 flex-1 space-y-4 overflow-auto p-4">
+      <div className="min-h-0 flex-1 space-y-4 overflow-auto main-inset">
         {data === undefined ? (
           <Empty>{emptyMessage({ status, filtered: false, noun: "prices" })}</Empty>
         ) : (
           <>
+            {/* The chart is the whole series and the search is over the table, so
+                the two are not narrowed together: a reader who searched for one
+                pool wants its row and the shape of the market around it, and a
+                chart redrawn to a single pool is a straight line that answers
+                nothing. The bar above already says which pool the series is. */}
             <article className="rounded-lg border border-line bg-surface-raised p-4">
               <h2 className="mb-2 text-sm font-medium text-ink">Spot price</h2>
               <div className="h-56">
@@ -216,33 +301,58 @@ export function PricesPanel(): ReactElement {
 
             <article className="rounded-lg border border-line bg-surface-raised p-4">
               <h2 className="mb-3 text-sm font-medium text-ink">Latest by pool</h2>
-              <table className="w-full text-left text-xs">
-                <thead className="text-ink-faint">
-                  <tr>
-                    <th className="py-1 font-medium">Pool</th>
-                    <th className="py-1 text-right font-medium">Price</th>
-                    <th className="py-1 font-medium">Observed</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.latest.map((quote) => (
-                    <tr
-                      key={quote.pool}
-                      data-row={quote.pool}
-                      className="border-t border-line text-ink-muted"
-                    >
-                      <td className="py-1">{MARKET_POOL_TITLES[quote.pool]}</td>
-                      <td className="py-1 text-right tabular-nums">{formatMoney(quote.price)}</td>
-                      <td className="py-1">{new Date(quote.observedAt).toLocaleString()}</td>
+              {shown.length === 0 ? (
+                <Empty>
+                  {emptyMessage({
+                    status,
+                    filtered: search.query.trim() !== "",
+                    noun: "pools",
+                    filter: `“${search.query.trim()}”`,
+                  })}
+                </Empty>
+              ) : (
+                <table className="w-full text-left text-xs">
+                  <thead className="text-ink-faint">
+                    <tr>
+                      <th className="py-1 font-medium">Pool</th>
+                      <th className="py-1 text-right font-medium">Price</th>
+                      <th className="py-1 font-medium">Observed</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {shown.map((quote) => (
+                      <tr
+                        key={quote.pool}
+                        data-row={quote.pool}
+                        className="border-t border-line text-ink-muted"
+                      >
+                        <td className="py-1">{MARKET_POOL_TITLES[quote.pool]}</td>
+                        <td className="py-1 text-right tabular-nums">{formatMoney(quote.price)}</td>
+                        <td className="py-1">{new Date(quote.observedAt).toLocaleString()}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
             </article>
           </>
         )}
       </div>
     </div>
+  );
+}
+
+/** `market/prices`, left column: find a pool. */
+export function PricesSearch(): ReactElement {
+  const { data, status } = usePriceHistory();
+  return (
+    <PoolSearch
+      rows={data?.latest ?? []}
+      status={status}
+      section="market/prices"
+      noun="pools"
+      fields={quoteFields}
+    />
   );
 }
 
@@ -271,6 +381,8 @@ export function PricesDetails(): ReactElement {
 /** `market/venues`, middle column: where the committed capacity sits. */
 export function VenuesPanel(): ReactElement {
   const { data, status } = useVenues();
+  const search = useSearchParam("market/venues");
+  const shown = searchRows(data?.venues ?? [], search.query, venueFields);
 
   return (
     <div className="flex h-full flex-col bg-surface">
@@ -291,9 +403,18 @@ export function VenuesPanel(): ReactElement {
         ]}
       />
 
-      <div className="min-h-0 flex-1 overflow-auto p-4">
+      <div className="min-h-0 flex-1 overflow-auto main-inset">
         {data === undefined ? (
           <Empty>{emptyMessage({ status, filtered: false, noun: "venues" })}</Empty>
+        ) : shown.length === 0 ? (
+          <Empty>
+            {emptyMessage({
+              status,
+              filtered: search.query.trim() !== "",
+              noun: "pools",
+              filter: `“${search.query.trim()}”`,
+            })}
+          </Empty>
         ) : (
           <article className="rounded-lg border border-line bg-surface-raised p-4">
             <table className="w-full text-left text-xs">
@@ -322,6 +443,20 @@ export function VenuesPanel(): ReactElement {
         )}
       </div>
     </div>
+  );
+}
+
+/** `market/venues`, left column: find a pool. */
+export function VenuesSearch(): ReactElement {
+  const { data, status } = useVenues();
+  return (
+    <PoolSearch
+      rows={data?.venues ?? []}
+      status={status}
+      section="market/venues"
+      noun="pools"
+      fields={venueFields}
+    />
   );
 }
 

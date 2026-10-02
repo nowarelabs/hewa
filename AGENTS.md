@@ -122,6 +122,64 @@ Rules for working on the generator:
   same records in the app and in the service is two truths, and they drift in the
   one direction that is hard to notice: a summary chip that disagrees with the
   table under it.
+- A vocabulary is drawn **once**, in the column that owns the narrowing, and the
+  main panel states figures. The two claims are different — _what am I looking at_
+  and _narrowed by what_ — and one strip holding both is a count of the unfiltered
+  list sitting above a filtered table, so the two disagree and the reader is left to
+  guess which one the table is honouring. Two controls for one filter is worse than
+  none: the operator presses one, watches the list change, and cannot say which of
+  them the other is for. `apps/admin-dashboard/tests/scope.test.ts` holds the
+  division down section by section.
+- The shell's `left` slot is a general one — a filter, a search, a legend, a
+  create-or-update form, an ops console — so a panel declares a `role` and the shell
+  names the toggle after it. A control named after its own geometry, "Toggle left
+  panel", says where to look and not what will be there, and a slot that can hold
+  five things cannot be named after any one of them.
+- **Every destination declares a `left` column, and `RailItem.left` is required.**
+  "Its rows have no vocabulary" is an answer, not an exemption: those sections
+  search their rows. A rail button that opens a screen one column narrower than its
+  neighbours reads as a column that failed to load, which is also what an empty
+  column looks like, so neither is available. `resolveContent` will not merge one
+  destination's column into another's, because a section filtering by a vocabulary
+  it does not have is an empty list with a chip pressed that nobody pressed.
+- A panel is a **column** on a wide screen and a **sheet** on a narrow one, and the
+  two differ in more than their classes: a sheet arrives closed, is not in the query
+  string, and keeps the panel a column had open when the window crosses the
+  breakpoint. `?left=1` is a fact about a window wide enough to have columns, and an
+  overlay that covers the table on arrival is the opposite of a filter anyone can use.
+  The panel is one element in both, so crossing the line does not throw away what
+  was typed into it. `packages/app-shell/tests/panels.test.ts` holds all of that down.
+- On a narrow screen the **view tabs move to the status bar**, and nothing else
+  does. The tabs are the one control worth a trip to the bar under the reader's
+  thumb — where am I, and what do I press to change it — so the status bar's own
+  clusters (message, actions, counters, zoom, save) are hidden rather than stacked
+  under them, and an action that lived only in one of those clusters moves into the
+  title bar's overflow menu, because a hidden cluster is not somewhere a control
+  can be. The brand, the toggles, the theme switch and the account corner stay put:
+  they are the row a reader already knows, and a bar that gave those up too would be
+  a second responsive design rather than one that got narrower. The tabs are one
+  component in both bars, and which bar holds them branches on `layout`, never on a
+  `md:` class — two answers to "which bar am I in" is a bar that is briefly in both.
+  In that bar the strip **fills** it: equal shares and a small `px-1.5` inset, and
+  not a gutter, because a row holding nothing but navigation with dead space beside
+  it reads as a row with something missing — while one flush to both edges reads as
+  a control somebody has stretched.
+- A breakpoint is **measured once and published as `data-shell-layout`**, and
+  everything that depends on the width keys off that attribute rather than repeating
+  it as a media query. `.main-inset` is the case: a gutter restated as its own
+  `@media` agrees with the shell only by luck, and when the two drift a phone gets a
+  shell that has turned its panels into sheets and still has a rem of padding down
+  each side of the table — which reads as a padding decision, not as a bug. Two
+  readings of one width, and no test comparing them, because Vitest hands a `.css`
+  import to a test as an empty module and reading it as text would mean giving a
+  browser package Node types to protect nothing.
+- A panel that does not fit a phone hides itself off the shell's measurement, with
+  `group-data-[shell-layout=sheet]:…` — the shell root carries `group`, and the
+  attribute is the one reading of the width. `SummaryBar` is the case: a row of
+  figures under the heading that nothing can act on is the first thing a narrow
+  screen gives up, and the counts it holds are the counts the table already draws.
+  A panel hiding itself with its own `hidden md:flex` is a second copy of 768px in
+  a component that cannot know whether the shell has measured one yet.
 - A group vocabulary travels with the rows it describes, in `meta.groups`, and it
   includes groups no row currently holds. Derived from the rows, a filter chip
   appears and disappears as the data moves, which is a control that is only

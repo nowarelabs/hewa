@@ -1,16 +1,15 @@
 // @vitest-environment happy-dom
 
-import { act, createElement, type ReactElement } from "react";
-import { createRoot, type Root } from "react-dom/client";
-import { NuqsTestingAdapter } from "nuqs/adapters/testing";
+import { act, createElement, Fragment, type ReactElement } from "react";
 import { afterEach, describe, expect, test } from "vite-plus/test";
-import { QueryClientProvider } from "@tanstack/react-query";
+import type { QueryClient } from "@tanstack/react-query";
 import type { ConsoleSectionKey } from "@hewa/console-types";
+import type { RailItem } from "@hewa/app-shell";
 
 import { config } from "../src/app/shell.config";
 import { visibleBy } from "../src/app/ui/primitives";
 import { consoleFixtures } from "./fixtures";
-import { seededQueryClient } from "./harness";
+import { emptyQueryClient, mountInteractive, unmountAll, urlOf } from "./harness";
 
 /**
  * Every panel here reads its rows from a service, so every mount is given a
@@ -24,16 +23,18 @@ import { seededQueryClient } from "./harness";
  */
 
 /**
- * The summary bar, filtered, and the filter in the address bar.
+ * The left column and the list it narrows, and the filter in the address bar.
  *
- * The bar counted the rows below it and did nothing with the counts, which is
- * the shape of a control that is nearly a control: the only reason to read
- * "High: 1" is to go and look at the one high alert, and the count was answering
- * a question it could have asked itself.
+ * The narrowing used to be a strip under the heading, whose chips counted the rows
+ * beneath it. That is the shape of a control that is nearly a control: the only
+ * reason to read "High: 1" is to go and look at the one high alert, and the count
+ * was answering a question it could have asked itself. It is also the shape where
+ * the count and the list can disagree — the strip kept saying how many there were
+ * while the table below it showed how many were in force.
  *
- * So this asks whether it does. Every test here is the same claim in a
- * different view, because a morph that works in the alerts view and not in the
- * SLAs one is two implementations wearing one name.
+ * So both columns are mounted here, each marked with `data-column`, and every test
+ * is the same claim in a different view: a narrowing control that works in the
+ * alerts view and not in the SLAs one is two implementations wearing one name.
  *
  * The second claim is the harder one. The filter state is in the query string,
  * not in a component, so half of what is worth checking cannot be seen in the
@@ -41,111 +42,52 @@ import { seededQueryClient } from "./harness";
  * away, and whether the URL a colleague opens says what the operator saw.
  */
 
-declare global {
-  // `var` is the only thing a `declare global` can hold, and this is React's own
-  // flag: it is what tells `act` it is running in a test rather than in a page.
-  var IS_REACT_ACT_ENVIRONMENT: boolean;
-}
-
-globalThis.IS_REACT_ACT_ENVIRONMENT = true;
-
-const roots: Root[] = [];
-
-/**
- * The query string each mount's adapter last wrote, keyed by its container.
- *
- * Per mount, and not one shared slot. nuqs keeps its URL update queue in a
- * module-level global, and a throttled write from an earlier test can land after
- * the next one has mounted — with a single shared slot, that late write
- * overwrites the current test's value and the test fails on the *previous* test's
- * URL. Keying by container means a late write can only ever be read by the test
- * that caused it.
- */
-const written = new WeakMap<HTMLElement, string>();
-
-/**
- * Mounted under nuqs' own testing adapter, with memory on, so the tree reads the
- * same in-memory query string the app would read the real one from.
- *
- * `hasMemory` is the part that matters: without it the adapter freezes the
- * initial params and every press would be asserted against a URL that never
- * moved, and the tests would pass on a filter that filtered but never wrote.
- */
-const mount = (element: ReactElement, searchParams = ""): HTMLElement => {
-  const container = document.createElement("div");
-  document.body.append(container);
-  const root = createRoot(container);
-  written.set(container, "");
-  act(() =>
-    root.render(
-      createElement(
-        QueryClientProvider,
-        { client: seededQueryClient() },
-        createElement(NuqsTestingAdapter, {
-          hasMemory: true,
-          searchParams,
-          onUrlUpdate: (event) => {
-            written.set(container, event.queryString);
-          },
-          // In the props object rather than as a third argument to
-          // `createElement`. The adapter declares `children` as a required prop
-          // rather than the optional `PropsWithChildren` shape, and a required
-          // `children` is not satisfied by the variadic overload.
-          children: element,
-        }),
-      ),
-    ),
-  );
-  roots.push(root);
-  return container;
-};
-
-/**
- * Let the query string catch up with the tree.
- *
- * nuqs rate-limits its URL writes — 50ms by default, and the search box asks for
- * 400ms — and coalesces the presses inside that window into one write. So the
- * tree updates on the press and the URL follows a moment later, and a test that
- * reads the URL the instant after a press is reading a race. Whether the leading
- * or the trailing edge of the window wins depends on the machine, which is how
- * this file passed four runs in a row and then failed on the sixth.
- *
- * The readers below await it, so an assertion about the URL cannot forget to.
- */
-const settle = async (): Promise<void> => {
-  await act(async () => {
-    await new Promise((resolve) => setTimeout(resolve, 600));
-  });
-};
-
-/** The query string that mount last wrote, or `""` if it has not written one. */
-const url = async (container: HTMLElement): Promise<string> => {
-  await settle();
-  return written.get(container) ?? "";
-};
-
 afterEach(() => {
-  for (const root of roots.splice(0)) {
-    act(() => root.unmount());
-  }
-  document.body.replaceChildren();
+  unmountAll();
 });
 
 /**
- * One section's main column, taken from the rail item that opens it.
+ * `mountInteractive`, in the shape this file has always used it in.
  *
- * Through the config rather than by importing the panel directly, so these tests
- * exercise the same wiring the shell renders: a section whose rail item points at
- * the wrong panel fails here rather than counting the rows of a neighbour.
+ * Two names rather than one because these tests read a container and a query
+ * string separately all the way down, and threading an object through thirty
+ * assertions to keep the destructuring tidy would be the only change in it.
  */
-const section = (key: ConsoleSectionKey): ReactElement => {
+const mount = (element: ReactElement, searchParams = "", client?: QueryClient): HTMLElement =>
+  mountInteractive(element, searchParams, client).container;
+
+const url = urlOf;
+
+/**
+ * One section's two columns, taken from the rail item that opens it.
+ *
+ * Through the config rather than by importing the panels directly, so these tests
+ * exercise the same wiring the shell renders: a section whose rail item points at
+ * the wrong panel, or at a left column belonging to a neighbouring section, fails
+ * here rather than counting the rows of a neighbour.
+ *
+ * The left column comes first and both are marked, because the point of the split
+ * is which control is in which one — a test that mounted them in an order it did
+ * not check would pass on a column drawn twice.
+ */
+const railItem = (key: ConsoleSectionKey): RailItem => {
   for (const spec of Object.values(config.views)) {
     const item = spec.rail.find((entry) => entry.section === key);
     if (item !== undefined) {
-      return createElement(item.main.render);
+      return item;
     }
   }
   throw new Error(`no rail item for ${key}`);
+};
+
+const columns = (key: ConsoleSectionKey): ReactElement => {
+  const item = railItem(key);
+  return createElement(
+    Fragment,
+    null,
+    createElement("div", { "data-column": "left" }, createElement(item.left.render)),
+    createElement("div", { "data-column": "main" }, createElement(item.main.render)),
+  );
 };
 
 const query = <T extends Element>(root: ParentNode, selector: string): T => {
@@ -156,14 +98,17 @@ const query = <T extends Element>(root: ParentNode, selector: string): T => {
   return found;
 };
 
-/** The chip for one group, found by the group it filters on. */
-const chip = (root: ParentNode, group: string): HTMLButtonElement =>
-  query<HTMLButtonElement>(root, `[data-summary-item="${group}"]`);
+/** The toggle for one group, found by the group it narrows. */
+const toggle = (root: ParentNode, group: string): HTMLButtonElement =>
+  query<HTMLButtonElement>(root, `[data-group-item="${group}"]`);
+
+/** The main column's own subtree, where no narrowing control belongs. */
+const mainColumn = (root: ParentNode): HTMLElement => query(root, '[data-column="main"]');
 
 /**
  * Awaited, and that is the point.
  *
- * A press on a chip does not change anything directly any more: it writes to the
+ * A press on a toggle does not change anything directly any more: it writes to the
  * query string, and the tree re-renders when the write comes back. nuqs queues
  * the write, so a click that is not flushed returns before the URL has moved, and
  * an assertion straight after it would be reading the list as it was before the
@@ -189,11 +134,14 @@ const rows = (root: ParentNode): number => root.querySelectorAll("[data-row]").l
  * The group is one the fixtures actually contain, because a filter that matches
  * nothing has its own tests further down and testing it here as well would only
  * prove that an empty list renders as an empty list.
+ *
+ * `settlement/runs` is not in this list because its vocabulary is derived rather
+ * than sent, so its group is not a field on the row; it has its own block below.
  */
 const FILTERS = [
-  // Every one of these sections groups its rows, so every one of these bars is a
-  // filter. The five sections that take no chips are not here: a bar holding
-  // figures rather than toggles is asserted on its own further down.
+  // Every one of these sections publishes a vocabulary, so every one of them has
+  // a left column. The four sections that publish none are asserted in
+  // `tests/summary.test.ts`, against the config rather than the markup.
   { section: "alerts/feed", group: "high", field: "severity" },
   { section: "infrastructure/nodes", group: "ixp", field: "kind" },
   { section: "settlement/movements", group: "payout", field: "kind" },
@@ -212,35 +160,35 @@ function totalIn(section: ConsoleSectionKey): number {
   return Array.isArray(rows) ? rows.length : 0;
 }
 
-describe("a bar that filters", () => {
+describe("a column that narrows", () => {
   for (const { section: name, group, field: groupField } of FILTERS) {
     const remaining = remainingIn(name, groupField, group);
     const total = totalIn(name);
+
     test(`the ${name} list is the whole list to begin with`, () => {
-      const container = mount(section(name));
+      const container = mount(columns(name));
       expect(rows(container)).toBe(total);
-      expect(chip(container, group).getAttribute("aria-pressed")).toBe("false");
+      expect(toggle(container, group).getAttribute("aria-pressed")).toBe("false");
     });
 
-    test(`the ${name} bar filters the list beneath it`, async () => {
-      const container = mount(section(name));
-      await click(chip(container, group));
+    test(`the ${name} column narrows the list beside it`, async () => {
+      const container = mount(columns(name));
+      await click(toggle(container, group));
       expect(rows(container)).toBe(remaining);
-      expect(chip(container, group).getAttribute("aria-pressed")).toBe("true");
+      expect(toggle(container, group).getAttribute("aria-pressed")).toBe("true");
     });
 
-    test(`a second chip in ${name} adds to the first`, async () => {
+    test(`a second toggle in ${name} adds to the first`, async () => {
       // Union, not replace. Filtering by two severities has to show both, and a
-      // bar where the last chip wins reads as a dropdown that forgot it is
+      // column where the last toggle wins reads as a dropdown that forgot it is
       // multi-select.
-      const container = mount(section(name));
-      const first = chip(container, group);
-      await click(first);
+      const container = mount(columns(name));
+      await click(toggle(container, group));
       const other = query<HTMLButtonElement>(
         container,
-        '[data-summary-item]:not([aria-pressed="true"])',
+        '[data-group-item]:not([aria-pressed="true"])',
       );
-      const otherGroup = other.getAttribute("data-summary-item") as string;
+      const otherGroup = other.getAttribute("data-group-item") as string;
       const otherCount = Number(other.textContent?.match(/(\d+)\s*$/)?.[1] ?? 0);
       const afterOne = rows(container);
       await click(other);
@@ -248,42 +196,52 @@ describe("a bar that filters", () => {
       expect(otherGroup).not.toBe(group);
     });
 
-    test(`clicking a chip in ${name} again takes the filter off`, async () => {
-      const container = mount(section(name));
-      const target = chip(container, group);
+    test(`pressing a toggle in ${name} again takes the filter off`, async () => {
+      const container = mount(columns(name));
+      const target = toggle(container, group);
       await click(target);
       const filtered = rows(container);
       await click(target);
       expect(rows(container)).toBeGreaterThan(filtered);
       expect(target.getAttribute("aria-pressed")).toBe("false");
     });
+
+    test(`the ${name} main column holds no narrowing control of its own`, () => {
+      // The failure this rules out is not a missing toggle: it is a second one.
+      // Two controls for one filter means the operator presses one, watches the
+      // list change, and cannot tell which of the two the other one is for — and
+      // the count under the heading, if there is one, says a number the filter has
+      // already changed.
+      const container = mount(columns(name));
+      const column = mainColumn(container);
+      expect(column.querySelectorAll("[data-group-item]").length, name).toBe(0);
+      expect(column.querySelectorAll("[aria-pressed]").length, name).toBe(0);
+    });
   }
 
-  test("a filter says so rather than going quiet", () => {
-    // Every chip is a button with aria-pressed, and every bar is marked. A chip
-    // that looks like a toggle and is a <span> is the failure this rules out.
-    for (const { section: name } of FILTERS) {
-      const container = mount(section(name));
-      const bar = query(container, "[data-summary-bar]");
-      expect(bar.hasAttribute("data-filterable")).toBe(true);
-      const chips = bar.querySelectorAll("[data-summary-item][aria-pressed]");
-      expect(chips.length).toBeGreaterThan(0);
-      for (const element of chips) {
-        expect(element.tagName).toBe("BUTTON");
-      }
+  test("a group appears exactly once on the screen", () => {
+    // One filter, one control. This is asserted over the whole tree rather than
+    // per column, so a column that grew the other's vocabulary — four alerts
+    // sections on one view, all of them narrowing by severity — fails here.
+    for (const { section: name, group } of FILTERS) {
+      const container = mount(columns(name));
+      expect(container.querySelectorAll(`[data-group-item="${group}"]`).length, name).toBe(1);
     }
   });
 
-  test("a bar that is not a filter holds no toggles of its own", () => {
-    // The market sections and `infrastructure/providers` count figures or already
-    // are one row per thing, so there is nothing for a chip to select. Asserted
-    // for the sections that have the least reason to grow one.
-    for (const name of ["market/book", "infrastructure/providers"] as const) {
-      const container = mount(section(name));
-      const bar = query(container, "[data-summary-bar]");
-      expect(bar.hasAttribute("data-filterable")).toBe(false);
-      expect(bar.querySelectorAll("[aria-pressed]").length).toBe(0);
-      expect(bar.querySelectorAll("button").length).toBe(0);
+  test("the column says so rather than going quiet", () => {
+    // Every toggle is a button with aria-pressed, and the column is marked. A
+    // control that looks like a toggle and is a <span> is the failure this rules
+    // out.
+    for (const { section: name } of FILTERS) {
+      const container = mount(columns(name));
+      const column = query(container, '[data-column="left"]');
+      expect(column.querySelector("[data-scope-panel]"), name).not.toBeNull();
+      const toggles = column.querySelectorAll("[data-group-item][aria-pressed]");
+      expect(toggles.length, name).toBeGreaterThan(0);
+      for (const element of toggles) {
+        expect(element.tagName, name).toBe("BUTTON");
+      }
     }
   });
 });
@@ -298,15 +256,15 @@ describe("the filter in the address bar", () => {
    * browser, which is the half that was the reason for putting it there.
    */
   test("a press writes the group into the query string", async () => {
-    const container = mount(section("alerts/feed"));
-    await click(chip(container, "high"));
+    const container = mount(columns("alerts/feed"));
+    await click(toggle(container, "high"));
     expect(await url(container)).toBe("?alerts-feed=high");
   });
 
   test("two groups are one key, in the order they were pressed", async () => {
-    const container = mount(section("alerts/feed"));
-    await click(chip(container, "high"));
-    await click(chip(container, "critical"));
+    const container = mount(columns("alerts/feed"));
+    await click(toggle(container, "high"));
+    await click(toggle(container, "critical"));
     expect(await url(container)).toBe("?alerts-feed=high,critical");
   });
 
@@ -314,16 +272,16 @@ describe("the filter in the address bar", () => {
     // Not `?alerts-feed=`. A key left sitting there empty is a URL that reads as
     // though something were filtered, and it is the first thing anyone
     // hand-cleans off a link before sending it.
-    const container = mount(section("alerts/feed"));
-    await click(chip(container, "high"));
-    await click(chip(container, "high"));
+    const container = mount(columns("alerts/feed"));
+    await click(toggle(container, "high"));
+    await click(toggle(container, "high"));
     expect(await url(container)).toBe("");
   });
 
   test("a link arrives with its filter already in force", () => {
-    const container = mount(section("alerts/feed"), "?alerts-feed=high");
+    const container = mount(columns("alerts/feed"), "?alerts-feed=high");
     expect(rows(container)).toBe(remainingIn("alerts/feed", "severity", "high"));
-    expect(chip(container, "high").getAttribute("aria-pressed")).toBe("true");
+    expect(toggle(container, "high").getAttribute("aria-pressed")).toBe("true");
   });
 
   test("one section's key does not filter another", () => {
@@ -332,9 +290,9 @@ describe("the filter in the address bar", () => {
     // the settlement section's `payout` into the infrastructure one, match no
     // node, and show an empty list with no chip pressed: a filter nobody set and
     // nobody can see.
-    const container = mount(section("infrastructure/nodes"), "?settlement-movements=payout");
+    const container = mount(columns("infrastructure/nodes"), "?settlement-movements=payout");
     expect(rows(container)).toBe(totalIn("infrastructure/nodes"));
-    for (const element of container.querySelectorAll("[data-summary-item]")) {
+    for (const element of container.querySelectorAll("[data-group-item]")) {
       expect(element.getAttribute("aria-pressed")).toBe("false");
     }
   });
@@ -343,9 +301,9 @@ describe("the filter in the address bar", () => {
     // `nodes` and `headroom` are the same rows and the same kind vocabulary, and
     // they are still two destinations with two filters. Arriving at headroom is a
     // fresh look at the network's room, not the nodes list with a filter on it.
-    const container = mount(section("infrastructure/headroom"), "?infrastructure-nodes=ixp");
+    const container = mount(columns("infrastructure/headroom"), "?infrastructure-nodes=ixp");
     expect(rows(container)).toBe(totalIn("infrastructure/headroom"));
-    for (const element of container.querySelectorAll("[data-summary-item]")) {
+    for (const element of container.querySelectorAll("[data-group-item]")) {
       expect(element.getAttribute("aria-pressed")).toBe("false");
     }
   });
@@ -355,9 +313,56 @@ describe("the filter in the address bar", () => {
     // so the list is empty and the empty state explains it. Quietly ignoring the
     // key would show a list that does not match the address bar being looked at,
     // which is the one thing an address bar must never do.
-    const container = mount(section("infrastructure/nodes"), "?infrastructure-nodes=nonsense");
+    const container = mount(columns("infrastructure/nodes"), "?infrastructure-nodes=nonsense");
     expect(rows(container)).toBe(0);
     expect(container.textContent).toContain("No nodes match these kinds");
+  });
+});
+
+describe("a column built from a vocabulary the service did not send", () => {
+  /**
+   * `settlement/runs`, which is the odd one out of the twelve.
+   *
+   * A run's state is not one of the payload's `meta.groups`, so the column derives
+   * two — `completed` and `failed` — from the rows themselves. That is the case
+   * worth pressing on: a vocabulary the service did not send is a vocabulary that
+   * can quietly disagree with the rows it was derived from, and the disagreement
+   * shows up as a count the operator has stopped believing rather than as an error.
+   *
+   * So the filter is driven both ways here. From the URL, because that is what a
+   * link does; and by a press, because the derivation has to survive the list
+   * being re-read.
+   */
+  test("the groups are the two a run can be in", () => {
+    const container = mount(columns("settlement/runs"));
+    expect(consoleFixtures["settlement/runs"].meta.groups).toEqual([]);
+    const groups = [...container.querySelectorAll("[data-group-item]")].map((element) =>
+      element.getAttribute("data-group-item"),
+    );
+    expect(groups).toEqual(["completed", "failed"]);
+  });
+
+  test("pressing a derived group narrows the list to the runs in it", async () => {
+    const container = mount(columns("settlement/runs"));
+    const failed = toggle(container, "failed");
+    const count = Number(failed.textContent?.match(/(\d+)\s*$/)?.[1] ?? 0);
+    expect(count).toBeGreaterThan(0);
+    await click(failed);
+    expect(rows(container)).toBe(count);
+    expect(container.textContent).toContain(
+      `of ${consoleFixtures["settlement/runs"].data.length} runs`,
+    );
+  });
+
+  test("a link naming a derived group filters it, and an unknown one says so", () => {
+    const runs = consoleFixtures["settlement/runs"].data;
+    const completed = runs.filter((row) => row.failed === 0).length;
+    const byUrl = mount(columns("settlement/runs"), "?settlement-runs=completed");
+    expect(rows(byUrl)).toBe(completed);
+
+    const unknown = mount(columns("settlement/runs"), "?settlement-runs=nonsense");
+    expect(rows(unknown)).toBe(0);
+    expect(unknown.textContent).toContain("No runs match");
   });
 });
 
@@ -384,8 +389,8 @@ describe("a filter that matches nothing", () => {
 
   for (const { section: name, group, message } of EMPTY_CASES) {
     test(`the ${name} section says so rather than leaving an empty column`, async () => {
-      const container = mount(section(name));
-      await click(chip(container, group));
+      const container = mount(columns(name));
+      await click(toggle(container, group));
       expect(rows(container)).toBe(0);
       expect(container.textContent).toContain(message);
     });
@@ -403,35 +408,35 @@ describe("a filter that matches nothing", () => {
 const maybe = <T extends Element>(root: ParentNode, selector: string): T | null =>
   root.querySelector<T>(selector);
 
-describe("the SLA bar", () => {
+describe("the SLA column", () => {
   /**
-   * The bar counts the states, and the list under it is what it counted.
+   * The column counts the states, and the list beside it is what it counted.
    *
-   * The state on each row is the one the service computed and sent. A bar built
+   * The state on each row is the one the service computed and sent. A column built
    * from the state a browser decided for itself would count a commitment as
-   * breached that no settlement run would ever issue a credit for, which is the
-   * one number in this console that decides money.
+   * breached that no settlement run would ever issue a credit for, which is the one
+   * number in this console that decides money.
    */
   test("it draws the vocabulary, so the counts below are about the filter", () => {
     // Without this the rest of these pass on an empty list.
-    const container = mount(section("slas/commitments"));
+    const container = mount(columns("slas/commitments"));
     expect(rows(container)).toBe(consoleFixtures["slas/commitments"].data.length);
   });
 
-  test("it is a chip per state, with nothing in it that is not one", () => {
-    // Asserted as the absence of a second control, because that is what a bar
+  test("it is a toggle per state, with nothing in it that is not one", () => {
+    // Asserted as the absence of a second control, because that is what a column
     // that grew a search field again would look like: a toggle per state, plus a
-    // text box sharing the strip with them.
-    const container = mount(section("slas/commitments"));
+    // text box sharing the column with them.
+    const container = mount(columns("slas/commitments"));
     for (const state of ["compliant", "at_risk", "breached"]) {
-      expect(query(container, `[data-summary-item="${state}"]`)).not.toBeNull();
+      expect(query(container, `[data-group-item="${state}"]`)).not.toBeNull();
     }
     expect(maybe(container, '[role="searchbox"]')).toBeNull();
   });
 
-  test("a state chip narrows the list", async () => {
-    const container = mount(section("slas/commitments"));
-    await click(chip(container, "breached"));
+  test("a state toggle narrows the list", async () => {
+    const container = mount(columns("slas/commitments"));
+    await click(toggle(container, "breached"));
     expect(rows(container)).toBe(
       consoleFixtures["slas/commitments"].data.filter((row) => row.state === "breached").length,
     );
@@ -441,52 +446,56 @@ describe("the SLA bar", () => {
     // A state the service's vocabulary names and this fixture has nothing on, so
     // this is the filter that opens a panel with nothing in it. Driven from the
     // URL because the fixture's two rows are compliant and breached.
-    const container = mount(section("slas/commitments"), "?slas-commitments=at_risk");
+    const container = mount(columns("slas/commitments"), "?slas-commitments=at_risk");
     expect(rows(container)).toBe(0);
     expect(container.textContent).toContain("No commitments match these states");
   });
 });
 
-describe("the sections that have no chip bar", () => {
-  /**
-   * Five of the sixteen sections take no `filter`, and the reasons are not the
-   * same reason. The market's are documents whose bar holds figures;
-   * `infrastructure/providers` is one row per provider, so a chip keyed on the
-   * column it is keyed on would select the row it was built from.
-   *
-   * A chip there would have nothing to filter, and a toggle that hid nothing is a
-   * control that lies — which is why `SummaryBar` refuses the combination rather
-   * than rendering a bar of dead buttons.
-   */
-  test("the market bar counts figures and holds no toggles", () => {
-    const container = mount(section("market/book"));
-    const bar = query(container, "[data-summary-bar]");
-    expect(bar.hasAttribute("data-filterable")).toBe(false);
-    expect(bar.querySelectorAll("[aria-pressed]").length).toBe(0);
+describe("the count line above the toggles", () => {
+  test("it says how many rows are in force out of how many there are", () => {
+    // The number the operator checks the table against. It is in the column rather
+    // than under the heading because it is the count the filter changed, and a
+    // count somewhere else is one somebody stops checking.
+    const container = mount(columns("slas/commitments"));
+    const line = query(container, "[data-scope-count]");
+    const total = consoleFixtures["slas/commitments"].data.length;
+    expect(line.textContent).toBe(`${total} of ${total} commitments`);
   });
 
-  test("their vocabularies are empty, and a chip built from them would be a type error", () => {
-    // `meta.groups: never` for these is the compile-time half; this is the
-    // payload half, and it is what a chip bar would read to build itself.
-    for (const key of [
-      "market/book",
-      "market/prices",
-      "market/venues",
-      "infrastructure/providers",
-      "settlement/runs",
-    ] as const) {
-      expect(consoleFixtures[key].meta.groups, key).toEqual([]);
-    }
+  test("it moves when the filter does", async () => {
+    const breached = consoleFixtures["slas/commitments"].data.filter(
+      (row) => row.state === "breached",
+    ).length;
+    const container = mount(columns("slas/commitments"));
+    await click(toggle(container, "breached"));
+    const line = query(container, "[data-scope-count]");
+    const total = consoleFixtures["slas/commitments"].data.length;
+    expect(line.textContent).toBe(`${breached} of ${total} commitments`);
   });
 
-  test("a section with no vocabulary still draws its bar", () => {
-    // Skipped rather than blank: the counts are figures the operator reads, and a
-    // section that renders nothing because it has no chips to draw is a section
-    // that looks broken.
-    for (const key of ["market/book", "infrastructure/providers"] as const) {
-      const container = mount(section(key));
-      expect(query(container, "[data-summary-bar]"), key).not.toBeNull();
-    }
+  test("clearing puts every row back and takes the button with it", async () => {
+    // The button only exists while something is in force: a "clear" with nothing
+    // to clear is a control that admits the filter is not the operator's own doing.
+    const container = mount(columns("slas/commitments"));
+    expect(maybe(container, "[data-scope-clear]")).toBeNull();
+    await click(toggle(container, "breached"));
+    const clear = query<HTMLButtonElement>(container, "[data-scope-clear]");
+    await click(clear);
+    expect(rows(container)).toBe(consoleFixtures["slas/commitments"].data.length);
+    expect(maybe(container, "[data-scope-clear]")).toBeNull();
+  });
+});
+
+describe("a column over data that has not arrived", () => {
+  test("it says it is loading rather than offering empty groups", () => {
+    // "0 of 0 nodes" over a service that has not answered is a claim about the
+    // world, and a group the reader presses to find out why is a group with
+    // nothing in it because nothing has loaded. `tests/query.test.ts` covers the
+    // third state — a service that answered with an error.
+    const pending = mount(columns("infrastructure/nodes"), "", emptyQueryClient());
+    expect(pending.textContent).toContain("Loading nodes");
+    expect(maybe(pending, "[data-group-item]")).toBeNull();
   });
 });
 

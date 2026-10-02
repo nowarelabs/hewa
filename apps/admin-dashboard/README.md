@@ -60,11 +60,11 @@ a filter:
 | `alerts`         | `feed`, `outages`, `capacity`, `security` |
 
 The rail used to be built out of each view's group vocabulary — `ixp`,
-`subsea_cable`, `breached` — which is a second way of doing what the summary bar's
-chips already do, over the same rows, from the same single endpoint. It looked
+`subsea_cable`, `breached` — which is a second way of doing what the scope column's
+toggles already do, over the same rows, from the same single endpoint. It looked
 like navigation and behaved like a filter, and an operator reading a rail of node
 kinds reasonably concluded "Subsea cable" was a _place_ rather than a
-_predicate_, then found it was also a chip in the other column.
+_predicate_, then found it was also a toggle in the other column.
 
 So every section is a question with its own answer: its own endpoint, its own
 rows, its own two columns. `market/book` and `market/prices` read the same two
@@ -88,67 +88,126 @@ not something a `useState` can reach. The player is gone, so the two panels that
 had to agree are not, and the store went with them. Nothing in the console holds
 state a URL cannot name, which is why `state/filter.ts` is the only writer.
 
-## The bar under the title
+## The column beside the rail
 
-Every main panel has a `SummaryBar` between its header and its contents, and
-each one says something different, because the views show different things:
+The shell's `left` slot is a general one: whatever belongs to a destination without
+being the destination, whether that is its narrowing, a search over it, a form
+against it or an ops console for it. All twelve of the sections below use it for
+narrowing, and each declares `role: "filter"` so the title bar names its toggle
+"Toggle filters" rather than "Toggle left panel" — the name should say what the
+press will find, and this slot can hold five different things. See
+`packages/app-shell/README.md` for the contract.
 
-Eleven of the sixteen sections filter; five do not.
+`left` is required, so all sixteen have one: a rail button that opened a screen a
+column narrower than its neighbours would read as a column that failed to load,
+which is also what an empty column looks like. The remaining question is what the
+other four put in theirs, and the answer is a search over the rows they list.
 
-| Section                    | Bar                          | As a control                     |
-| -------------------------- | ---------------------------- | -------------------------------- |
-| `alerts/*` (four)          | a count per severity         | filters by severity              |
-| `infrastructure/nodes`     | a count per node kind        | filters by kind                  |
-| `infrastructure/headroom`  | a count per node kind        | filters by kind                  |
-| `settlement/movements`     | a count per settlement kind  | filters by kind                  |
-| `settlement/runs`          | completed / failed           | filters by the derived pair      |
-| `settlement/payouts`       | a count per status           | filters by status                |
-| `slas/*` (three)           | a count per commitment state | filters by state                 |
-| `market/*` (three)         | headline figures             | a summary — nothing to count     |
-| `infrastructure/providers` | the figures                  | a summary — one row per provider |
+| Section                    | Left column                   | Main column           |
+| -------------------------- | ----------------------------- | --------------------- |
+| `alerts/*` (four)          | a toggle per severity         | the alerts table      |
+| `infrastructure/nodes`     | a toggle per node kind        | the nodes table       |
+| `infrastructure/headroom`  | a toggle per node kind        | the headroom table    |
+| `settlement/movements`     | a toggle per settlement kind  | the movements table   |
+| `settlement/runs`          | completed / failed            | the runs table        |
+| `settlement/payouts`       | a toggle per status           | the payouts table     |
+| `slas/*` (three)           | a toggle per commitment state | the commitments table |
+| `market/*` (three)         | a search over its pools       | headline figures      |
+| `infrastructure/providers` | a search over its providers   | the providers table   |
 
-The alerts section grew one of these by hand and the others had nothing, so a
-section either had a summary or had no way to say what it was showing before you
-scrolled. `tests/summary.test.ts` asserts that all sixteen have one, and that the
-eleven-and-five split is the split.
+Which of the sixteen is which is the point, and it is per section, so it is asserted
+four times. `tests/scope.test.ts` says every section declares a column and which
+role each one declares — a search panel announced as a filter is a button promising
+groups the section does not have. `tests/filters.test.ts` says the toggles are in
+the column and nowhere else, `tests/search.test.ts` says a term narrows the table
+and only that table, and `packages/app-shell/tests/panels.test.ts` says what the
+shell does with that column on a viewport too narrow to have columns: a sheet over
+the table rather than a column beside it, arriving closed, and absent from the
+query string. The same file says where the view tabs go on a phone — into the
+status bar under the reader's thumb, with the status bar's own clusters hidden
+rather than stacked under them, and with the title bar keeping the brand, the
+toggles, the theme switch and the account corner — and it says that the tabs are
+one component in both bars, so the two cannot answer "which section am I in"
+differently. Every panel's scroll container is `main-inset` rather than `p-4` for
+the same reason: on a narrow screen the gutter is the only thing standing between a
+table and the edge of the device.
 
-Build the chips with `summaryCounts`, which counts out of the rows, and pass
-`keys` for the groups the section knows about. Those keys are no longer a constant
-in the app: `meta.groups` comes from the service with the rows, so a group the
-feed has nothing in still gets a chip at zero and can be pressed to say so.
-Anything found in the data is counted whether or not it is in `keys` — the
-settlement feed names an `escrow` kind and holds no escrow, which is the case
-that keeps a bar from losing a control the operator can no longer find.
+**Why the narrowing left the main panel.** It was a `SummaryBar` under the heading,
+twelve times, and that bar was also the thing that said how many rows there were.
+Those are two different claims — _what am I looking at_ and _narrowed by what_ — and
+putting both in one strip means the count under the heading is a count of the whole
+list while the table below it is filtered, so the two disagree and the reader is
+left to work out which one the table is honouring. So the strip under the heading
+states figures and the column answers the other question. One control per filter,
+drawn once, and `3 of 12 alerts` — the number to check the table against — is the
+one that moves when the table does.
 
-The four sections sharing a vocabulary each assert their own. `nodes` and
-`headroom` are the same rows and the same node kinds; `feed`, `outages`,
-`capacity` and `security` are four readings of the same alerts table and the same
-severities. None of them can drop its bar without the others noticing, so
-`tests/summary.test.ts` loops over all four and over both.
+`SummaryBar` therefore takes figures only, which is also why it is the one strip a
+phone does without: `group-data-[shell-layout=sheet]:hidden`, read off the shell's
+own measurement rather than a fourth copy of 768px. It is a row of the table given
+to a row of figures nothing can act on. It has no filter mode, no `onToggle`,
+and nothing that could put a chip in it: a summary that can filter is a summary
+whose count is a claim about rows it is not showing.
 
-A chip is labelled from a shared `*_TITLES` map and keyed on the row's value, and
-those are two different strings on purpose: `Data centre` on the chip, `data_center`
-in the query string, and `NODE_KIND_TITLES[node.kind]` is what joins them. A
-label the panel derived by upper-casing the first letter of the key said
-`Data_center`, which is the wire format wearing a display's clothes.
+The four that search instead are checkable rather than a matter of taste. Three
+`market` sections hold documents — a book, a price series, a venue breakdown —
+rather than lists, so a group press could narrow nothing and a toggle there would
+be a control that changes nothing. `infrastructure/providers` is one row per
+provider, so a toggle keyed on the column it is keyed on would select the row it
+was built from. All four send `meta.groups: []`, which is the payload half of that,
+and a scope column built from it would be a type error.
 
-### When a bar is a filter
+A search is not a second way to narrow anything, because each section has exactly
+one narrowing control and the four with a vocabulary do not also get a field. What
+is left is finding a row in a list of pools or providers by name, kind or country,
+which is the narrowing those four can honestly offer. It lives in the query string
+under the section's own key — `?q-market-book=mombasa`, `?q-infrastructure-nodes=…` —
+because a link a colleague opens should say what the operator was looking at, and
+the prefix is what keeps a search from being read as one of a section's groups.
 
-A bar is a filter where it is a breakdown of the rows below it, and only there.
-That is the whole rule, and it is per section, so `tests/filters.test.ts` asserts
-it for all sixteen: nothing in a summary bar says what its rows are grouped by, so
-there is otherwise no way to tell from reading a panel whether the section that
-should have been a filter was left as a summary.
+### What the four columns say
 
-The five exclusions are checkable rather than a matter of taste. Three `market`
-sections hold figures with no list attached, so a press could narrow nothing and
-a filter there would be a control that changes nothing. `infrastructure/providers`
-is one row per provider, so a chip keyed on the column it is keyed on would select
-the row it was built from.
+`ui/search.tsx` holds `SearchPanel`, and it says the same three things `ScopePanel`
+does, for the same reason: `2 of 14 orders` moves when the table moves. The chip in
+the heading is left alone, because it answers the other question — how many orders
+there are in all — and a bar whose figures are sums over rows is narrowed with the
+table. That is the difference between the providers bar and the market ones: `Nodes`,
+`Capacity` and `Impaired` are sums over the rows on screen, while `Best bid`,
+`Currency` and `Share` are the service's figures for the whole book, which is why
+the share column is headed _Share of all_.
 
-`settlement/runs` is the interesting one, because it has no `meta.groups` and is a
-filter anyway. A run has no status of its own — a batch is a mix of completed and
-failed lines — so its vocabulary is the derived pair the panel names **outright**:
+### What a column is made of
+
+`ui/scope.tsx` holds `ScopePanel`, and every one of the twelve is the same three
+things: a count of what is in force, the vocabulary as toggles, and the state the
+section is in. It takes `status` from the same query as the rows, so a narrowing
+control that has not arrived is not a narrowing control with nothing in it — it says
+`Loading nodes…` rather than `0 of 0 nodes`, and `tests/scope.test.ts` asserts that
+for all twelve.
+
+Build the toggles with `summaryCounts`, which counts out of the rows, and pass `keys`
+for the groups the section knows about. Those keys are no longer a constant in the
+app: `meta.groups` comes from the service with the rows, so a group the feed has
+nothing in still gets a toggle at zero and can be pressed to say so. Anything found
+in the data is counted whether or not it is in `keys` — the settlement feed names an
+`escrow` kind and holds no escrow, which is the case that keeps a column from losing
+a control the operator can no longer find.
+
+The four sections sharing a vocabulary each assert their own. `nodes` and `headroom`
+are the same rows and the same node kinds; `feed`, `outages`, `capacity` and
+`security` are four readings of the same alerts table and the same severities. None
+of them can drop its column without the others noticing, so `tests/scope.test.ts`
+loops over all four and over both.
+
+A toggle is labelled from a shared `*_TITLES` map and keyed on the row's value, and
+those are two different strings on purpose: `Data centre` on the toggle, `data_center`
+in the query string, and `NODE_KIND_TITLES[node.kind]` is what joins them. A label
+the panel derived by upper-casing the first letter of the key said `Data_center`,
+which is the wire format wearing a display's clothes.
+
+`settlement/runs` is the interesting one, because it has no `meta.groups` and narrows
+anyway. A run has no status of its own — a batch is a mix of completed and failed
+lines — so its vocabulary is the derived pair the panel names **outright**:
 
 ```tsx
 summaryCounts(rows, (row) => (row.failed > 0 ? "failed" : "completed"), {
@@ -157,41 +216,41 @@ summaryCounts(rows, (row) => (row.failed > 0 ? "failed" : "completed"), {
 ```
 
 Deriving the pair from the rows instead is what the vocabulary rule forbids: a run
-currently holding no failed line would lose its `failed` chip, and a control that
+currently holding no failed line would lose its `failed` toggle, and a control that
 appears and disappears with the data is a control that is only sometimes there.
 
-Where the bar is a filter, the chips are `FilterToggle`s in a `FilterBar`: a
-press narrows the list, a second press takes it off, and two presses in a row
-show both. A bar where the last chip wins reads as a dropdown that has forgotten
-it is multi-select. Nothing selected shows everything — `visibleBy` is the one
-place that decides, and the rule is that an empty selection is the whole list,
-because a filter that empties itself when its last chip comes off is a view the
-operator cannot get out of.
+A press narrows the list, a second press takes it off, and two presses in a row show
+both. Nothing selected shows everything — `visibleBy` is the one place that decides,
+and the rule is that an empty selection is the whole list, because a filter that
+empties itself when its last toggle comes off is a view the operator cannot get out
+of. A clear button appears only while something is in force: a "clear" with nothing
+to clear is a control that admits the filter is not the operator's own doing.
 
 No section has a second control. The flights section used to: a carrier chip said
-how many there were and a search box said which one you meant, and the bar had to
-become one or the other because a strip of five toggles beside a text field has no
-room for either. That arrangement cost `SummaryBar` a state machine, a second set
-of controls and a second copy of the filters, all of it for one view. A callsign
-was a column in the table, and the rows were the list to look a name up in.
+how many there were and a search box said which one you meant, and the strip had to
+become one or the other because a row of five toggles beside a text field has no room
+for either. That arrangement cost `SummaryBar` a state machine, a second set of
+controls and a second copy of the filters, all of it for one view. A callsign was a
+column in the table, and the rows were the list to look a name up in.
 
-The rail absorbed the other half of that decision. "Subsea cable" used to be a
-rail button and now it is a chip, because a rail built out of the vocabulary it
-was meant to navigate by cannot also be a filter — and it was both at once.
+The rail absorbed the other half of that decision. "Subsea cable" used to be a rail
+button and now it is a toggle in the column, because a rail built out of the
+vocabulary it was meant to navigate by cannot also be a filter — and it was both at
+once.
 
-A chip toggles on its **key**, not its label, and `summaryCounts` therefore
-carries the key it counted on. A filter keyed on a display label is a filter
-keyed on a string someone has to keep in step with the data by hand.
+A toggle acts on its **key**, not its label, and `summaryCounts` therefore carries
+the key it counted on. A filter keyed on a display label is a filter keyed on a
+string someone has to keep in step with the data by hand.
 
 ### The filter is in the URL
 
-The state behind those chips is in the query string, not in a `useState` in the
+The state behind those toggles is in the query string, not in a `useState` in the
 panel. A filter is the one piece of a panel's state an operator needs twice: once
 while looking at the list, and once after sending the link to somebody else. In
 component state the second copy does not exist, so the conversation becomes
 "which severity was that" and somebody reads the counts aloud.
 
-It is the same decision the shell already makes about the view, the panel widths
+It is the same decision the shell already makes about the view, the column widths
 and the theme, through the same `nuqs` and the same `NuqsAdapter` in
 `providers.tsx`. `state/filter.ts` holds the mechanism and nothing else: which
 groups a section filters on, and under which key, belong to that section's panel.
@@ -200,26 +259,26 @@ beside it went with the flights view's search box.
 
 Each key is the section's own, with the view's separator flattened:
 
-| Key                       | Held by                              |
-| ------------------------- | ------------------------------------ |
-| `alerts-feed`             | `alerts/feed` severity chips         |
-| `alerts-outages`          | `alerts/outages` severity chips      |
-| `alerts-capacity`         | `alerts/capacity` severity chips     |
-| `alerts-security`         | `alerts/security` severity chips     |
-| `infrastructure-nodes`    | `infrastructure/nodes` kind chips    |
-| `infrastructure-headroom` | `infrastructure/headroom` kind chips |
-| `settlement-movements`    | `settlement/movements` kind chips    |
-| `settlement-runs`         | `settlement/runs` state chips        |
-| `settlement-payouts`      | `settlement/payouts` status chips    |
-| `slas-commitments`        | `slas/commitments` state chips       |
-| `slas-at-risk`            | `slas/at_risk` state chips           |
-| `slas-credits`            | `slas/credits` state chips           |
+| Key                       | Held by                                |
+| ------------------------- | -------------------------------------- |
+| `alerts-feed`             | `alerts/feed` severity toggles         |
+| `alerts-outages`          | `alerts/outages` severity toggles      |
+| `alerts-capacity`         | `alerts/capacity` severity toggles     |
+| `alerts-security`         | `alerts/security` severity toggles     |
+| `infrastructure-nodes`    | `infrastructure/nodes` kind toggles    |
+| `infrastructure-headroom` | `infrastructure/headroom` kind toggles |
+| `settlement-movements`    | `settlement/movements` kind toggles    |
+| `settlement-runs`         | `settlement/runs` state toggles        |
+| `settlement-payouts`      | `settlement/payouts` status toggles    |
+| `slas-commitments`        | `slas/commitments` state toggles       |
+| `slas-at-risk`            | `slas/at_risk` state toggles           |
+| `slas-credits`            | `slas/credits` state toggles           |
 
 Two levels of naming, both of which were bugs before they were rules.
 
 **Not the view.** `infrastructure` and `settlement` both group their rows by
 _kind_, and a shared `?kind=` would carry the settlement section's `escrow` into
-the infrastructure one, match no node, and show an empty list with no chip pressed
+the infrastructure one, match no node, and show an empty list with no toggle pressed
 — a filter nobody set and nobody can see to clear.
 
 **Not the property.** Four sections filter on severity and four on state, so a
@@ -249,12 +308,20 @@ the empty state, rather than being quietly ignored. The URL said something; show
 a list that disagrees with the address bar is the one thing an address bar must
 never do.
 
-Four attributes make the rule assertable without reading a panel: the bar is
-`[data-summary-bar]`, a bar that filters adds `data-filterable`, and each chip
-is `[data-summary-item]` with the key in it and `aria-pressed` on it. A row the
-filter acts on is `[data-row]`. The last one is not a convenience: the list is a
-set of `<article>`s in some sections and a `<tr>` in others, and a test that
-counted tag names would be testing the markup rather than the filtering.
+Five attributes make the rules assertable without reading a panel: a scope column
+is `[data-scope-panel]`, its count line is `[data-scope-count]`, its clear button
+is `[data-scope-clear]`, each toggle is `[data-group-item]` with the key in it and
+`aria-pressed` on it, and the figures a main panel states are in
+`[data-summary-bar]`. A row a filter acts on is `[data-row]`. The last one is not a
+convenience: the list is a set of `<article>`s in some sections and a `<tr>` in
+others, and a test that counted tag names would be testing the markup rather than
+the filtering.
+
+The shell's own column state is in the URL too, and `left` is the only one of the
+three that starts open: a filter the operator has to open before they can see that a
+filter is in force is a filter that reads as a summary. `?left=0` closes it, and
+the collapsed handle keeps `data-panel-side="left"` so a closed left column can be
+told from a closed right one. `tests/shell.test.ts` covers all four states.
 
 ## Controls
 
@@ -267,8 +334,8 @@ second app needs them, they move to a package at that point, not before.
 | Control         | States                                                                           |
 | --------------- | -------------------------------------------------------------------------------- |
 | `SearchField`   | empty, filled, with a clear button, with a hint such as a result count, disabled |
-| `FilterToggle`  | unpressed, pressed, with a count, disabled                                       |
-| `FilterBar`     | a labelled group of the above                                                    |
+| `FilterToggle`  | unpressed, pressed, with a count, disabled, `className` for a full-width row     |
+| `FilterBar`     | a labelled group of the above, laid out in a row or `stacked` for a column       |
 | `ActiveFilters` | nothing in force, or one chip per filter in force with a clear-all               |
 | `Dropdown`      | closed, open, chosen, disabled, with a disabled option that cannot be picked     |
 | `Popover`       | closed, open against a trigger                                                   |
@@ -338,30 +405,39 @@ store is gone.
 
 Four files opt into `happy-dom` with a docblock, because a question about
 whether a press narrows a list cannot be asked of static markup.
-`tests/filters.test.ts` mounts a section's main column and presses its chips,
-`tests/shell.test.ts` asks which rail button the shell marks as current,
+`tests/filters.test.ts` mounts a section's two columns together and presses its
+toggles, `tests/shell.test.ts` asks which rail button the shell marks as current,
 `tests/query.test.ts` watches a query move from pending to ready, and
 `tests/overlays.test.ts` asks whether Escape closes a dropdown. Everything else
-stays in node, where SSR is what it should be tested in.
+stays in node, where SSR is what it should be tested in — including
+`tests/scope.test.ts`, which needs both columns on screen but never presses
+anything.
 
-Both of the panel tests reach a panel **through the rail item that opens it**:
+Both of the panel tests reach a panel **through the rail item that opens it**, and
+mount the item's left column and main column side by side, each marked with
+`data-column`:
 
 ```ts
-const section = (key: ConsoleSectionKey): ReactElement => {
-  for (const spec of Object.values(config.views)) {
-    const item = spec.rail.find((entry) => entry.section === key);
-    if (item !== undefined) return createElement(item.main.render);
-  }
-  throw new Error(`no rail item for ${key}`);
+const columns = (key: ConsoleSectionKey): ReactElement => {
+  const item = railItem(key);
+  return createElement(
+    Fragment,
+    null,
+    item.left === undefined
+      ? null
+      : createElement("div", { "data-column": "left" }, createElement(item.left.render)),
+    createElement("div", { "data-column": "main" }, createElement(item.main.render)),
+  );
 };
 ```
 
 Through the config rather than by importing the panel directly, so a section whose
 rail item points at the wrong panel fails the test rather than quietly counting
-the rows of its neighbour. Both helpers assert the whole registry: every section
-in `CONSOLE_SECTION_KEYS` has a rail item, and every fixture has a section, so a
-seventeenth section cannot be added without being classified as a filter or a
-summary and given a fixture.
+the rows of its neighbour. Mounting the two columns together is what makes "the
+toggles are in the left one and nowhere else" a question at all. Both helpers assert
+the whole registry: every section in `CONSOLE_SECTION_KEYS` has a rail item, and
+every fixture has a section, so a seventeenth section cannot be added without being
+classified as narrowing or as figures and given a fixture.
 
 `tests/shell.test.ts` reads `aria-current="page"` off the rail rather than
 `aria-pressed`. These buttons navigate, and a toggle marker would claim "I am on"
@@ -489,8 +565,8 @@ than a convention:
   says a market is not trading rather than that it has not answered.
 
 `groups` is `meta.groups` from the response and not the set of values the rows
-happen to hold, so a chip can be pressed on a severity no row currently belongs to
-and still be there afterwards. That is the case the fixtures exist for: four of
+happen to hold, so a toggle can be pressed on a severity no row currently belongs
+to and still be there afterwards. That is the case the fixtures exist for: four of
 them carry a group with nothing in it.
 
 The document also has to stay in one currency. A book with a USD price point and
@@ -509,7 +585,8 @@ service declined to publish.
 
 The records used to live here, which meant two copies of the truth: one in this
 app and one in the service that is supposed to have it. They drifted, and the
-symptom was a summary bar whose chips disagreed with the table under it.
+symptom was a summary bar whose chips disagreed with the table under it, which is
+what moved the narrowing into the column beside the rail.
 
 They were also moving on a timer. The flights and satellites views drifted their
 coordinates on an interval, the way a feed would, so the columns looked live

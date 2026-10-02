@@ -13,18 +13,12 @@ import type { SlaMonitor, SlaRisk } from "@hewa/console-types";
 
 import { useAtRisk, useCommitments, useCredits } from "../data/slas";
 import { useFilterParam } from "../state/filter";
-import {
-  Empty,
-  KeyValues,
-  Panel,
-  SummaryBar,
-  emptyMessage,
-  summaryCounts,
-  visibleBy,
-} from "../ui/primitives";
+import type { SectionStatus } from "../state/query";
+import { Empty, KeyValues, Panel, emptyMessage, summaryCounts, visibleBy } from "../ui/primitives";
+import { ScopePanel } from "../ui/scope";
 
 /**
- * The `slas` view's panels: two per section, and the middle column of each.
+ * The `slas` view's panels: three per section, and the middle column of each.
  *
  * Three sections over one body of data, and the distinction is what each one adds.
  * `commitments` is the book: every monitored commitment with what it promised and
@@ -35,9 +29,10 @@ import {
  * rate rather than as money, because this service holds no bills to apply the rate
  * to.
  *
- * Every state vocabulary is the same three members, so the chips read the same way
- * in all three sections. `meta.groups` names all three rather than only the states
- * currently held, which is what keeps a "breached" chip on the bar during a good week.
+ * All three narrow by state, in the left column rather than under the heading. The
+ * vocabulary is the same three members, so the column reads the same way in all three
+ * sections, and `meta.groups` names all three rather than only the states currently
+ * held — which is what keeps a "Breached" toggle there during a good week.
  */
 
 /**
@@ -51,31 +46,70 @@ function creditRate(numerator: number, denominator: number): string {
   return `${numerator} / ${denominator}`;
 }
 
-function StateBar({
+function StateScope({
   rows,
   groups,
+  status,
   param,
   noun,
 }: {
   rows: readonly { readonly state: SlaState }[];
   groups: readonly SlaState[];
+  status: SectionStatus;
   param: string;
   noun: string;
 }): ReactElement {
   const filter = useFilterParam(param);
 
   return (
-    <SummaryBar
+    <ScopePanel
+      label="Filter by state"
+      noun={noun}
+      status={status}
       items={summaryCounts(rows, (row) => row.state, {
         keys: groups,
         label: (state) => `${SLA_STATE_TITLES[state]} ${noun}`,
       })}
-      filter={{
-        label: "Filter by state",
-        selected: filter.selected,
-        onToggle: filter.toggle,
-      }}
+      selected={filter.selected}
+      onToggle={filter.toggle}
+      onClear={filter.clear}
     />
+  );
+}
+
+/** `slas/commitments`, left column: the three states, all of them present. */
+export function CommitmentsScope(): ReactElement {
+  const { rows, groups, status } = useCommitments();
+  return (
+    <StateScope
+      rows={rows}
+      groups={groups}
+      status={status}
+      param="slas-commitments"
+      noun="commitments"
+    />
+  );
+}
+
+/** `slas/at_risk`, left column: the same three states, over commitments again. */
+export function AtRiskScope(): ReactElement {
+  const { rows, groups, status } = useAtRisk();
+  return (
+    <StateScope
+      rows={rows}
+      groups={groups}
+      status={status}
+      param="slas-at-risk"
+      noun="commitments"
+    />
+  );
+}
+
+/** `slas/credits`, left column. */
+export function CreditsScope(): ReactElement {
+  const { rows, groups, status } = useCredits();
+  return (
+    <StateScope rows={rows} groups={groups} status={status} param="slas-credits" noun="credits" />
   );
 }
 
@@ -93,7 +127,7 @@ function ListEmpty({
 
 /** `slas/commitments`, middle column: every monitored commitment. */
 export function CommitmentsPanel(): ReactElement {
-  const { rows, groups, status } = useCommitments();
+  const { rows, status } = useCommitments();
   const filter = useFilterParam("slas-commitments");
   const shown = visibleBy(rows, (row) => row.state, filter.selected);
 
@@ -107,9 +141,7 @@ export function CommitmentsPanel(): ReactElement {
         </span>
       </header>
 
-      <StateBar rows={rows} groups={groups} param="slas-commitments" noun="commitments" />
-
-      <div className="min-h-0 flex-1 overflow-auto p-4">
+      <div className="min-h-0 flex-1 overflow-auto main-inset">
         {shown.length === 0 ? (
           <ListEmpty status={status} filtered={filter.selected.length > 0} noun="commitments" />
         ) : (
@@ -208,7 +240,7 @@ export function CommitmentsDetails({ section }: { section: string | null }): Rea
  * at the top.
  */
 export function AtRiskPanel(): ReactElement {
-  const { rows, groups, status } = useAtRisk();
+  const { rows, status } = useAtRisk();
   const filter = useFilterParam("slas-at-risk");
   const shown = visibleBy(rows, (row) => row.state, filter.selected);
 
@@ -222,9 +254,7 @@ export function AtRiskPanel(): ReactElement {
         </span>
       </header>
 
-      <StateBar rows={rows} groups={groups} param="slas-at-risk" noun="at risk" />
-
-      <div className="min-h-0 flex-1 overflow-auto p-4">
+      <div className="min-h-0 flex-1 overflow-auto main-inset">
         {shown.length === 0 ? (
           <ListEmpty
             status={status}
@@ -327,7 +357,7 @@ export function AtRiskDetails({ section }: { section: string | null }): ReactEle
  * charging unit has not been reached.
  */
 export function CreditsPanel(): ReactElement {
-  const { rows, groups, status } = useCredits();
+  const { rows, status } = useCredits();
   const filter = useFilterParam("slas-credits");
   const shown = visibleBy(rows, (row) => row.state, filter.selected);
 
@@ -341,9 +371,7 @@ export function CreditsPanel(): ReactElement {
         </span>
       </header>
 
-      <StateBar rows={rows} groups={groups} param="slas-credits" noun="credits" />
-
-      <div className="min-h-0 flex-1 overflow-auto p-4">
+      <div className="min-h-0 flex-1 overflow-auto main-inset">
         {shown.length === 0 ? (
           <ListEmpty status={status} filtered={filter.selected.length > 0} noun="credits" />
         ) : (

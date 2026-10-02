@@ -214,3 +214,101 @@ describe("the rail", () => {
     }
   });
 });
+
+/**
+ * The column beside the rail, and whether it is there when a section arrives.
+ *
+ * One claim, sixteen times: it is drawn. A narrowing control that lives in the
+ * markup but not on screen is a filter the operator cannot reach, and it is the kind
+ * of failure that no unit test of the panel would catch.
+ *
+ * All sixteen are asked, including the four that have no vocabulary to narrow by
+ * and search instead — `left` is required, so "nothing to narrow by" cannot mean
+ * "nothing there". A rail button that opened a screen a column narrower than its
+ * neighbours said the fetch failed, and these four are the sections a market
+ * operator looks at most.
+ */
+describe("the left column", () => {
+  // The open panel and the collapsed handle are two states of one column and both
+  // carry the marker, so the two are asked for by their element: matching on the
+  // attribute alone would find the handle while the panel was still open.
+  const panel = (root: ParentNode): HTMLElement | null =>
+    root.querySelector<HTMLElement>('aside[data-panel-side="left"]');
+
+  const handle = (root: ParentNode): HTMLButtonElement | null =>
+    root.querySelector<HTMLButtonElement>('button[data-panel-side="left"]');
+
+  test("is drawn on arrival, because a section's filter is in it", () => {
+    const root = mount("?view=alerts");
+    expect(panel(root)).not.toBeNull();
+    expect(panel(root)?.querySelector("[data-scope-panel]")).not.toBeNull();
+  });
+
+  test("is marked left, and collapses from its own header", async () => {
+    const root = mount("?view=alerts");
+    const collapse = root.querySelector<HTMLButtonElement>(
+      '[data-panel-side="left"] button[aria-label^="Collapse"]',
+    );
+    expect(collapse).not.toBeNull();
+    await click(collapse as HTMLButtonElement);
+    expect(panel(root)).toBeNull();
+  });
+
+  test("?left=0 takes it away and leaves a handle", () => {
+    const root = mount("?view=alerts&left=0");
+    expect(panel(root)).toBeNull();
+    // The handle is what makes the absence deliberate rather than a blank strip:
+    // it is labelled with the panel's own title, so a reader can tell which column
+    // is closed from which failed to load.
+    expect(handle(root)?.getAttribute("aria-label")).toBe("Show Severity");
+  });
+
+  test("the title bar's left toggle puts it back", async () => {
+    const root = mount("?view=alerts&left=0");
+    // Named for what the panel holds, not for the side it sits on: `role:
+    // "filter"` in the config, so the button says what the press will find.
+    const toggle = root.querySelector<HTMLButtonElement>('button[title="Toggle filters"]');
+    expect(toggle).not.toBeNull();
+    await click(toggle as HTMLButtonElement);
+    expect(panel(root)).not.toBeNull();
+  });
+
+  test("a section that searches rather than filters still has the column", () => {
+    // The market view's three documents publish no vocabulary, so they find their
+    // rows with a search instead — but they still get a column. A destination
+    // rendered one column narrower than its neighbours is what the absence was
+    // mistaken for: a column that failed to load.
+    const root = mount("?view=market");
+    expect(panel(root)).not.toBeNull();
+    expect(root.querySelector("[data-search-input]")).not.toBeNull();
+  });
+
+  test("and the same for the one infrastructure section that searches", () => {
+    const root = mount("?view=infrastructure&section.infrastructure=providers");
+    expect(panel(root)).not.toBeNull();
+    expect(root.querySelector("[data-search-input]")).not.toBeNull();
+  });
+
+  test("its toggle is named after the search, not after the side", () => {
+    // `role: "search"`, so the button says what the press will find — and says a
+    // different thing from the twelve filters beside it, because it is one.
+    const root = mount("?view=market");
+    expect(root.querySelector('button[title="Toggle search"]')).not.toBeNull();
+    expect(root.querySelector('button[title="Toggle filters"]')).toBeNull();
+  });
+
+  test("every destination in every view has a column, with one handle between them", () => {
+    // `left` is required on a rail item, so the geometry is the same at every rail
+    // position. This walks all sixteen rather than sampling: a config that left one
+    // section out would be a screen that is quietly a column narrower, and nothing
+    // else in this suite would notice.
+    for (const [view, spec] of Object.entries(config.views)) {
+      for (const item of spec.rail) {
+        const root = mount(`?view=${view}&section.${view}=${item.id}&left=0`);
+        expect(item.left, `${view}/${item.id}`).toBeDefined();
+        expect(panel(root), `${view}/${item.id}`).toBeNull();
+        expect(handle(root), `${view}/${item.id}`).not.toBeNull();
+      }
+    }
+  });
+});

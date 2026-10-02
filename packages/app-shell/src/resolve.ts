@@ -58,6 +58,12 @@ export function resolveItem(rail: RailItem[], itemId: string | null): RailItem |
  * destination rendering another view's panel. It is also what keeps the view's
  * shared chrome shareable: several sections can share one right-hand legend by
  * all of them omitting it.
+ *
+ * `left` is the exception and is not merged, because every destination declares
+ * one and a section that inherits its neighbour's narrowing is a section filtering
+ * by a vocabulary it does not have — the reader presses a chip that matches no row
+ * of theirs. The rule is the same one that makes it required: the narrow column is
+ * a statement about this destination, so it is the destination's to make.
  */
 export function resolveContent(view: ViewSpec, item: RailItem | null): ViewContent {
   if (item === null) {
@@ -65,6 +71,7 @@ export function resolveContent(view: ViewSpec, item: RailItem | null): ViewConte
   }
   return {
     main: item.main,
+    left: item.left,
     right: item.right ?? view.fallback.right,
     assistant: item.assistant ?? view.fallback.assistant,
     status: item.status ?? view.fallback.status,

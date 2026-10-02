@@ -7,10 +7,12 @@ import {
   type InfrastructureNode,
   type NodeHeadroom,
   type NodeKind,
+  type ProviderFootprint,
 } from "@hewa/console-types";
 
 import { useHeadroom, useNodes, useProviders } from "../data/infrastructure";
-import { useFilterParam } from "../state/filter";
+import { useFilterParam, useSearchParam } from "../state/filter";
+import type { SectionStatus } from "../state/query";
 import {
   Empty,
   KeyValues,
@@ -20,30 +22,45 @@ import {
   summaryCounts,
   visibleBy,
 } from "../ui/primitives";
+import { ScopePanel } from "../ui/scope";
+import { SearchPanel, searchRows } from "../ui/search";
 
 /**
  * The `infrastructure` view's panels: two per section, and the middle column of each.
  *
  * `nodes` and `headroom` list the same nodes and are still two destinations, because
  * "where does traffic run" and "where can the next order go" are different questions
- * and only the second one needs the arithmetic. Both keep the kind chips, because both
- * answer "of what kind"; the chips narrow within the section rather than choosing it,
- * which is what the summary bar is for.
+ * and only the second one needs the arithmetic. Both narrow by kind in the left
+ * column, because both answer "of what kind" and the chips narrow within the section
+ * rather than choosing it.
+ *
+ * `providers` is the section that does not: the service sends it an empty vocabulary
+ * because a provider row is already one row per provider, so a toggle keyed on the
+ * column it is keyed on would select the row it was built from. It searches instead,
+ * which is the other half of the same column, and its bar of figures is a sum over
+ * the rows on screen, so it follows the term.
  */
 
-function KindBar({
+function KindScope({
   rows,
   groups,
+  status,
   param,
+  noun,
 }: {
   rows: readonly { readonly kind: NodeKind }[];
   groups: readonly NodeKind[];
+  status: SectionStatus;
   param: string;
+  noun: string;
 }): ReactElement {
   const filter = useFilterParam(param);
 
   return (
-    <SummaryBar
+    <ScopePanel
+      label="Filter by kind"
+      noun={noun}
+      status={status}
       items={summaryCounts(rows, (row) => row.kind, {
         keys: groups,
         // The chip says "Data centre", the row says `data_center`, and the toggle is
@@ -52,11 +69,37 @@ function KindBar({
         // display's clothes.
         label: (kind) => NODE_KIND_TITLES[kind],
       })}
-      filter={{
-        label: "Filter by kind",
-        selected: filter.selected,
-        onToggle: filter.toggle,
-      }}
+      selected={filter.selected}
+      onToggle={filter.toggle}
+      onClear={filter.clear}
+    />
+  );
+}
+
+/** `infrastructure/nodes`, left column: what kind of node. */
+export function NodesScope(): ReactElement {
+  const { rows, groups, status } = useNodes();
+  return (
+    <KindScope
+      rows={rows}
+      groups={groups}
+      status={status}
+      param="infrastructure-nodes"
+      noun="nodes"
+    />
+  );
+}
+
+/** `infrastructure/headroom`, left column: the same kinds, over the same rows. */
+export function HeadroomScope(): ReactElement {
+  const { rows, groups, status } = useHeadroom();
+  return (
+    <KindScope
+      rows={rows}
+      groups={groups}
+      status={status}
+      param="infrastructure-headroom"
+      noun="nodes"
     />
   );
 }
@@ -65,18 +108,21 @@ function KindBar({
 function ListEmpty({
   status,
   filtered,
+  filter,
   noun,
 }: {
   status: "pending" | "failed" | "ready";
   filtered: boolean;
+  /** Names the narrowing in force, because "nothing matched" is not an answer. */
+  filter: string;
   noun: string;
 }): ReactElement {
-  return <Empty>{emptyMessage({ status, filtered, noun, filter: "these kinds" })}</Empty>;
+  return <Empty>{emptyMessage({ status, filtered, noun, filter })}</Empty>;
 }
 
 /** `infrastructure/nodes`, middle column: every node as it stands. */
 export function NodesPanel(): ReactElement {
-  const { rows, groups, status } = useNodes();
+  const { rows, status } = useNodes();
   const filter = useFilterParam("infrastructure-nodes");
   const shown = visibleBy(rows, (node) => node.kind, filter.selected);
 
@@ -90,11 +136,14 @@ export function NodesPanel(): ReactElement {
         </span>
       </header>
 
-      <KindBar rows={rows} groups={groups} param="infrastructure-nodes" />
-
-      <div className="min-h-0 flex-1 space-y-3 overflow-auto p-4">
+      <div className="min-h-0 flex-1 space-y-3 overflow-auto main-inset">
         {shown.length === 0 ? (
-          <ListEmpty status={status} filtered={filter.selected.length > 0} noun="nodes" />
+          <ListEmpty
+            status={status}
+            filtered={filter.selected.length > 0}
+            filter="these kinds"
+            noun="nodes"
+          />
         ) : (
           shown.map((node) => <NodeCard key={node.id} node={node} />)
         )}
@@ -169,7 +218,7 @@ export function NodesDetails({ section }: { section: string | null }): ReactElem
  * rounding a figure that decides whether an order can be placed.
  */
 export function HeadroomPanel(): ReactElement {
-  const { rows, groups, status } = useHeadroom();
+  const { rows, status } = useHeadroom();
   const filter = useFilterParam("infrastructure-headroom");
   const shown = visibleBy(rows, (row) => row.kind, filter.selected);
 
@@ -183,11 +232,14 @@ export function HeadroomPanel(): ReactElement {
         </span>
       </header>
 
-      <KindBar rows={rows} groups={groups} param="infrastructure-headroom" />
-
-      <div className="min-h-0 flex-1 overflow-auto p-4">
+      <div className="min-h-0 flex-1 overflow-auto main-inset">
         {shown.length === 0 ? (
-          <ListEmpty status={status} filtered={filter.selected.length > 0} noun="nodes" />
+          <ListEmpty
+            status={status}
+            filtered={filter.selected.length > 0}
+            filter="these kinds"
+            noun="nodes"
+          />
         ) : (
           <table className="w-full text-left text-xs">
             <thead className="text-ink-faint">
@@ -264,8 +316,45 @@ export function HeadroomFigures({ node }: { node: NodeHeadroom }): ReactElement 
 }
 
 /** `infrastructure/providers`, middle column: who supplies the network. */
+/** What a provider row is found by. */
+const providerFields = (row: ProviderFootprint): readonly string[] => [
+  row.provider,
+  ...row.kinds,
+  ...row.countries,
+];
+
+/**
+ * `infrastructure/providers`, left column: find a provider.
+ *
+ * A search and not a kind vocabulary, because the service sends this section an
+ * empty one — a provider is already one row per provider, so a chip keyed on the
+ * column it is keyed on would select the row it was built from. Searching by name,
+ * kind or country is the narrowing this section can honestly offer, and it is one
+ * control rather than two: the twelve sections that publish a vocabulary do not
+ * also get a search box.
+ */
+export function ProvidersSearch(): ReactElement {
+  const { rows, status } = useProviders();
+  const search = useSearchParam("infrastructure/providers");
+  const matched = searchRows(rows, search.query, providerFields).length;
+
+  return (
+    <SearchPanel
+      noun="providers"
+      status={status}
+      query={search.query}
+      onChange={search.set}
+      onClear={search.clear}
+      matched={matched}
+      total={rows.length}
+    />
+  );
+}
+
 export function ProvidersPanel(): ReactElement {
   const { rows, status } = useProviders();
+  const search = useSearchParam("infrastructure/providers");
+  const shown = searchRows(rows, search.query, providerFields);
 
   return (
     <div className="flex h-full flex-col bg-surface">
@@ -277,21 +366,32 @@ export function ProvidersPanel(): ReactElement {
         </span>
       </header>
 
-      {/* No `filter`, and not an oversight: the service sends this section an empty
-          vocabulary because a provider is already one row per provider. A kind chip
-          here would select the row it was built from. */}
+      {/* Over the rows on screen, not over all of them. Every figure in this bar is
+          a sum over rows, so a bar totalling twelve providers above a table showing
+          one is the unfiltered count sitting over a filtered table — the two
+          disagree and the reader has to guess which the table is honouring. The
+          chip in the heading is left alone because it answers the other question:
+          how many there are in all. */}
       <SummaryBar
         items={[
-          { label: "Providers", value: rows.length },
-          { label: "Nodes", value: rows.reduce((total, row) => total + row.nodeCount, 0) },
-          { label: "Capacity", value: `${rows.reduce((t, r) => t + r.capacityGbps, 0)} Gbps` },
-          { label: "Impaired", value: rows.reduce((total, row) => total + row.impaired, 0) },
+          { label: "Providers", value: shown.length },
+          { label: "Nodes", value: shown.reduce((total, row) => total + row.nodeCount, 0) },
+          {
+            label: "Capacity",
+            value: `${shown.reduce((total, row) => total + row.capacityGbps, 0)} Gbps`,
+          },
+          { label: "Impaired", value: shown.reduce((total, row) => total + row.impaired, 0) },
         ]}
       />
 
-      <div className="min-h-0 flex-1 overflow-auto p-4">
-        {rows.length === 0 ? (
-          <ListEmpty status={status} filtered={false} noun="providers" />
+      <div className="min-h-0 flex-1 overflow-auto main-inset">
+        {shown.length === 0 ? (
+          <ListEmpty
+            status={status}
+            filtered={search.query.trim() !== ""}
+            filter={`“${search.query.trim()}”`}
+            noun="providers"
+          />
         ) : (
           <table className="w-full text-left text-xs">
             <thead className="text-ink-faint">
@@ -307,7 +407,7 @@ export function ProvidersPanel(): ReactElement {
               </tr>
             </thead>
             <tbody>
-              {rows.map((row) => (
+              {shown.map((row) => (
                 <tr
                   key={row.provider}
                   data-row={row.provider}

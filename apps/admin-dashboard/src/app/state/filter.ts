@@ -12,10 +12,16 @@ import { toggleValue } from "../ui/controls";
  * mechanism applied to the state that had been left out of it. Which groups a
  * section filters on belongs to that section's own panel.
  *
- * There is one hook, and it is the filter. There was also a text search mirrored
- * the same way, for the one view that had a search box; that view counts and
- * filters on a carrier like every other one, and the field would have been a
- * second way to narrow a list of under a hundred rows.
+ * There are two hooks here and both are narrowing: the groups a section filters
+ * on, and a search over the rows it lists.
+ *
+ * The search came back because four sections publish no vocabulary at all — the
+ * three market documents and the provider rollup — and they were left with a
+ * column that could only be empty. They are not narrowed twice by it: a section
+ * with no group vocabulary has nothing for a group toggle to be a second copy of.
+ * A section that *has* a vocabulary does not also get a search box, for the same
+ * reason it does not get a second strip of chips under its heading: one control
+ * per question.
  */
 
 /** The groups a view has in force, and the two things you can do to them. */
@@ -29,6 +35,17 @@ export interface FilterParam {
 
 /** `?alerts-feed=high,critical` — a comma-separated list of the keys in force. */
 const groups = parseAsArrayOf(parseAsString).withDefault([]);
+
+/**
+ * A term, with the default being the empty one so clearing removes the key.
+ *
+ * No `throttleMs`, which is the more surprising setting here. nuqs' rate limit
+ * applies to the hook's value as well as to the URL, and this value is what the
+ * table filters on: a 400ms window puts four hundred milliseconds between the
+ * keypress and the rows, on every keystroke. The default 50ms coalesces a burst of
+ * typing into a write or two and leaves the rows where the reader's eyes are.
+ */
+const text = parseAsString.withDefault("");
 
 /**
  * One group of toggles, mirrored into one query key.
@@ -59,6 +76,46 @@ export function useFilterParam(name: string): FilterParam {
     },
     clear: () => {
       void setSelected([]);
+    },
+  };
+}
+
+/** What a section's search is in force, and the two things you can do to it. */
+export interface SearchParam {
+  /** The term as typed, which is not the term as matched — that is trimmed. */
+  readonly query: string;
+  readonly set: (value: string) => void;
+  readonly clear: () => void;
+}
+
+/**
+ * The query key a section's search is mirrored into.
+ *
+ * `q-` first, then the section with its separator flattened: `q-market-book`. The
+ * prefix is what keeps a search from colliding with a group vocabulary — a group
+ * key is a group's own value (`ixp`, `critical`), so without it a section whose
+ * rows hold a key called `q-market-book` would filter on it and read the search
+ * as one of its groups.
+ *
+ * Section, like the group keys, because a section is the destination: `?q-market-book`
+ * and `?q-infrastructure-nodes` are two searches of two screens, and carrying one
+ * to the other would narrow a list by a term that means nothing there.
+ */
+export function searchKey(section: string): string {
+  return `q-${section.replaceAll("/", "-")}`;
+}
+
+/** One search, mirrored into one query key. */
+export function useSearchParam(section: string): SearchParam {
+  const [query, setQuery] = useQueryState(searchKey(section), text);
+
+  return {
+    query: query ?? "",
+    set: (value) => {
+      void setQuery(value);
+    },
+    clear: () => {
+      void setQuery("");
     },
   };
 }

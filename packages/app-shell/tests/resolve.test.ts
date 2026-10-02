@@ -21,7 +21,7 @@ function view(overrides: Partial<ViewSpec> = {}): ViewSpec {
     label: "View",
     icon: Circle,
     rail: [],
-    fallback: { main: namedPanel("fallback-main") },
+    fallback: { main: namedPanel("fallback-main"), left: namedPanel("fallback-left") },
     ...overrides,
   };
 }
@@ -33,6 +33,7 @@ function railItem(id: string, overrides: Partial<RailItem> = {}): RailItem {
     icon: Circle,
     section: id,
     main: namedPanel(`${id}-main`),
+    left: namedPanel(`${id}-left`),
     ...overrides,
   };
 }
@@ -112,7 +113,10 @@ describe("resolveContent", () => {
 
   test("an item that declares no right column inherits the view's", () => {
     const rail = [railItem("book"), railItem("prices", { right: namedPanel("prices-right") })];
-    const v = view({ rail, fallback: { main: namedPanel("f"), right: namedPanel("shared") } });
+    const v = view({
+      rail,
+      fallback: { main: namedPanel("f"), left: namedPanel("f-left"), right: namedPanel("shared") },
+    });
     expect(resolveContent(v, resolveItem(rail, "book")).right?.title).toBe("shared");
     expect(resolveContent(v, resolveItem(rail, "prices")).right?.title).toBe("prices-right");
   });
@@ -137,15 +141,64 @@ describe("resolveContent", () => {
 
   test("an item inherits the view's status bar rather than losing it", () => {
     const rail = [railItem("book")];
-    const v = view({ rail, fallback: { main: namedPanel("f"), status: { message: "shared" } } });
+    const v = view({
+      rail,
+      fallback: {
+        main: namedPanel("f"),
+        left: namedPanel("f-left"),
+        status: { message: "shared" },
+      },
+    });
     expect(resolveContent(v, resolveItem(rail, "book")).status?.message).toBe("shared");
   });
 
   test("the assistant column is inherited per-field like the rest", () => {
     const rail = [railItem("a", { assistant: namedPanel("a-asst") }), railItem("b")];
-    const v = view({ rail, fallback: { main: namedPanel("f"), assistant: namedPanel("f-asst") } });
+    const v = view({
+      rail,
+      fallback: {
+        main: namedPanel("f"),
+        left: namedPanel("f-left"),
+        assistant: namedPanel("f-asst"),
+      },
+    });
     expect(resolveContent(v, resolveItem(rail, "a")).assistant?.title).toBe("a-asst");
     expect(resolveContent(v, resolveItem(rail, "b")).assistant?.title).toBe("f-asst");
+  });
+
+  test("each item draws its own left column, and never the view's", () => {
+    // The one column that is not inherited. Four alerts sections share one view
+    // and one `meta.groups` axis, and a destination that inherited its
+    // neighbour's narrowing would be filtering by a vocabulary it does not have:
+    // the reader presses a chip that matches no row of theirs and cannot tell
+    // whether the list is empty or the chip is wrong.
+    const rail = [
+      railItem("feed", { left: namedPanel("severity") }),
+      railItem("providers", { left: namedPanel("provider") }),
+    ];
+    const v = view({ rail, fallback: { main: namedPanel("f"), left: namedPanel("shared") } });
+    expect(resolveContent(v, resolveItem(rail, "feed")).left.title).toBe("severity");
+    expect(resolveContent(v, resolveItem(rail, "providers")).left.title).toBe("provider");
+  });
+
+  test("every destination has a left column, including one that inherits nothing", () => {
+    // `left` is required on `RailItem` and on `ViewContent`, so this is a
+    // compile-time fact already. The runtime half is that the column is rendered
+    // rather than skipped: a shell that rendered no column for a destination
+    // would be narrower there than everywhere else, and the difference reads as a
+    // column that failed to load rather than as a decision.
+    const rail = [railItem("book"), railItem("prices")];
+    const v = view({ rail });
+    for (const id of ["book", "prices"]) {
+      expect(resolveContent(v, resolveItem(rail, id)).left, id).toBeDefined();
+    }
+  });
+
+  test("a view with no rail still has a left column", () => {
+    // The other way to get here is a view that renders its `fallback`, so the
+    // requirement has to hold on that path too or a rail-less view is the one
+    // screen with nothing beside it.
+    expect(resolveContent(view(), null).left.title).toBe("fallback-left");
   });
 });
 
@@ -157,7 +210,13 @@ describe("hasAssistant", () => {
   test("is true when a view's fallback declares it", () => {
     expect(
       hasAssistant({
-        alpha: view({ fallback: { main: namedPanel("m"), assistant: namedPanel("x") } }),
+        alpha: view({
+          fallback: {
+            main: namedPanel("m"),
+            left: namedPanel("m-left"),
+            assistant: namedPanel("x"),
+          },
+        }),
       }),
     ).toBe(true);
   });

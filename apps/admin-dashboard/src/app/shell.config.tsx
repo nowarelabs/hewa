@@ -26,44 +26,60 @@ import type { ShellAction, ShellConfig, StatusSpec, ViewSpec } from "@hewa/app-s
 import {
   AtRiskDetails,
   AtRiskPanel,
+  AtRiskScope,
   CommitmentsDetails,
   CommitmentsPanel,
+  CommitmentsScope,
   CreditsDetails,
   CreditsPanel,
+  CreditsScope,
 } from "./panels/slas";
 import {
   CapacityDetails,
   CapacityPanel,
+  CapacityScope,
   FeedDetails,
   FeedPanel,
+  FeedScope,
   OutagesDetails,
   OutagesPanel,
+  OutagesScope,
   SecurityDetails,
   SecurityPanel,
+  SecurityScope,
 } from "./panels/alerts";
 import {
   HeadroomDetails,
   HeadroomPanel,
+  HeadroomScope,
   NodesDetails,
   NodesPanel,
+  NodesScope,
   ProvidersDetails,
   ProvidersPanel,
+  ProvidersSearch,
 } from "./panels/infrastructure";
 import {
   BookDetails,
   BookPanel,
+  BookSearch,
   PricesDetails,
   PricesPanel,
+  PricesSearch,
   VenuesDetails,
   VenuesPanel,
+  VenuesSearch,
 } from "./panels/market";
 import {
   MovementsDetails,
   MovementsPanel,
+  MovementsScope,
   PayoutsDetails,
   PayoutsPanel,
+  PayoutsScope,
   RunsDetails,
   RunsPanel,
+  RunsScope,
 } from "./panels/settlement";
 import { Assistant, type AssistantWidget } from "./ui/primitives";
 
@@ -71,9 +87,9 @@ import { Assistant, type AssistantWidget } from "./ui/primitives";
  * The app.
  *
  * Everything below is data: which views exist, which section each rail button goes
- * to, what that section's two columns are, which analyses the assistant column
+ * to, what that section's columns are, which analyses the assistant column
  * offers, and what the status bar says. The shell turns that into the title bar,
- * the tab strip, the rail, three columns and a status bar, so there is no component
+ * the tab strip, the rail, four columns and a status bar, so there is no component
  * here to keep in step with them.
  *
  * Every rail item carries its own `section`, and its `id` is the section's last
@@ -85,10 +101,22 @@ import { Assistant, type AssistantWidget } from "./ui/primitives";
  *
  * The sixteen rail items are written out rather than generated from
  * `CONSOLE_SECTIONS`, because the registry names the endpoints and knows nothing
- * about panels. A section is a *place*: each entry below names the two columns that
+ * about panels. A section is a *place*: each entry below names the columns that
  * answer its question, and the thing that makes one legible — that "at risk"
  * carries a projection column and "commitments" does not — is not expressible as an
  * argument to a helper that only knows the section key.
+ *
+ * Every one of the sixteen declares a `left`, because `RailItem` requires it: the
+ * shell's layout is the same at every rail position, and a rail button that opens a
+ * screen one column narrower than its neighbours reads as a column that failed to
+ * load rather than as a decision.
+ *
+ * Twelve of them are the same panel — the vocabulary the service publishes, as
+ * toggles. The other four are the three market sections and the provider rollup,
+ * which publish no vocabulary at all, so they search their rows instead. That is
+ * not a second way to narrow anything: a section with no group vocabulary has no
+ * group for a group toggle to be a duplicate of, and one search per section is the
+ * rule that keeps every section's narrowing drawn exactly once.
  */
 
 /**
@@ -122,6 +150,7 @@ const views: Record<string, ViewSpec> = {
         section: "market/book",
         icon: BookOpen,
         main: { render: BookPanel },
+        left: { title: "Find a pool", role: "search", render: BookSearch },
         right: { title: "Pool", render: BookDetails },
       },
       {
@@ -130,6 +159,7 @@ const views: Record<string, ViewSpec> = {
         section: "market/prices",
         icon: LineChart,
         main: { render: PricesPanel },
+        left: { title: "Find a pool", role: "search", render: PricesSearch },
         right: { title: "History", render: PricesDetails },
       },
       {
@@ -138,11 +168,17 @@ const views: Record<string, ViewSpec> = {
         section: "market/venues",
         icon: PieChart,
         main: { render: VenuesPanel },
+        left: { title: "Find a pool", role: "search", render: VenuesSearch },
         right: { title: "Share", render: VenuesDetails },
       },
     ],
     fallback: {
       main: { render: BookPanel },
+      left: {
+        title: "Find a pool",
+        role: "search",
+        render: BookSearch,
+      },
       right: { title: "Pool", render: BookDetails },
       assistant: {
         title: "Assistant",
@@ -177,6 +213,7 @@ const views: Record<string, ViewSpec> = {
         section: "infrastructure/nodes",
         icon: Server,
         main: { render: NodesPanel },
+        left: { title: "Kind", role: "filter", render: NodesScope },
         right: { title: "Node", render: NodesDetails },
       },
       {
@@ -185,6 +222,7 @@ const views: Record<string, ViewSpec> = {
         section: "infrastructure/headroom",
         icon: Gauge,
         main: { render: HeadroomPanel },
+        left: { title: "Kind", role: "filter", render: HeadroomScope },
         right: { title: "Room left", render: HeadroomDetails },
       },
       {
@@ -193,11 +231,17 @@ const views: Record<string, ViewSpec> = {
         section: "infrastructure/providers",
         icon: HardDrive,
         main: { render: ProvidersPanel },
+        left: { title: "Find a provider", role: "search", render: ProvidersSearch },
         right: { title: "Provider footprint", render: ProvidersDetails },
       },
     ],
     fallback: {
       main: { render: NodesPanel },
+      left: {
+        title: "Nodes",
+        role: "filter",
+        render: NodesScope,
+      },
       right: { title: "Node", render: NodesDetails },
       assistant: {
         title: "Assistant",
@@ -232,6 +276,7 @@ const views: Record<string, ViewSpec> = {
         section: "settlement/movements",
         icon: ArrowRightLeft,
         main: { render: MovementsPanel },
+        left: { title: "Kind", role: "filter", render: MovementsScope },
         right: { title: "Movement", render: MovementsDetails },
       },
       {
@@ -240,6 +285,7 @@ const views: Record<string, ViewSpec> = {
         section: "settlement/runs",
         icon: Layers,
         main: { render: RunsPanel },
+        left: { title: "Run state", role: "filter", render: RunsScope },
         right: { title: "Run", render: RunsDetails },
         status: statusLine("Batches and what they netted", [refresh]),
       },
@@ -249,11 +295,17 @@ const views: Record<string, ViewSpec> = {
         section: "settlement/payouts",
         icon: Coins,
         main: { render: PayoutsPanel },
+        left: { title: "Status", role: "filter", render: PayoutsScope },
         right: { title: "Payout", render: PayoutsDetails },
       },
     ],
     fallback: {
       main: { render: MovementsPanel },
+      left: {
+        title: "Movements",
+        role: "filter",
+        render: MovementsScope,
+      },
       right: { title: "Movement", render: MovementsDetails },
       assistant: {
         title: "Assistant",
@@ -287,6 +339,7 @@ const views: Record<string, ViewSpec> = {
         section: "slas/commitments",
         icon: FileCheck2,
         main: { render: CommitmentsPanel },
+        left: { title: "State", role: "filter", render: CommitmentsScope },
         right: { title: "Commitment", render: CommitmentsDetails },
       },
       {
@@ -295,6 +348,7 @@ const views: Record<string, ViewSpec> = {
         section: "slas/at_risk",
         icon: AlertTriangle,
         main: { render: AtRiskPanel },
+        left: { title: "State", role: "filter", render: AtRiskScope },
         right: { title: "At-risk commitment", render: AtRiskDetails },
         status: statusLine("Commitments heading for a breach", [refresh]),
       },
@@ -304,12 +358,18 @@ const views: Record<string, ViewSpec> = {
         section: "slas/credits",
         icon: Coins,
         main: { render: CreditsPanel },
+        left: { title: "State", role: "filter", render: CreditsScope },
         right: { title: "Credit", render: CreditsDetails },
         status: statusLine("Credits owed, capped and paid", [refresh]),
       },
     ],
     fallback: {
       main: { render: CommitmentsPanel },
+      left: {
+        title: "Commitments",
+        role: "filter",
+        render: CommitmentsScope,
+      },
       right: { title: "Commitment", render: CommitmentsDetails },
       assistant: {
         title: "Assistant",
@@ -344,6 +404,7 @@ const views: Record<string, ViewSpec> = {
         section: "alerts/feed",
         icon: AlertTriangle,
         main: { render: FeedPanel },
+        left: { title: "Severity", role: "filter", render: FeedScope },
         right: { title: "Alert", render: FeedDetails },
       },
       {
@@ -352,6 +413,7 @@ const views: Record<string, ViewSpec> = {
         section: "alerts/outages",
         icon: TrendingDown,
         main: { render: OutagesPanel },
+        left: { title: "Severity", role: "filter", render: OutagesScope },
         right: { title: "Outage", render: OutagesDetails },
         status: statusLine("One row per thing that broke", [filter, refresh]),
       },
@@ -361,6 +423,7 @@ const views: Record<string, ViewSpec> = {
         section: "alerts/capacity",
         icon: Gauge,
         main: { render: CapacityPanel },
+        left: { title: "Severity", role: "filter", render: CapacityScope },
         right: { title: "Capacity pressure", render: CapacityDetails },
         status: statusLine("Alerts about running out of capacity", [filter, refresh]),
       },
@@ -370,12 +433,18 @@ const views: Record<string, ViewSpec> = {
         section: "alerts/security",
         icon: ShieldAlert,
         main: { render: SecurityPanel },
+        left: { title: "Severity", role: "filter", render: SecurityScope },
         right: { title: "Security event", render: SecurityDetails },
         status: statusLine("Entities that were breached", [refresh]),
       },
     ],
     fallback: {
       main: { render: FeedPanel },
+      left: {
+        title: "Feed",
+        role: "filter",
+        render: FeedScope,
+      },
       right: { title: "Alert", render: FeedDetails },
       assistant: {
         title: "Assistant",

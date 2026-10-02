@@ -35,17 +35,37 @@ export interface PanelProps {
 }
 
 /**
+ * What a panel is *for*, which is what its controls are called.
+ *
+ * The shell knows a panel's side and nothing about its contents, so it names the
+ * thing in the title bar's own words: "Toggle filters" rather than "Toggle left
+ * panel". A control named after its own geometry tells the reader where to look
+ * and not what they will find, and a slot that can hold a filter, a search, a
+ * legend, a form and an ops console cannot be named after any one of them.
+ *
+ * It changes nothing else. The panel renders identically whatever it is called;
+ * this is a label, and the honest reason it exists is that the shell has no other
+ * way to write one.
+ */
+export type PanelRole = "filter" | "search" | "info" | "edit" | "ops";
+
+/**
  * One of the three side columns, or the top strip above the main column.
  *
  * `render` is a component rather than an element so that the content can hold
  * state and run effects. A panel that is unmounted on switch must not keep a
- * poller alive, and an element created once by the config would be hoisted out
- * of the render cycle and do exactly that.
+ * poller alive, and an element created once by the config would be hoisted out of
+ * the render cycle and do exactly that.
  */
 export interface PanelSpec {
   /** Heading shown in the panel's own header bar. Omit to render no header. */
   title?: string;
   render: ComponentType<PanelProps>;
+  /**
+   * What this panel is for, used to name its toggle. Defaults to the side's own
+   * wording, so omitting it is safe and reads "Left panel".
+   */
+  role?: PanelRole;
   /** Class applied to the panel body. Defaults to padding and vertical scroll. */
   bodyClassName?: string;
   /** `true` when the panel has nothing to show until something is selected. */
@@ -86,10 +106,10 @@ export interface ShellStat {
  *
  * A rail button navigates. It is not a filter over the view's rows, it is a
  * different set of rows with a different question behind it, and it owns the
- * panels that answer it. `main` and `right` are therefore per-rail-item rather
- * than per-view: two items in the same view are as entitled to different centre
- * columns as two views are, which is the whole difference between a rail that
- * navigates and one that filters.
+ * panels that answer it. `main`, `left` and `right` are therefore per-rail-item
+ * rather than per-view: two items in the same view are as entitled to different
+ * centre columns as two views are, which is the whole difference between a rail
+ * that navigates and one that filters.
  *
  * Each item carries its own {@link ShellIcon}. An icon that is shared across
  * items tells the reader the buttons are variants of one thing, and here they
@@ -112,6 +132,30 @@ export interface RailItem {
   section: string;
   /** The middle column while this item is active. */
   main: PanelSpec;
+  /**
+   * The column between the rail and the middle one, while this item is active.
+   *
+   * Required, and there is deliberately no "nothing to put here". Every
+   * destination declares this column, because the shell's geometry is the same
+   * everywhere and a rail button that opens a screen one column narrower than its
+   * neighbours reads as a column that failed to load — an empty one does exactly
+   * the same, which is why neither is offered. The absence is not a statement
+   * about the destination; the statement is made by what the column says.
+   *
+   * It is the narrowest column, and the natural home for whatever belongs to a
+   * destination without being the destination: the vocabulary its rows group by
+   * (`"filter"`), a way to find one of them (`"search"`), what its rows mean
+   * (`"info"`), the form that creates or edits one (`"edit"`), or the console of
+   * operations against them (`"ops"`). A destination with no vocabulary to narrow
+   * by answers with a search over the rows it lists, or with a panel that
+   * explains them — not with nothing.
+   *
+   * Whatever it holds, it holds *only* that. A filter drawn under this
+   * destination's own header as well gives it two sets of switches, and the
+   * reader watches controls they have never pressed and concludes the list is
+   * unfiltered.
+   */
+  left: PanelSpec;
   /** The column right of centre while this item is active. */
   right?: PanelSpec;
   /** The outermost column while this item is active. */
@@ -180,6 +224,12 @@ export interface ViewSpec {
 /** The columns and the status bar that a single destination renders. */
 export interface ViewContent {
   main: PanelSpec;
+  /**
+   * The narrow column, beside the rail. See {@link RailItem.left} for what belongs
+   * in it; it is required here for the same reason, because this is what a view
+   * renders when it has no rail, and a rail-less view is still a destination.
+   */
+  left: PanelSpec;
   right?: PanelSpec;
   assistant?: PanelSpec;
   status?: StatusSpec;

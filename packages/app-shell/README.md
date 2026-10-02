@@ -1,7 +1,9 @@
 # @hewa/app-shell
 
 The application shell every hewa console is built on: a title bar with view
-tabs, a vertical icon rail, three collapsible side panels, and a status bar.
+tabs, a vertical icon rail, three collapsible side panels, and a status bar. On a
+narrow screen the view tabs move down to the status bar and the title bar keeps
+everything else.
 
 An app supplies a `ShellConfig` and gets all of it. The app decides **what** each
 part shows; this package decides **where** they sit, what they look like, and
@@ -59,7 +61,7 @@ open view, the selected rail item and the panel collapse state into the query
 string. Pass `syncUrl: false` to render without one.
 
 ```
-?view=alerts&item.alerts=high&item.flights=jambo&left=1&dark=1
+?view=alerts&section.flights=jambo&section.alerts=high&left=0&dark=1
 ```
 
 The rail item is keyed by view, one key each, so every view remembers where you
@@ -83,17 +85,28 @@ export const config: ShellConfig = {
           id: "all",
           label: "All flights",
           icon: Plane,
-          panel: { title: "All flights", render: FlightListPanel },
+          section: "flights/all",
+          main: { render: FlightTable },
+          left: { title: "Status", render: FlightStatusFilter },
+          right: { title: "Flight details", render: FlightDetailsPanel },
+        },
+        {
+          id: "squawk",
+          label: "By squawk",
+          icon: Radio,
+          section: "flights/squawk",
+          main: { render: SquawkTable },
         },
       ],
-      main: { render: FlightTable },
-      right: { title: "Flight details", render: FlightDetailsPanel },
-      assistant: { title: "Assistant", render: AssistantPanel },
-      status: {
-        message: "Real-time aircraft monitoring",
-        actions: [{ id: "filter", label: "Filter", icon: Filter, onSelect: openFilter }],
-        zoom: { value: 100, onZoomIn, onZoomOut, onFit },
-        savedAt: "Last saved 14:02",
+      fallback: {
+        main: { render: FlightTable },
+        assistant: { title: "Assistant", render: AssistantPanel },
+        status: {
+          message: "Real-time aircraft monitoring",
+          actions: [{ id: "filter", label: "Filter", icon: Filter, onSelect: openFilter }],
+          zoom: { value: 100, onZoomIn, onZoomOut, onFit },
+          savedAt: "Last saved 14:02",
+        },
       },
     },
   },
@@ -101,14 +114,142 @@ export const config: ShellConfig = {
 ```
 
 A view id is an ordinary string, not a union, so an app declares as many views
-as it wants without editing this package. `assistant` is omitted rather than
-rendered empty: a fourth column that is always a placeholder is a column nobody
-looks at.
+as it wants without editing this package. A rail item declares the columns it
+wants and inherits any it omits from the view's `fallback`, which is how several
+destinations share one legend without repeating it. `assistant` is omitted rather
+than rendered empty: a fourth column that is always a placeholder is a column
+nobody looks at.
+
+## `left`, and what it is for
+
+`left` sits between the rail and the middle column, and it is the narrowest slot
+in the shell. It is not "the filter column": it is where whatever belongs to a
+destination without _being_ the destination goes. That is usually its narrowing —
+the vocabulary its rows are grouped by, as toggles — and sometimes a search over
+them, a legend explaining them, the form that creates or edits one of them, or the
+console of operations against them. The shell does not know which, and does not
+guess: a panel declares a `role` and the shell names the toggle after it.
+
+```tsx
+left: { title: "Kind", role: "filter", render: NodesScope },
+left: { title: "Nodes", role: "search", render: NodeSearch },
+left: { title: "How to read this", role: "info", render: NodeLegend },
+left: { title: "Node", role: "edit", render: NodeForm },
+left: { title: "Drain", role: "ops", render: NodeConsole },
+```
+
+`role` is a label and nothing else — the panel renders identically whatever it is
+called — because the shell has no other way to write a name for its own control.
+The wording matters because the alternative is a control named after its geometry:
+"Toggle left panel" says where to look and not what will be there, and a slot that
+can hold five different things cannot be named after any one of them. Omit `role`
+and the toggle falls back to the side's own wording, which is honest.
+
+### Every destination has one
+
+`RailItem.left` is **required**, and there is no "nothing to put here". The
+geometry is the same at every rail position, and a rail button that opens a screen
+one column narrower than its neighbours cannot be told from a column that failed to
+load — which is exactly what an empty column looks like too, so neither is offered.
+
+So the question a destination asks is not _should_ this column exist but _what
+belongs in it_, and "its rows have no vocabulary to narrow by" is an answer rather
+than an exception: those sections draw a search over the rows they list, or a
+panel that explains them. Two destinations in one view declare different left
+panels, and `resolveContent` will not merge one item's column into another's — a
+destination filtering by a vocabulary it does not have shows an empty list with a
+chip pressed that nobody pressed.
+
+Whatever it holds, it holds _only_ that. Draw the same controls under the
+destination's own header as well and it has one filter with two sets of switches,
+which reads as "unfiltered" while the reader watches chips they have never pressed.
 
 Panels take a `render` **component**, not an element, so a panel can hold state
 and run effects. An element built once by the config is hoisted out of the render
 cycle, and a collapsed panel that keeps a poller running is a battery cost with
 no visible output.
+
+## Narrow viewports
+
+Below `md` — 768px, the same line the title bar splits on — three things change.
+
+**The view tabs move to the bottom.** One control, and it is the one worth the
+trip: a title bar sits at the top of a phone and the status bar sits under the
+thumb holding it, so below the line the tabs — "which section am I in, and what do
+I press to change it" — are in the bottom bar and the status bar's own clusters —
+message, actions, counters, zoom, save — are hidden rather than stacked under them.
+A cluster that is hidden is not a place a control can be, so the actions in it move
+into the title bar's overflow menu, where the app's own actions already are.
+
+Everything else stays where it was. The brand, the panel toggles, the theme switch
+and the account corner are the row of controls a reader already knows, and a bar
+that gave those up too would be a second responsive design to keep in step with the
+first rather than one that got narrower. The overflow menu is the narrow-only half:
+it exists for what does not fit, which on a wide screen is nothing.
+
+The tabs are one component in both bars — `ViewTabs` — and which bar holds them is
+a branch on the shell's own measurement (`layout === "column"`), not a `md:` class.
+A class would be a second reading of the same width, and a bar that is briefly in
+both is worse than one that is briefly in neither.
+
+The shell root carries `group` as well as the attribute, which is the seam an app
+panel needs to answer the same question in CSS:
+`group-data-[shell-layout=sheet]:hidden`. The alternative — a panel's own
+`hidden md:flex` — is a copy of 768px written by something that cannot know whether
+the shell has measured a viewport yet.
+
+In that bar the strip fills it. `fill` gives every tab an equal share of the width,
+because this bar is nothing but navigation: sized to their labels the tabs would sit
+at the left of it and leave the rest of the row as dead space, which reads as a bar
+with something missing rather than as a bar. The bar keeps a `px-1.5` inset — flush
+to both edges the strip looks stretched, and a rem of padding is the status line's
+own gutter rather than a bar of its own.
+
+**Each panel becomes a sheet.** Three fixed columns and a rail cannot share a
+phone, so each panel is a **sheet** over the main column instead of a column
+beside it. `w-72 max-w-[85vw]`, anchored to its own edge, with a scrim behind it.
+The panel is the same element either way; only its classes change, so a panel that
+was open across the crossing keeps its state.
+
+**The main column's gutter goes.** `main-inset` is `p-4` on a wide screen and
+nothing below it, because a rem down each side is 32px of a 375px phone spent on
+nothing when the content inside carries its own padding. Only the gutter goes: a
+header keeps its inset, since a title flush to the screen edge reads as a layout
+that failed, and a card keeps its padding, since a table needs air inside its
+frame. The rule is keyed on `data-shell-layout`, the measurement the shell has
+already made, rather than on a media query of its own — two readings of the same
+width agree only by luck, and when they drift the gutter is the only thing a reader
+notices.
+
+The width is measured rather than assumed, and the first render claims the column
+layout on both sides of the wire: the server cannot know the viewport, so a phone's
+markup would not match what it hydrates. The correction happens in a layout
+effect, before the first paint.
+
+Four things about a sheet differ from a column, and all four are deliberate:
+
+- **It does not open on arrival.** `left` defaults open in the URL because a filter
+  nobody opens is a filter nobody uses, and that default is a column's. An overlay
+  covering the table on arrival is the opposite of a filter anybody can use.
+- **It is not in the URL.** `?left=1` is a fact about a window wide enough to have
+  columns. Carried onto a phone it covers the table the sheet is for, and closing
+  it would write `left=0` into a link somebody was only reading. The mobile menu
+  already works this way.
+- **A closed sheet leaves no handle.** The strip that stands in for a collapsed
+  column is the column's only way back, so the title bar keeps it there. A sheet is
+  opened by the title bar's own toggle, which is named after what the panel holds,
+  so a strip at the sheet's edge would be a second control for one panel — taking
+  24px of the width the main column wanted, in the one place on a phone that is
+  worth it. `PanelHandle` renders for the column layout only.
+- **The column's open panel survives a resize.** Crossing the breakpoint is a
+  change of presentation, not a dismissal, so a window that shrinks shows the
+  panel it had, as a sheet. From the first press of a toggle onwards the reader's
+  own answer is the whole truth: opening another panel's sheet closes this one,
+  and a dismissal is not undone by rotating.
+
+Escape and the scrim both close an open sheet, and so does leaving the destination
+it was opened for — a filter that narrowed one table is still open over the next
+one otherwise, narrowing nothing.
 
 ## Colour
 
@@ -130,3 +271,9 @@ console link reopens on the panel you were looking at. The old admin dashboard
 serialised all seven rail selections into a single JSON query parameter and
 `JSON.parse`d it on every render, unguarded; one truncated bookmark was a blank
 screen.
+
+`left` defaults to open and `right` and `assistant` to closed, which is not an
+arbitrary asymmetry: the left column holds what narrows the rows, so arriving with
+it collapsed hides the answer to "what is this list narrowed by" behind a click,
+and a control nobody opens is a control that gets used once and then forgotten.
+`?left=0` collapses it. A sheet has its own defaults — see **Narrow viewports**.

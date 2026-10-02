@@ -71,6 +71,45 @@
 }
 
 /*
+ * The main column's inset, and why it is not there on a narrow screen.
+ *
+ * When the main column is the whole screen, a rem of gutter down each side is 32px
+ * of a 375px phone spent on nothing: the content inside carries its own padding, so
+ * the gutter is the only thing standing between it and the edge of the device. A
+ * table gets the columns back.
+ *
+ * It is written here rather than in each panel because it is a decision about the
+ * shell's own layout, not about a table: sixteen panels that each wrote their own
+ * `md:` variants would be sixteen answers to one question, and the sixteenth would
+ * be the one where somebody forgot.
+ *
+ * Keyed on the shell's **measured** layout rather than on a media query, because
+ * `useShellLayout` already measured this and a second copy of the breakpoint could
+ * only ever agree with the first by luck — and disagree quietly, leaving a table
+ * with a rem of gutter inside a shell that had already turned its panels into
+ * sheets. One decision, read in two places.
+ *
+ * There is no test that reads this file, and there does not need to be one: Vitest
+ * hands a `.css` import to a test as an empty module, so reading it as text would
+ * mean giving a browser package Node types for the purpose. The duplication the
+ * test would have compared is what is actually worth removing, and it is gone —
+ * nothing here repeats a width. What is left to hold down is the selector, and the
+ * panels ask for this class by name in sixteen places, so a rename here is a
+ * missing gutter everywhere at once rather than one panel that quietly lost it.
+ *
+ * Only the gutter goes. The header keeps its inset, because a title flush to the
+ * screen edge reads as a layout that failed rather than as a full-bleed one, and a
+ * card keeps its own padding, because a table needs air inside its frame.
+ */
+.main-inset {
+  padding: 1rem;
+}
+
+[data-shell-layout="sheet"] .main-inset {
+  padding: 0;
+}
+
+/*
  * The shell is a fixed-viewport application, not a scrolling document. The
  * panels and the main column own their own overflow, so letting the document
  * scroll would give the whole chrome a second scrollbar.

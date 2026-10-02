@@ -60,15 +60,22 @@ export function nextIndex(current: number, count: number, key: string): number {
 export interface FilterBarProps {
   label: string;
   children: ReactNode;
+  /** One toggle per line, which is what the left column wants; a wrapped row otherwise. */
+  stacked?: boolean;
   className?: string;
 }
 
-export function FilterBar({ label, children, className = "" }: FilterBarProps): ReactElement {
+export function FilterBar({
+  label,
+  children,
+  stacked = false,
+  className = "",
+}: FilterBarProps): ReactElement {
   return (
     <div
       role="group"
       aria-label={label}
-      className={`flex flex-wrap items-center gap-1 ${className}`}
+      className={`${stacked ? "flex flex-col items-stretch gap-1" : "flex flex-wrap items-center gap-1"} ${className}`}
     >
       {children}
     </div>
@@ -83,12 +90,13 @@ export interface FilterToggleProps {
   count?: number;
   disabled?: boolean;
   /**
-   * The group this toggle filters on, rendered as `data-summary-item`.
+   * The group this toggle filters on, rendered as `data-group-item`.
    *
    * The value matters to the caller and not to this component — it is what comes
-   * back on `onToggle` — so it is the caller's key, not a label. A summary bar
-   * passes each group's own key, which is what lets a bar's chips and a bar's
-   * toggles be found by the same name.
+   * back on `onToggle` — so it is the caller's key, not a label. The scope
+   * column passes each group's own key, which is what lets a test find a toggle
+   * by the group it narrows, and lets it insist that the group appears exactly
+   * once on the screen.
    */
   group?: string;
   /**
@@ -99,6 +107,8 @@ export interface FilterToggleProps {
    * read at a glance into a row of blue ones that cannot.
    */
   tint?: string;
+  /** Appended last, so a caller can override the layout without re-declaring the chip. */
+  className?: string;
 }
 
 export function FilterToggle({
@@ -109,15 +119,16 @@ export function FilterToggle({
   disabled = false,
   group,
   tint,
+  className = "",
 }: FilterToggleProps): ReactElement {
   return (
     <button
       type="button"
-      data-summary-item={group}
+      data-group-item={group}
       aria-pressed={pressed}
       disabled={disabled}
       onClick={onToggle}
-      className={`inline-flex h-7 items-center gap-1.5 px-2 transition-colors focus-visible:outline-2 focus-visible:outline-accent disabled:pointer-events-none disabled:opacity-40 ${
+      className={`inline-flex h-7 items-center gap-1.5 px-2 text-left transition-colors focus-visible:outline-2 focus-visible:outline-accent disabled:pointer-events-none disabled:opacity-40 ${
         tint ?? (pressed ? CHIP_ACTIVE : CHIP)
       } ${
         pressed && tint !== undefined
@@ -125,9 +136,9 @@ export function FilterToggle({
             // said with weight and a ring instead of with a hue change.
             "ring-1 ring-current"
           : "hover:bg-surface-sunken hover:text-ink"
-      }`}
+      } ${className}`}
     >
-      {label}
+      <span className="min-w-0 flex-1 truncate">{label}</span>
       {count === undefined ? null : <span className="tabular-nums">{count}</span>}
     </button>
   );

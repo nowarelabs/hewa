@@ -57,7 +57,7 @@ describe("views", () => {
         ...Object.fromEntries(view.rail.map((item) => [item.id, item])),
       };
       for (const [slot, panel] of Object.entries(panels)) {
-        for (const column of ["main", "right", "assistant"] as const) {
+        for (const column of ["left", "main", "right", "assistant"] as const) {
           const spec = panel[column];
           if (spec === undefined) {
             continue;

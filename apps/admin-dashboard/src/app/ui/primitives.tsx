@@ -1,8 +1,7 @@
 import type { ReactElement, ReactNode } from "react";
-import { FilterBar, FilterToggle } from "./controls";
 
 /**
- * The two shapes most of this console's panels take.
+ * The shapes most of this console's panels take.
  *
  * The first version of this app had a file per panel: thirty-nine of them were
  * the same seven lines with a different noun in them, and four more declared
@@ -123,12 +122,14 @@ export function emptyMessage(state: {
 }
 
 /**
- * One chip in a {@link SummaryBar}.
+ * One group of a section's vocabulary: a label, how many rows are in it, and the
+ * key a filter toggles on.
  *
  * `key` is the value a filter toggles on, which is not always the label: the
- * osint view upper-cases its categories, and a filter that toggled on "CIA"
- * would be toggling on a string the caller has to keep in step with the display
- * by hand. `label` is only a fallback, for the views that pass items inline.
+ * alerts severities are lowercase in the data and title-cased on screen, and a
+ * filter that toggled on "Critical" would be toggling on a string the caller has
+ * to keep in step with the display by hand. `label` is only a fallback, for the
+ * figures a bar is given inline.
  */
 export interface SummaryItem {
   label: string;
@@ -140,7 +141,7 @@ export interface SummaryItem {
 }
 
 /**
- * The rows a filter leaves, for a bar that is a breakdown of them.
+ * The rows a filter leaves, for a main panel and the scope column beside it.
  *
  * Shared because the one rule worth getting right here is that no selection
  * means everything. Written five times, one of them is `[selected].length > 0
@@ -158,35 +159,8 @@ export function visibleBy<T, K extends string>(
   return items.filter((item) => selected.includes(of(item)));
 }
 
-/**
- * What a summary bar filters on, when it filters.
- *
- * A list of keys rather than a list of booleans, because "which groups are in
- * force" is the question and an array of booleans indexed by category is a
- * second, parallel way of asking it. Empty means everything, which is why
- * turning the last filter off is the same as never having turned one on.
- */
-export interface SummaryFilter {
-  /** Names the group of toggles: "Filter by severity". */
-  label: string;
-  selected: readonly string[];
-  onToggle: (key: string) => void;
-}
-
 export interface SummaryBarProps {
   items: SummaryItem[];
-  /**
-   * Given, each chip becomes a toggle and the strip becomes a filter bar.
-   *
-   * This is the morph. The bar already says "there are three high alerts", and
-   * the only reason to read that sentence is to go and look at the three high
-   * alerts, so the number that answers the question is made into the control that
-   * asks it. A view whose bar is a breakdown of the rows beneath it should pass
-   * this; a view whose bar is not one should not, and there is no way to
-   * discover that by reading the component — it is per view and the choice is
-   * recorded in each view's module.
-   */
-  filter?: SummaryFilter;
 }
 
 /**
@@ -195,76 +169,76 @@ export interface SummaryBarProps {
  * The alerts view grew one of these by hand — four severity counts in a `<div>`
  * written inline — and the other six mains had nothing, so a view either had a
  * summary or had no way to say what it was showing before you scrolled. This is
- * that strip, and the counts are the view's own: a breakdown of the rows below
- * it, grouped the way its rail groups them. The economy view has no rows to
- * count, so it puts its headline figures in the same place — and passes no
- * `filter`, because a figure is not a group and a filter that hides nothing is a
- * control that lies.
+ * that strip, and the figures are the view's own.
  *
- * It used to also hold a search field that the strip turned into, on the
- * argument that one view needed a callsign lookup and the bar could not show
- * both at once. That view no longer searches, and the morph went with it: a
- * summary bar that changes into a text input is a control whose meaning depends
- * on its own state, and this bar no longer has a reason to hold that state.
+ * ## It states figures and does not filter
+ *
+ * It used to take a `filter`, and each chip that had a count behind it became a
+ * toggle — the morph, on the argument that a count you want is a list you want.
+ * Twelve sections did it that way, and the filter moved to the left column.
+ *
+ * A bar that filters and a bar that reports are two different claims, and a bar
+ * that does both is whichever one the reader last touched: press `critical` in
+ * the left column and the strip under the heading keeps saying how many critical
+ * alerts there were, so the number the reader checks against the table is a
+ * number the filter has already changed. Now the strip only answers "what am I
+ * looking at", the scope column answers "narrowed by what", and a section has
+ * one of each rather than two of the second.
+ *
+ * So a bar item is a figure or a count of something that is not a group. Pass a
+ * key and it is ignored: the keys belong to `summaryCounts`, which feeds the
+ * scope column.
+ *
+ * ## Not on a phone
+ *
+ * `group-data-[shell-layout=sheet]:hidden`, so the shell decides. Below the
+ * breakpoint the bar is a row of a table that a reader cannot act on and cannot
+ * scroll past without losing their place, and the counts it holds are the counts
+ * the table already draws; the filter that *is* actionable is a sheet one press
+ * away. What is left on a phone is the table.
  */
-export function SummaryBar({ items, filter }: SummaryBarProps): ReactElement | null {
+export function SummaryBar({ items }: SummaryBarProps): ReactElement | null {
   if (items.length === 0) {
     return null;
   }
 
   return (
+    // Gone on a narrow screen: it is a row of the table given away, and the one
+    // strip in a panel that cannot be acted on — it states figures and narrows
+    // nothing, so a phone reader loses a row and keeps every control. The line is
+    // the shell's own measurement, read through its `group`, because a second copy
+    // of 768px in a panel is a third reading of a width two other things already
+    // depend on.
     <div
       data-summary-bar=""
-      data-filterable={filter === undefined ? undefined : ""}
-      className="flex flex-wrap items-center gap-2 border-b border-line p-3"
+      className="group-data-[shell-layout=sheet]:hidden flex flex-wrap items-center gap-2 border-b border-line p-3"
     >
-      {filter === undefined ? (
-        items.map((item) => (
-          <span
-            key={item.label}
-            data-summary-item={item.key}
-            className={`rounded border px-2 py-1 text-xs ${
-              item.tint ?? "border-line bg-surface-raised text-ink-muted"
-            }`}
-          >
-            {item.label}: {item.value}
-          </span>
-        ))
-      ) : (
-        <FilterBar label={filter.label} className="flex-1">
-          {items.map((item) => (
-            <FilterToggle
-              key={item.key ?? item.label}
-              group={item.key ?? item.label}
-              label={item.label}
-              // Only a count belongs on a toggle. A bar that mixes figures in
-              // with counts is a bar that has nothing to filter on, and
-              // `Number("NBO")` is a number with no rows behind it.
-              count={typeof item.value === "number" ? item.value : undefined}
-              tint={item.tint}
-              pressed={filter.selected.includes(item.key ?? item.label)}
-              onToggle={() => filter.onToggle(item.key ?? item.label)}
-            />
-          ))}
-        </FilterBar>
-      )}
+      {items.map((item) => (
+        <span
+          key={item.label}
+          className={`rounded border px-2 py-1 text-xs ${
+            item.tint ?? "border-line bg-surface-raised text-ink-muted"
+          }`}
+        >
+          {item.label}: {item.value}
+        </span>
+      ))}
     </div>
   );
 }
 
 /**
- * Counts a list by one of its fields, for a {@link SummaryBar}.
+ * Counts a list by one of its fields, for the scope column or a summary bar.
  *
- * Every list view wants the same strip: how many of each kind. The counts come
- * from the rows rather than from a table of names, so a category someone adds
- * to the data without adding to the rail is still counted — a hand-written list
- * of categories is how a bar ends up quietly disagreeing with the list below
- * it.
+ * Every list view wants the same breakdown: how many of each kind. The counts come
+ * from the rows rather than from a table of names, so a category someone adds to
+ * the data without adding to the rail is still counted — a hand-written list of
+ * categories is how a bar ends up quietly disagreeing with the list below it.
  *
- * `keys` is the other half of that. Pass a view's known categories and they are
- * shown even at zero, which is what stops a bar losing chips over a narrow
- * filter, and what the alerts severities do. Anything found in the data is
- * added to them, never dropped, so `keys` cannot hide a category.
+ * `keys` is the other half of that. Pass a section's known groups and they are
+ * shown even at zero, which is what stops the column losing a toggle as the data
+ * moves, and what the alerts severities do. Anything found in the data is added to
+ * them, never dropped, so `keys` cannot hide a group.
  */
 export function summaryCounts<T, K extends string>(
   items: readonly T[],

@@ -13,18 +13,12 @@ import {
 } from "@hewa/console-types";
 import { useAlertFeed, useCapacityPressure, useOutages, useSecurityEvents } from "../data/alerts";
 import { useFilterParam } from "../state/filter";
-import {
-  Empty,
-  KeyValues,
-  Panel,
-  SummaryBar,
-  emptyMessage,
-  summaryCounts,
-  visibleBy,
-} from "../ui/primitives";
+import type { SectionStatus } from "../state/query";
+import { Empty, KeyValues, Panel, emptyMessage, summaryCounts, visibleBy } from "../ui/primitives";
+import { ScopePanel } from "../ui/scope";
 
 /**
- * The `alerts` view's panels: two per section, and the middle column of each.
+ * The `alerts` view's panels: three per section, and the middle column of each.
  *
  * Four sections and four different row shapes. `feed` is one row per alert; the other
  * three are one row per *thing* — per cable, per node, per provider edge — because the
@@ -32,45 +26,111 @@ import {
  * rows. The count column on those three is the figure that collapse exists to produce,
  * so it is a column and not a detail line.
  *
- * All four carry the severity chips, since severity is the triage control on every
- * one of them. The categories are shown on the feed's rows and never turned into
- * chips: "who gets paged" is a rota question and the section is already the answer to
- * it.
+ * All four narrow by severity, and that narrowing is the left column rather than a
+ * strip under the heading: severity is the triage control on every one of them, and
+ * the heading's job is to say what the section is. The categories are shown on the
+ * feed's rows and never turned into a filter: "who gets paged" is a rota question and
+ * the section is already the answer to it.
  */
 
 /**
- * The severity chips, over whichever severity column the rows carry.
+ * The severity vocabulary, over whichever severity column the rows carry.
  *
  * The feed's rows are alerts and their column is `severity`; the other three are
  * groups and their column is `worstSeverity`, because a group has no severity of
  * its own — it has the worst of its members'. The key is passed rather than
- * hard-coded so this is one bar over four sections instead of four bars, and so
- * the caller cannot quietly filter the feed by a column its rows do not have.
+ * hard-coded so this is one column over four sections instead of four, and so the
+ * caller cannot quietly filter the feed by a column its rows do not have.
  */
-function SeverityBar<TRow extends object>({
+function SeverityScope<TRow extends object>({
   rows,
   groups,
+  status,
   param,
+  noun,
   severity,
 }: {
   rows: readonly TRow[];
   groups: readonly AlertSeverity[];
+  status: SectionStatus;
   param: string;
+  noun: string;
   severity: (row: TRow) => AlertSeverity;
 }): ReactElement {
   const filter = useFilterParam(param);
 
   return (
-    <SummaryBar
+    <ScopePanel
+      label="Filter by severity"
+      noun={noun}
+      status={status}
       items={summaryCounts(rows, severity, {
         keys: groups,
         label: (severity) => ALERT_SEVERITY_TITLES[severity],
       })}
-      filter={{
-        label: "Filter by severity",
-        selected: filter.selected,
-        onToggle: filter.toggle,
-      }}
+      selected={filter.selected}
+      onToggle={filter.toggle}
+      onClear={filter.clear}
+    />
+  );
+}
+
+/** `alerts/feed`, left column: the four severities, all of them present at zero. */
+export function FeedScope(): ReactElement {
+  const { rows, groups, status } = useAlertFeed();
+  return (
+    <SeverityScope
+      rows={rows}
+      groups={groups}
+      status={status}
+      param="alerts-feed"
+      noun="alerts"
+      severity={(row) => row.severity}
+    />
+  );
+}
+
+/** `alerts/outages`, left column. */
+export function OutagesScope(): ReactElement {
+  const { rows, groups, status } = useOutages();
+  return (
+    <SeverityScope
+      rows={rows}
+      groups={groups}
+      status={status}
+      param="alerts-outages"
+      noun="outages"
+      severity={(row) => row.worstSeverity}
+    />
+  );
+}
+
+/** `alerts/capacity`, left column. */
+export function CapacityScope(): ReactElement {
+  const { rows, groups, status } = useCapacityPressure();
+  return (
+    <SeverityScope
+      rows={rows}
+      groups={groups}
+      status={status}
+      param="alerts-capacity"
+      noun="capacity alerts"
+      severity={(row) => row.worstSeverity}
+    />
+  );
+}
+
+/** `alerts/security`, left column. */
+export function SecurityScope(): ReactElement {
+  const { rows, groups, status } = useSecurityEvents();
+  return (
+    <SeverityScope
+      rows={rows}
+      groups={groups}
+      status={status}
+      param="alerts-security"
+      noun="security events"
+      severity={(row) => row.worstSeverity}
     />
   );
 }
@@ -89,7 +149,7 @@ function ListEmpty({
 
 /** `alerts/feed`, middle column: every alert, worst and newest first. */
 export function FeedPanel(): ReactElement {
-  const { rows, groups, status } = useAlertFeed();
+  const { rows, status } = useAlertFeed();
   const filter = useFilterParam("alerts-feed");
   const shown = visibleBy(rows, (row) => row.severity, filter.selected);
 
@@ -103,14 +163,7 @@ export function FeedPanel(): ReactElement {
         </span>
       </header>
 
-      <SeverityBar
-        rows={rows}
-        groups={groups}
-        param="alerts-feed"
-        severity={(row) => row.severity}
-      />
-
-      <div className="min-h-0 flex-1 space-y-3 overflow-auto p-4">
+      <div className="min-h-0 flex-1 space-y-3 overflow-auto main-inset">
         {shown.length === 0 ? (
           <ListEmpty status={status} filtered={filter.selected.length > 0} noun="alerts" />
         ) : (
@@ -187,7 +240,7 @@ export function FeedDetails({ section }: { section: string | null }): ReactEleme
  * one row saying four.
  */
 export function OutagesPanel(): ReactElement {
-  const { rows, groups, status } = useOutages();
+  const { rows, status } = useOutages();
   const filter = useFilterParam("alerts-outages");
   const shown = visibleBy(rows, (row) => row.worstSeverity, filter.selected);
 
@@ -201,14 +254,7 @@ export function OutagesPanel(): ReactElement {
         </span>
       </header>
 
-      <SeverityBar
-        rows={rows}
-        groups={groups}
-        param="alerts-outages"
-        severity={(row) => row.worstSeverity}
-      />
-
-      <div className="min-h-0 flex-1 overflow-auto p-4">
+      <div className="min-h-0 flex-1 overflow-auto main-inset">
         {shown.length === 0 ? (
           <ListEmpty status={status} filtered={filter.selected.length > 0} noun="outages" />
         ) : (
@@ -297,7 +343,7 @@ export function OutageFigures({ row }: { row: OutageGroup }): ReactElement {
  * the next order would be placed on the strength of it.
  */
 export function CapacityPanel(): ReactElement {
-  const { rows, groups, status } = useCapacityPressure();
+  const { rows, status } = useCapacityPressure();
   const filter = useFilterParam("alerts-capacity");
   const shown = visibleBy(rows, (row) => row.worstSeverity, filter.selected);
 
@@ -311,14 +357,7 @@ export function CapacityPanel(): ReactElement {
         </span>
       </header>
 
-      <SeverityBar
-        rows={rows}
-        groups={groups}
-        param="alerts-capacity"
-        severity={(row) => row.worstSeverity}
-      />
-
-      <div className="min-h-0 flex-1 overflow-auto p-4">
+      <div className="min-h-0 flex-1 overflow-auto main-inset">
         {shown.length === 0 ? (
           <ListEmpty status={status} filtered={filter.selected.length > 0} noun="capacity alerts" />
         ) : (
@@ -410,7 +449,7 @@ export function PressureFigures({ row }: { row: CapacityPressure }): ReactElemen
  * access" answers neither.
  */
 export function SecurityPanel(): ReactElement {
-  const { rows, groups, status } = useSecurityEvents();
+  const { rows, status } = useSecurityEvents();
   const filter = useFilterParam("alerts-security");
   const shown = visibleBy(rows, (row) => row.worstSeverity, filter.selected);
 
@@ -424,14 +463,7 @@ export function SecurityPanel(): ReactElement {
         </span>
       </header>
 
-      <SeverityBar
-        rows={rows}
-        groups={groups}
-        param="alerts-security"
-        severity={(row) => row.worstSeverity}
-      />
-
-      <div className="min-h-0 flex-1 overflow-auto p-4">
+      <div className="min-h-0 flex-1 overflow-auto main-inset">
         {shown.length === 0 ? (
           <ListEmpty status={status} filtered={filter.selected.length > 0} noun="security events" />
         ) : (
