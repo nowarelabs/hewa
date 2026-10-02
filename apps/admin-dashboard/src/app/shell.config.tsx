@@ -27,7 +27,7 @@ import {
   AtRiskDetails,
   AtRiskPanel,
   AtRiskScope,
-  CommitmentsDetails,
+  MonitorEditor,
   CommitmentsPanel,
   CommitmentsScope,
   CreditsDetails,
@@ -38,7 +38,7 @@ import {
   CapacityDetails,
   CapacityPanel,
   CapacityScope,
-  FeedDetails,
+  AlertEditor,
   FeedPanel,
   FeedScope,
   OutagesDetails,
@@ -52,7 +52,7 @@ import {
   HeadroomDetails,
   HeadroomPanel,
   HeadroomScope,
-  NodesDetails,
+  NodeEditor,
   NodesPanel,
   NodesScope,
   ProvidersDetails,
@@ -60,10 +60,10 @@ import {
   ProvidersSearch,
 } from "./panels/infrastructure";
 import {
-  BookDetails,
+  OrderEditor,
   BookPanel,
   BookSearch,
-  PricesDetails,
+  SpotEditor,
   PricesPanel,
   PricesSearch,
   VenuesDetails,
@@ -71,7 +71,7 @@ import {
   VenuesSearch,
 } from "./panels/market";
 import {
-  MovementsDetails,
+  SettlementEditor,
   MovementsPanel,
   MovementsScope,
   PayoutsDetails,
@@ -151,7 +151,7 @@ const views: Record<string, ViewSpec> = {
         icon: BookOpen,
         main: { render: BookPanel },
         left: { title: "Find a pool", role: "search", render: BookSearch },
-        right: { title: "Pool", render: BookDetails },
+        right: { title: "Order", role: "edit", render: OrderEditor },
       },
       {
         id: "prices",
@@ -160,7 +160,7 @@ const views: Record<string, ViewSpec> = {
         icon: LineChart,
         main: { render: PricesPanel },
         left: { title: "Find a pool", role: "search", render: PricesSearch },
-        right: { title: "History", render: PricesDetails },
+        right: { title: "Observation", role: "edit", render: SpotEditor },
       },
       {
         id: "venues",
@@ -179,7 +179,7 @@ const views: Record<string, ViewSpec> = {
         role: "search",
         render: BookSearch,
       },
-      right: { title: "Pool", render: BookDetails },
+      right: { title: "Order", role: "edit", render: OrderEditor },
       assistant: {
         title: "Assistant",
         render: () =>
@@ -214,7 +214,7 @@ const views: Record<string, ViewSpec> = {
         icon: Server,
         main: { render: NodesPanel },
         left: { title: "Kind", role: "filter", render: NodesScope },
-        right: { title: "Node", render: NodesDetails },
+        right: { title: "Node", role: "edit", render: NodeEditor },
       },
       {
         id: "headroom",
@@ -242,7 +242,7 @@ const views: Record<string, ViewSpec> = {
         role: "filter",
         render: NodesScope,
       },
-      right: { title: "Node", render: NodesDetails },
+      right: { title: "Node", role: "edit", render: NodeEditor },
       assistant: {
         title: "Assistant",
         render: () =>
@@ -277,7 +277,7 @@ const views: Record<string, ViewSpec> = {
         icon: ArrowRightLeft,
         main: { render: MovementsPanel },
         left: { title: "Kind", role: "filter", render: MovementsScope },
-        right: { title: "Movement", render: MovementsDetails },
+        right: { title: "Movement", role: "edit", render: SettlementEditor },
       },
       {
         id: "runs",
@@ -306,7 +306,7 @@ const views: Record<string, ViewSpec> = {
         role: "filter",
         render: MovementsScope,
       },
-      right: { title: "Movement", render: MovementsDetails },
+      right: { title: "Movement", role: "edit", render: SettlementEditor },
       assistant: {
         title: "Assistant",
         render: () =>
@@ -340,7 +340,7 @@ const views: Record<string, ViewSpec> = {
         icon: FileCheck2,
         main: { render: CommitmentsPanel },
         left: { title: "State", role: "filter", render: CommitmentsScope },
-        right: { title: "Commitment", render: CommitmentsDetails },
+        right: { title: "Commitment", role: "edit", render: MonitorEditor },
       },
       {
         id: "at_risk",
@@ -370,7 +370,7 @@ const views: Record<string, ViewSpec> = {
         role: "filter",
         render: CommitmentsScope,
       },
-      right: { title: "Commitment", render: CommitmentsDetails },
+      right: { title: "Commitment", role: "edit", render: MonitorEditor },
       assistant: {
         title: "Assistant",
         render: () =>
@@ -405,7 +405,7 @@ const views: Record<string, ViewSpec> = {
         icon: AlertTriangle,
         main: { render: FeedPanel },
         left: { title: "Severity", role: "filter", render: FeedScope },
-        right: { title: "Alert", render: FeedDetails },
+        right: { title: "Alert", role: "edit", render: AlertEditor },
       },
       {
         id: "outages",
@@ -445,7 +445,7 @@ const views: Record<string, ViewSpec> = {
         role: "filter",
         render: FeedScope,
       },
-      right: { title: "Alert", render: FeedDetails },
+      right: { title: "Alert", role: "edit", render: AlertEditor },
       assistant: {
         title: "Assistant",
         render: () =>

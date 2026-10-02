@@ -473,6 +473,26 @@ URL follows a moment later, and whether the leading or trailing edge of the
 window wins depends on the machine. The reader waits, so an assertion about the
 URL cannot forget to.
 
+`tests/writes.test.ts` reads the write surface three ways rather than pressing a
+button. It asserts that every field name in every editor's `*_FIELDS` resolves in
+a **real fixture row** of that resource and in one of the shared vocabularies, so a
+field that names a status the service has never heard of fails here instead of
+rendering a select with no options. It asserts the module shape — that a mutation
+module offers create, patch and, for the two deletable resources, delete, and that
+none of them offers a `put` the editor never calls. And it drives `_transport.ts`
+against a stubbed `fetch`: a 201, a 204, a 422 carrying dotted field paths, and a
+refused fetch all become the right `WriteResult`, because the editor's three states
+are that classification and nothing else.
+
+`tests/api.test.ts` grew a `describe` block for the write handlers, which is where
+the assertions about the server side live: both tokens leave, the id arrives
+percent-encoded, `context.params` is awaited before the path is built, a resource
+outside `CONSOLE_WRITE_RESOURCES` and a `DELETE` outside
+`DELETABLE_WRITE_RESOURCES` are both 404s that call nobody, and a body that is not
+JSON is a 400 that never reaches the service. The stub answers a 204 with no body
+because a `Response` carrying both is a `TypeError` inside the stub, which reads as
+a forwarding failure rather than as a mistake in the test.
+
 Typing into a `SearchField` from a test goes through the `value` setter on
 `HTMLInputElement.prototype` and not through `input.value = …`. React installs a
 value tracker on the element and drops the change event when the value it holds
@@ -528,11 +548,21 @@ moved one without the other fails a test rather than returning a 404.
 Sixteen route files, one per section, all six lines long and all built by
 `_handlers.ts`, and no `[...path]` catch-all. A catch-all would be an open relay
 with a token attached, forwarding whatever it was handed, including routes nobody
-reviewed. Each file exports only a `GET`; the surface is read-only, so a `POST`
-gets Next's own 405 and the service is never asked. The service's token guard is
-what makes the claim true rather than decorative — a proxy hides the address and
-the token, but CORS is enforced by browsers and not by the service, so a `curl`
-would get a 200 from an unguarded `/api/v1`.
+reviewed. Each of those sixteen exports only a `GET`, so a `POST` to a section
+path gets Next's own 405 and the service is never asked. The service's token guard
+is what makes the claim true rather than decorative — a proxy hides the address
+and the token, but CORS is enforced by browsers and not by the service, so a
+`curl` would get a 200 from an unguarded `/api/v1`.
+
+The twelve files under `src/app/api/v1/data/` are the write half, and they are
+still one file per verb rather than one file per resource: a collection `route.ts`
+next to a `[id]/route.ts`, each six lines, each built by the same `_handlers.ts`.
+The allowlist is still a list — `CONSOLE_WRITE_RESOURCES` for what may be written
+at all, `DELETABLE_WRITE_RESOURCES` for the two that may be removed — and a
+resource outside it is a 404 from here rather than something the service is asked
+about. There is no catch-all here either, so adding a seventh writable resource
+means writing down its contract and its two files rather than opening a door and
+letting whoever finds it decide what a `PUT` means.
 
 `src/app/data/` is still one module per view and still named after it, but a
 module is now the seam between a panel and the network rather than a file of
@@ -580,6 +610,113 @@ and best offer come from different pools priced in different units, so their
 difference is not a spread — it is the difference between two numbers that do not
 measure the same thing. Computing one in the browser is inventing a figure the
 service declined to publish.
+
+### Writing to it
+
+Reads are sixteen sections; writes are six resources, and the difference is
+deliberate. A section is a question with an answer, and sixteen of them cover
+every screen. A write changes something, and there are six kinds of thing in this
+console an operator may legitimately change: an alert, a node, an order, a spot, a
+settlement movement and a monitored commitment.
+
+```
+POST   /api/v1/data/{resource}          create
+GET    /api/v1/data/{resource}/{id}     read one
+PUT    /api/v1/data/{resource}/{id}     replace — not on spots
+PATCH  /api/v1/data/{resource}/{id}     change the fields named in the body
+DELETE /api/v1/data/{resource}/{id}     nodes and orders only
+POST   /api/v1/data/spots               create, with (pool, observedAt) as the key
+PUT    /api/v1/data/spots               upsert on (pool, observedAt)
+```
+
+`DELETE` is on two of the six and not on the other four, and the answer lives in
+`packages/console-types/src/writes.ts` rather than in this app: an alert, a
+settlement movement and a monitor reading are records of things that happened.
+Deleting one does not correct it, it removes the only trace that it was ever
+there, and a settlement with a missing movement is indistinguishable from one that
+was never paid. Nodes and orders are configuration and intent, so they go.
+
+A spot is the odd one out. It has an id the database generates and a key the
+operator already has — the pool and the instant — so the upsert is addressed by
+that key and takes no id. A form that asked for the id would be asking for the
+one thing it does not know. That is also why `spots` is the one resource with no
+`PUT` on its record route: there is no id in the path for a replace to address,
+so `POST` and `PUT` on the collection are its two writes and a `PUT` on the
+record route would answer 404 rather than 405.
+
+Both tokens go out on every write, and neither comes from the browser. The service
+token is this app's read credential and the write token is a second one held by a
+different party: holding the records is not the same permission as changing them.
+`CENTRAL_API_WRITE_TOKEN` being unset is not a misconfiguration but a read-only
+deployment, so it answers 503 and says which variable is missing, exactly as
+`central-api` does. A missing _read_ token stays a 500, because that is a broken
+app rather than a deliberately narrowed one, and the two should not be reported
+alike.
+
+An id is percent-encoded into the path. It arrived from a URL, and an unencoded
+`../admin` would leave `/api/v1/data/orders/` and arrive as a request to a path
+this proxy never meant to make — which `tests/api.test.ts` asserts by name.
+
+`src/app/mutations/` is the only place a browser module writes. `_transport.ts`
+holds the one path builder, the header rule and the classification, and each
+resource's module is a handful of named calls over it:
+
+```
+mutations/alerts.ts        createAlert, patchAlert
+mutations/nodes.ts         createNode, patchNode, deleteNode
+mutations/orders.ts        createOrder, patchOrder, deleteOrder
+mutations/spots.ts         createSpot, upsertSpot, patchSpot
+mutations/settlements.ts   createSettlement, patchSettlement
+mutations/monitors.ts      createMonitor, patchMonitor
+```
+
+No panel builds a path or reads a token, and no panel calls `fetch` for a write.
+A module per resource rather than one generic client is what keeps a call site
+readable — `patchAlert(id, body)` says which record it means, and a caller that
+passes the wrong shape to the wrong resource is a type error rather than a 422.
+
+A create names its row. The columns are `varchar` primary keys with no default and
+no generator behind the service, so `POST` carries an `id` and a `PATCH` may not:
+the patch schemas are strict, and an `id` on a patch comes back as an unrecognised
+key — a refusal about a field that is not in the form, on a save nobody asked to be
+a rename. So the id is one `FieldSpec` with `createOnly`, offered by
+`editorIdField(resource)` in each panel and opening on a key built from
+`WRITE_ID_PREFIXES`. It is a text input rather than a locked row because a key that
+does not exist yet has nothing to display, and the operator may have an id of their
+own: the prefix is the seed data's convention, not something the schema enforces.
+
+A `<select>` opens on its first option. This is worth writing down because the
+alternative is invisible: a controlled select whose `value` matches none of its
+options cannot hold that value, so the browser draws the first option while the
+form's state still says `""` — and a save from a form visibly showing `bid` was
+refused with `expected one of "bid"|"offer"`. Only a mounted form has both halves
+of that, which is why `tests/editor.test.ts` presses save and reads the bytes off
+`fetch` rather than asserting on the field lists the other write tests read.
+
+The editor is shared and the fields are not. `ui/editor.tsx` holds `FieldSpec`,
+`useRecordWrite` and `RecordEditor`: the state machine (edit, new, pending,
+refused, saved, confirming a delete), the summary line, and the form body keyed by
+mode and id so switching records cannot leave the previous one's values on screen.
+Each panel supplies its own `*_FIELDS` list beside its rows, so a field that stops
+existing is removed from one place and the panel's summary and form cannot drift
+apart. `RecordEditor` takes a component-shaped panel with no title of its own,
+because the column already has one.
+
+The browser does not validate. `central-api` has the strict schemas, and a second
+copy of those rules in the client would be a second thing to keep current — the
+one that fails quietly is the one nobody updates. So a 422 arrives with its dotted
+field paths and the editor puts the message on the field it names, and a form
+refuses nothing on its own account. A body that is not JSON is a 400 from
+`_handlers.ts`, because it is the refusal the service's own body parser makes
+before a validation pipe runs, and the answer should be the one a caller can act
+on: the message says the body was not JSON rather than naming a rule about a
+field that was never sent.
+
+The summary beside the form still comes from the read, not from the form's own
+values. A settlement's kind, provider and counterparty are not writable, and a
+summary drawn from a form that could not set them would be a panel quoting
+itself. The read is refetched after a save rather than patched locally, so the
+figures and the row cannot disagree about what the service holds.
 
 ### Why the data moved
 

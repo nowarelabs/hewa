@@ -39,6 +39,18 @@ export type MarketPool = "nairobi_ixp" | "mombasa_corridor" | "east_africa_subse
  */
 export type MarketSide = "bid" | "offer";
 
+/**
+ * Every {@link MarketSide}, in the order a book reads them.
+ *
+ * A runtime list beside the union rather than a pair of literals in a filter bar,
+ * and typed `readonly MarketSide[]` so a side added to the union without a place in
+ * this order is a compile error rather than a chip that sorts to the bottom of a
+ * rail. The same reasoning gives `ALERT_SEVERITIES` and `NODE_STATUSES` their
+ * lists; this one has a column to feed rather than a filter bar, and it needs the
+ * list anyway so the two halves of an order cannot disagree about what a side is.
+ */
+export const MARKET_SIDES: readonly MarketSide[] = ["bid", "offer"];
+
 /** One resting order. */
 export interface MarketOrder {
   readonly id: string;
@@ -192,3 +204,21 @@ export const MARKET_POOL_TITLES: Readonly<Record<MarketPool, string>> = {
   east_africa_subsea: "East Africa subsea",
   cdn_edge: "CDN edge",
 };
+
+/**
+ * The trading pools, as a runtime list.
+ *
+ * Derived from the titles map above rather than written out beside it: a pool added
+ * to the union without a title is already a compile error, because the map is a
+ * `Record<MarketPool, string>`, and a second hand-written list would be a pool the
+ * map knows about and this does not — which is a row whose `pool` filter chip does
+ * not exist.
+ *
+ * Declared *after* the map it reads, which is the only reason the initialisation
+ * order is worth a sentence: it is a `const` derived from another `const` in the
+ * same module, so hoisting is not available and the reading has to be the one that
+ * happens second.
+ */
+export const MARKET_POOLS: readonly MarketPool[] = Object.keys(
+  MARKET_POOL_TITLES,
+) as readonly MarketPool[];

@@ -12,6 +12,7 @@ import { CentralApiErrorFilter } from "../src/common/error.filter.js";
 import { corsDelegate } from "../src/config/cors.js";
 import { loadEnv } from "../src/config/env.js";
 import { SERVICE_TOKEN_HEADER } from "../src/api-v1/service-token.guard.js";
+import { WRITE_TOKEN_HEADER } from "../src/api-v1/write-token.guard.js";
 import { DB, type Database } from "../src/db/db.module.js";
 import { seedDatabase } from "../src/db/seed.js";
 import * as schema from "../src/db/schema.js";
@@ -26,6 +27,16 @@ import * as schema from "../src/db/schema.js";
  * against whatever it just set rather than against the deploy's configuration.
  */
 export const TEST_TOKEN = "e2e-service-token";
+
+/**
+ * The write token the e2e suite presents.
+ *
+ * A different value from {@link TEST_TOKEN}, deliberately: a suite that configured
+ * both guards with the same secret would pass every token test below while proving
+ * nothing about the two being separate. A write that presented the read token would
+ * be caught, and so would a read presented the write token.
+ */
+export const TEST_WRITE_TOKEN = "e2e-write-token";
 
 /**
  * The connection string the boot is configured with, and never dials.
@@ -48,6 +59,20 @@ export const UNAUTHORIZED_BODY = /service token is required/;
 /** What a service with no token configured says, which is a different failure. */
 export const UNAVAILABLE_BODY = /CENTRAL_API_SERVICE_TOKEN/;
 
+/** The same, for the write side. */
+export const WRITE_UNAVAILABLE_BODY = /CENTRAL_API_WRITE_TOKEN/;
+
+/**
+ * What a write refused for its *write* token says.
+ *
+ * Its own constant rather than a second use of {@link UNAUTHORIZED_BODY}, because the
+ * message names the credential that was missing and that is the thing worth
+ * asserting: a request with a valid read token and no write token must be told it is
+ * the write token that is absent. A shared pattern would let "a valid central api
+ * service token is required" pass as an answer to the wrong question.
+ */
+export const WRITE_UNAUTHORIZED_BODY = /write token is required/;
+
 /**
  * The committed migrations, found relative to this file.
  *
@@ -68,6 +93,16 @@ export interface BootOptions {
    * once at resolution.
    */
   readonly serviceToken?: string | null;
+
+  /**
+   * The write token to configure, or `null` to configure none.
+   *
+   * `null` boots a service that can be read and not written — the state a
+   * read-only deployment is in, and the one that has to refuse a write with 503
+   * rather than 401, because the caller's token is not wrong, this side's is
+   * missing.
+   */
+  readonly writeToken?: string | null;
 }
 
 /** A test database, and the handle that shuts it down. */
@@ -126,11 +161,18 @@ export async function createTestDatabase(): Promise<TestDatabase> {
  */
 export async function bootCentralApi(options: BootOptions = {}): Promise<INestApplication> {
   const token = options.serviceToken === undefined ? TEST_TOKEN : options.serviceToken;
+  const writeToken = options.writeToken === undefined ? TEST_WRITE_TOKEN : options.writeToken;
 
   if (token === null) {
     delete process.env["CENTRAL_API_SERVICE_TOKEN"];
   } else {
     process.env["CENTRAL_API_SERVICE_TOKEN"] = token;
+  }
+
+  if (writeToken === null) {
+    delete process.env["CENTRAL_API_WRITE_TOKEN"];
+  } else {
+    process.env["CENTRAL_API_WRITE_TOKEN"] = writeToken;
   }
   process.env["CENTRAL_API_DATABASE_URL"] = TEST_DATABASE_URL;
 
@@ -173,5 +215,41 @@ export async function bootCentralApi(options: BootOptions = {}): Promise<INestAp
 export function authorized(url: string, init: RequestInit = {}): Promise<Response> {
   const headers = new Headers(init.headers);
   headers.set(SERVICE_TOKEN_HEADER, TEST_TOKEN);
+  return fetch(url, { ...init, headers });
+}
+
+/**
+ * A `fetch` that carries both tokens, which is what a write needs.
+ *
+ * Both, because both guards run on a write route — see `write-token.guard.ts`. A
+ * helper that set only the write token would have been a second, wrong answer in
+ * this file about who is allowed to write, and the guard suite below is where that
+ * would have been caught.
+ */
+export function writing(url: string, init: RequestInit = {}): Promise<Response> {
+  const headers = new Headers(init.headers);
+  headers.set(SERVICE_TOKEN_HEADER, TEST_TOKEN);
+  headers.set(WRITE_TOKEN_HEADER, TEST_WRITE_TOKEN);
+  return fetch(url, { ...init, headers });
+}
+
+/**
+ * A `fetch` carrying the named tokens and no others.
+ *
+ * The guard tests need to present *one* token rather than two, and setting the
+ * other one to an empty string would not do it: an empty header is a header, and
+ * what is being tested is the absence of one.
+ */
+export function withTokens(
+  url: string,
+  tokens: Partial<Record<typeof SERVICE_TOKEN_HEADER | typeof WRITE_TOKEN_HEADER, string>>,
+  init: RequestInit = {},
+): Promise<Response> {
+  const headers = new Headers(init.headers);
+  for (const [name, value] of Object.entries(tokens)) {
+    if (value !== undefined) {
+      headers.set(name, value);
+    }
+  }
   return fetch(url, { ...init, headers });
 }

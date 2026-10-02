@@ -1,17 +1,10 @@
-import {
-  Inject,
-  Injectable,
-  type CanActivate,
-  type ExecutionContext,
-  ServiceUnavailableException,
-  UnauthorizedException,
-} from "@nestjs/common";
-import { timingSafeEqual } from "node:crypto";
+import { Inject, Injectable, type CanActivate, type ExecutionContext } from "@nestjs/common";
 
+import { assertPresentedToken } from "./token-guard.js";
 import { SERVICE_TOKEN } from "./tokens.js";
 
 /**
- * The header the Next app presents.
+ * The header the Next app presents to read.
  *
  * A custom header rather than `Authorization: Bearer`, because a bearer token
  * read from a cookie or a session store is a user credential and this is not
@@ -33,24 +26,8 @@ export const SERVICE_TOKEN_HEADER = "x-hewa-service-token";
  * 200 from an unguarded `/api/v1`. Only a check on this side makes the claim
  * true.
  *
- * The comparison is constant-time. A token compared with `===` leaks its length
- * and its prefix through timing, which is a slow way to guess a secret but a real
- * one, and it costs one function call to not do it.
- *
- * ## No configured token is a 503, not a 401
- *
- * The interesting branch is the one before the comparison. `loadEnv` allows
- * `CENTRAL_API_SERVICE_TOKEN` to be absent so the process can start and `/health`
- * can answer, which means this guard sometimes runs with nothing to compare
- * against — and there is no answer to that request that involves letting it
- * through. There is also no answer that is a 401, because a 401 says "your token
- * is wrong", and the caller's token may be perfectly right: what is missing is
- * *this side's*. So it is a 503, and the message names the variable, because the
- * caller is the web app and the reader is whoever deployed it.
- *
- * A crash at boot would have been the alternative and would have been worse: no
- * process means no `/health`, so a container in this state reports unhealthy for
- * a reason its own logs do not explain.
+ * The comparison itself is in `assertPresentedToken`, shared with the write guard:
+ * see that function for why it is not written out twice.
  */
 @Injectable()
 export class ServiceTokenGuard implements CanActivate {
@@ -66,39 +43,8 @@ export class ServiceTokenGuard implements CanActivate {
   constructor(@Inject(SERVICE_TOKEN) private readonly expected: string | undefined) {}
 
   canActivate(context: ExecutionContext): boolean {
-    const request = context.switchToHttp().getRequest<{ headers: Record<string, unknown> }>();
-    const presented = request.headers[SERVICE_TOKEN_HEADER];
-
-    if (this.expected === undefined) {
-      // Before anything is read from the request, and before any comparison: with
-      // nothing configured there is no value a presented token could match, so
-      // reading it first would only mean there is one path where a request
-      // reaches a comparison it should never reach.
-      throw new ServiceUnavailableException(
-        "central-api has no CENTRAL_API_SERVICE_TOKEN configured; copy .env.example to .env",
-      );
-    }
-
-    if (typeof presented !== "string" || !this.matches(this.expected, presented)) {
-      // `UnauthorizedError` would be the workspace's own, but Nest's guard
-      // contract is an exception, and `UnauthenticatedError` carries 401 as well.
-      // The message says nothing about the expected value.
-      throw new UnauthorizedException("a valid service token is required");
-    }
+    assertPresentedToken(context, this.expected, SERVICE_TOKEN_HEADER, "CENTRAL_API_SERVICE_TOKEN");
     return true;
-  }
-
-  private matches(expectedToken: string, presented: string): boolean {
-    const expected = Buffer.from(expectedToken, "utf8");
-    const actual = Buffer.from(presented, "utf8");
-    // `timingSafeEqual` throws on a length mismatch, and a length mismatch is
-    // itself the answer — so the length is compared first, with the same
-    // reasoning a padding check has. What is not compared is how many leading
-    // bytes agreed, which is what `===` would have leaked.
-    if (expected.length !== actual.length) {
-      return false;
-    }
-    return timingSafeEqual(expected, actual);
   }
 }
 

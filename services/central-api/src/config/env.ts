@@ -32,6 +32,20 @@ export interface Env {
    */
   serviceToken: string | undefined;
   /**
+   * The shared secret a caller must present to write, or `undefined` if none is
+   * configured.
+   *
+   * A second secret rather than a flag on {@link Env.serviceToken}, because the two
+   * answer different questions and are held by different parties: this one decides
+   * who may change a record, that one decides who may read one. Anything that can
+   * read the console can be handed the first without the second.
+   *
+   * Absent rather than an empty string, for the reason the read token is: an empty
+   * string is a *value*, and a guard comparing against one would accept a request
+   * that presented an empty token. See `WriteTokenGuard`.
+   */
+  writeToken: string | undefined;
+  /**
    * Browser origins allowed to call this service.
    *
    * Comma separated, and `*` is refused unless `environment` is not production:
@@ -91,6 +105,14 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
   // rather than as a token nobody can guess but everybody can send.
   const serviceToken = source["CENTRAL_API_SERVICE_TOKEN"] || undefined;
 
+  // `||` for the same reason, and the same refusal when absent: the write routes
+  // are reachable with no token configured and every one of them answers 503
+  // naming this variable. A write service that boots, serves reads, and refuses
+  // every write is a degraded deployment someone can diagnose from the message; one
+  // that boots and accepts writes from anybody is not a deployment anybody can
+  // diagnose at all.
+  const writeToken = source["CENTRAL_API_WRITE_TOKEN"] || undefined;
+
   // `||` rather than `??` for the same reason as the token: a variable set to ""
   // is an unset variable, and `postgres:///db` is a valid-looking URL to the
   // local socket that would fail on the first query rather than at boot.
@@ -134,6 +156,7 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
     logLevel: source["CENTRAL_API_LOG_LEVEL"] ?? "info",
     databaseUrl,
     serviceToken,
+    writeToken,
     corsOrigins,
   };
 }

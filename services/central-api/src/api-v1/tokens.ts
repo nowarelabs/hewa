@@ -14,3 +14,14 @@
  * compare every request against.
  */
 export const SERVICE_TOKEN = Symbol("SERVICE_TOKEN");
+
+/**
+ * The injection token for the configured write token.
+ *
+ * A second symbol rather than a second field on {@link SERVICE_TOKEN}, because the
+ * value under `SERVICE_TOKEN` is handed to anything allowed to *read* — including
+ * the browser's own proxy, and including any service added later that only watches
+ * the book. One provider serving both credentials is one provider every reader of
+ * the service can write through, and the day that matters is the day it is noticed.
+ */
+export const WRITE_TOKEN = Symbol("WRITE_TOKEN");

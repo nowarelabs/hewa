@@ -1,9 +1,16 @@
 "use client";
 
-import type { ReactElement } from "react";
+import type { ReactElement, ReactNode } from "react";
 import { ArrowRightLeft, Coins, Layers } from "lucide-react";
-import { SETTLEMENT_KIND_TITLES, type Settlement, type SettlementRun } from "@hewa/console-types";
 import {
+  SETTLEMENT_KINDS,
+  SETTLEMENT_KIND_TITLES,
+  type Settlement,
+  type SettlementWrite,
+  type SettlementRun,
+} from "@hewa/console-types";
+import {
+  TRANSACTION_STATUSES,
   TRANSACTION_STATUS_TITLES,
   formatMoney,
   type TransactionStatus,
@@ -13,6 +20,15 @@ import { useMovements, usePayouts, useRuns } from "../data/settlement";
 import { useFilterParam } from "../state/filter";
 import { Empty, KeyValues, Panel, emptyMessage, summaryCounts, visibleBy } from "../ui/primitives";
 import { ScopePanel } from "../ui/scope";
+import {
+  CURRENCY_FIELDS,
+  RecordEditor,
+  asWrite,
+  editorIdField,
+  type FieldSpec,
+  useRecordWrite,
+} from "../ui/editor";
+import { createSettlement, patchSettlement } from "../mutations/settlements";
 
 /**
  * The `settlement` view's panels: three per section, and the middle column of each.
@@ -173,44 +189,6 @@ export function MovementsPanel(): ReactElement {
         )}
       </div>
     </div>
-  );
-}
-
-/** `settlement/movements`, right column: one movement's line. */
-export function MovementsDetails({ section }: { section: string | null }): ReactElement {
-  const { rows, status } = useMovements();
-  const row = rows.find((candidate) => candidate.id === section) ?? rows[0];
-
-  return (
-    <Panel title="Movement">
-      {row === undefined ? (
-        <Empty>
-          {status !== "ready"
-            ? emptyMessage({ status, filtered: false, noun: "movements" })
-            : "Select a movement to view details"}
-        </Empty>
-      ) : (
-        <MovementFigures row={row} />
-      )}
-    </Panel>
-  );
-}
-
-/** One movement, shared by the movements columns. */
-export function MovementFigures({ row }: { row: Settlement }): ReactElement {
-  return (
-    <KeyValues
-      rows={[
-        { label: "Batch", value: row.batch },
-        { label: "Kind", value: SETTLEMENT_KIND_TITLES[row.kind] },
-        { label: "Counterparty", value: row.counterparty },
-        { label: "Status", value: TRANSACTION_STATUS_TITLES[row.status] },
-        { label: "Amount", value: formatMoney(row.amount) },
-        { label: "Fee", value: formatMoney(row.fee) },
-        { label: "Occurred", value: new Date(row.occurredAt).toLocaleString() },
-        { label: "Reason", value: row.failureReason ?? "—" },
-      ]}
-    />
   );
 }
 
@@ -417,3 +395,128 @@ export function PayoutsDetails({ section }: { section: string | null }): ReactEl
     </Panel>
   );
 }
+
+/**
+ * `settlement/movements`, right column: the movement this section is about, editable.
+ *
+ * No Delete, and the reason is the ledger rather than the API: a movement that has
+ * been paid and then deleted is indistinguishable from one that was never paid, and
+ * that is the one ambiguity a settlement record cannot carry. A line that was wrong
+ * is reversed, and the reversal is another line — so `status` is a field and
+ * `failureReason` is nullable, because a failed movement says why.
+ *
+ * The amounts are minor units, whole and exact. Nothing here converts to a decimal
+ * and back: money in this system is an integer count of the smallest unit precisely
+ * so that a figure an operator retypes and a figure the service stores are the same
+ * number.
+ */
+export function SettlementEditor({ section }: { section: string | null }): ReactElement {
+  const { rows: movements, refetch } = useMovements();
+  const rows = movements.map(settlementWriteFields);
+
+  const write = useRecordWrite<SettlementWriteRow>({
+    rows,
+    selected: section,
+    keyOf: (row) => row.id,
+    create: (body) => createSettlement(asWrite(body)),
+    save: (id, body) => patchSettlement(id, asWrite(body)),
+    onSaved: refetch,
+  });
+
+  const row = movements.find((candidate) => candidate.id === section) ?? movements[0];
+
+  return (
+    <RecordEditor
+      noun="movement"
+      fields={SETTLEMENT_FIELDS}
+      write={write}
+      submitLabel="Save movement"
+      summary={row === undefined ? undefined : <KeyValues rows={movementSummary(row)} />}
+    />
+  );
+}
+
+/**
+ * A movement in the shape a write takes, with the id the panel addresses it by.
+ */
+type SettlementWriteRow = SettlementWrite & { readonly id: string };
+
+/**
+ * A movement as the columns a write carries.
+ *
+ * A read record holds `amount` and `fee` as `Money` objects, because a table draws
+ * each one beside its currency; a write takes `amountMinor`, `feeMinor` and one
+ * `currency` for the row. Both money columns of a movement are in the same currency
+ * — that is what a single row means — so the currency is read off the amount rather
+ * than asked about.
+ */
+function settlementWriteFields(row: Settlement): SettlementWriteRow {
+  return {
+    id: row.id,
+    batch: row.batch,
+    kind: row.kind,
+    status: row.status,
+    counterparty: row.counterparty,
+    amountMinor: row.amount.amountMinor,
+    feeMinor: row.fee.amountMinor,
+    currency: row.amount.currency,
+    occurredAt: row.occurredAt,
+    failureReason: row.failureReason,
+  };
+}
+
+/**
+ * The movement's figures, for the editor's read-only strip.
+ *
+ * The amounts are shown as money and entered as minor units, and `formatMoney` is
+ * the only function that does the conversion — the same one that draws them in the
+ * table, so the figure the operator checks is the figure they are correcting.
+ */
+export function movementSummary(row: Settlement): { label: string; value: ReactNode }[] {
+  return [
+    { label: "Batch", value: row.batch },
+    { label: "Kind", value: SETTLEMENT_KIND_TITLES[row.kind] },
+    { label: "Counterparty", value: row.counterparty },
+    { label: "Status", value: TRANSACTION_STATUS_TITLES[row.status] },
+    { label: "Amount", value: formatMoney(row.amount) },
+    { label: "Fee", value: formatMoney(row.fee) },
+    { label: "Occurred", value: new Date(row.occurredAt).toLocaleString() },
+    { label: "Reason", value: row.failureReason ?? "—" },
+  ];
+}
+
+/** Every column `SettlementWrite` accepts. */
+export const SETTLEMENT_FIELDS: readonly FieldSpec[] = [
+  editorIdField("settlements"),
+  { name: "batch", label: "Batch", kind: "text" },
+  {
+    name: "kind",
+    label: "Kind",
+    kind: "select",
+    options: SETTLEMENT_KINDS.map((value) => ({ value, label: value })),
+  },
+  {
+    name: "status",
+    label: "Status",
+    kind: "select",
+    options: TRANSACTION_STATUSES.map((value) => ({ value, label: value })),
+  },
+  { name: "counterparty", label: "Counterparty", kind: "text" },
+  {
+    name: "amountMinor",
+    label: "Amount",
+    kind: "number",
+    step: 1,
+    hint: "minor units of the currency: 670000 is $6,700.00",
+  },
+  { name: "feeMinor", label: "Fee", kind: "number", step: 1, hint: "minor units" },
+  { name: "currency", label: "Currency", kind: "select", options: CURRENCY_FIELDS },
+  { name: "occurredAt", label: "Occurred at", kind: "instant" },
+  {
+    name: "failureReason",
+    label: "Failure reason",
+    kind: "text",
+    nullable: true,
+    hint: "empty unless the status is failed",
+  },
+];

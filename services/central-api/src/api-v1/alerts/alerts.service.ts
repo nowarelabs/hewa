@@ -13,6 +13,7 @@ import { alias } from "drizzle-orm/pg-core";
 import { DB, type Database } from "../../db/db.module.js";
 import { instant } from "../../db/instant.js";
 import { alerts, alertSeverityEnum, infrastructureNodes } from "../../db/schema.js";
+import { alertRecord } from "../data/records.js";
 import { envelope } from "../envelope.js";
 
 /**
@@ -84,26 +85,7 @@ export class AlertsService {
   async readFeed(): Promise<ConsoleEnvelope<Alert[], AlertSeverity>> {
     const rows = await this.readRows();
 
-    const raised: Alert[] = rows.map((row) => ({
-      id: row.id,
-      title: row.title,
-      description: row.description,
-      category: row.category,
-      severity: row.severity,
-      entityId: row.entityId,
-      entityLabel: row.entityLabel,
-      provider: row.provider,
-      city: row.city,
-      lat: row.lat,
-      lng: row.lng,
-      impactedGbps: row.impactedGbps,
-      affectedSlas: row.affectedSlas,
-      // `null` when nothing acted, which the panel renders as a dash and not as an
-      // empty sentence — "we did not act" and "we acted, blankly" are different
-      // facts and only one of them should ever read as a dash.
-      automatedAction: row.automatedAction,
-      raisedAt: instant(row.raisedAt),
-    }));
+    const raised: Alert[] = rows.map(alertRecord);
 
     return envelope(raised, alertSeverityEnum.enumValues as AlertSeverity[]);
   }

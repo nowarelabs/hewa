@@ -3,7 +3,9 @@
 import type { ReactElement } from "react";
 import { Gauge, HardDrive, Server } from "lucide-react";
 import {
+  NODE_KINDS,
   NODE_KIND_TITLES,
+  NODE_STATUSES,
   type InfrastructureNode,
   type NodeHeadroom,
   type NodeKind,
@@ -23,6 +25,8 @@ import {
   visibleBy,
 } from "../ui/primitives";
 import { ScopePanel } from "../ui/scope";
+import { RecordEditor, asWrite, editorIdField, type FieldSpec, useRecordWrite } from "../ui/editor";
+import { createNode, deleteNode, patchNode } from "../mutations/nodes";
 import { SearchPanel, searchRows } from "../ui/search";
 
 /**
@@ -173,37 +177,6 @@ function NodeCard({ node }: { node: InfrastructureNode }): ReactElement {
         <span>{new Date(node.observedAt).toLocaleString()}</span>
       </div>
     </article>
-  );
-}
-
-/** `infrastructure/nodes`, right column: one node as the service holds it. */
-export function NodesDetails({ section }: { section: string | null }): ReactElement {
-  const { rows, status } = useNodes();
-  const node = rows.find((candidate) => candidate.id === section) ?? rows[0];
-
-  return (
-    <Panel title="Node">
-      {node === undefined ? (
-        <Empty>
-          {status !== "ready"
-            ? emptyMessage({ status, filtered: false, noun: "nodes" })
-            : "Select a node to view details"}
-        </Empty>
-      ) : (
-        <KeyValues
-          rows={[
-            { label: "Name", value: node.name },
-            { label: "Provider", value: node.provider },
-            { label: "Location", value: `${node.city}, ${node.country}` },
-            { label: "Kind", value: NODE_KIND_TITLES[node.kind] },
-            { label: "Status", value: node.status },
-            { label: "Capacity", value: `${node.capacityGbps} Gbps` },
-            { label: "Utilisation", value: `${(node.utilisationBps / 100).toFixed(2)}%` },
-            { label: "Observed", value: new Date(node.observedAt).toLocaleString() },
-          ]}
-        />
-      )}
-    </Panel>
   );
 }
 
@@ -465,3 +438,74 @@ export function ProvidersDetails({ section }: { section: string | null }): React
     </Panel>
   );
 }
+
+/**
+ * `infrastructure/nodes`, right column: the node this section is about, editable.
+ *
+ * The only resource whose editor has a Delete beside Save, and that is the contract
+ * rather than a privilege: a decommissioned node has to be removable, or it stays in
+ * the rollups as capacity that does not exist. Removing one takes its monitors with
+ * it — the schema cascades — so the button says what it is about.
+ */
+export function NodeEditor({ section }: { section: string | null }): ReactElement {
+  const { rows, refetch } = useNodes();
+  const write = useRecordWrite<InfrastructureNode>({
+    rows,
+    selected: section,
+    keyOf: (row) => row.id,
+    create: (body) => createNode(asWrite(body)),
+    save: (id, body) => patchNode(id, asWrite(body)),
+    remove: (id) => deleteNode(id),
+    onSaved: refetch,
+  });
+
+  return (
+    <RecordEditor
+      noun="node"
+      fields={NODE_FIELDS}
+      write={write}
+      submitLabel="Save node"
+      deleteLabel="Delete node"
+    />
+  );
+}
+
+/**
+ * Every column `NodeWrite` accepts.
+ *
+ * `utilisationBps` is in basis points rather than percent because that is the column:
+ * 9850 is 98.5% of capacity, and a form that showed `98.5` would have to multiply it
+ * back by 100 before sending — a rounding away from the stored figure on every save.
+ */
+export const NODE_FIELDS: readonly FieldSpec[] = [
+  editorIdField("nodes"),
+  { name: "name", label: "Name", kind: "text" },
+  {
+    name: "kind",
+    label: "Kind",
+    kind: "select",
+    options: NODE_KINDS.map((value) => ({ value, label: value })),
+  },
+  { name: "provider", label: "Provider", kind: "text" },
+  { name: "city", label: "City", kind: "text" },
+  { name: "country", label: "Country", kind: "text" },
+  { name: "lat", label: "Latitude", kind: "number", step: 0.0001 },
+  { name: "lng", label: "Longitude", kind: "number", step: 0.0001 },
+  { name: "capacityGbps", label: "Capacity", kind: "number", step: 0.1, hint: "Gbps" },
+  {
+    name: "utilisationBps",
+    label: "Utilisation",
+    kind: "number",
+    min: 0,
+    max: 10_000,
+    step: 1,
+    hint: "basis points in use: 9850 is 98.5%",
+  },
+  {
+    name: "status",
+    label: "Status",
+    kind: "select",
+    options: NODE_STATUSES.map((value) => ({ value, label: value })),
+  },
+  { name: "observedAt", label: "Observed at", kind: "instant" },
+];

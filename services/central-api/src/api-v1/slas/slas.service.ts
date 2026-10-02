@@ -11,6 +11,7 @@ import { asc, desc, sql } from "drizzle-orm";
 
 import { DB, type Database } from "../../db/db.module.js";
 import { slaMonitors, slaStateEnum } from "../../db/schema.js";
+import { monitorRecord } from "../data/records.js";
 import { envelope } from "../envelope.js";
 
 /**
@@ -56,18 +57,7 @@ export class SlasService {
   async readCommitments(): Promise<ConsoleEnvelope<SlaMonitor[], SlaState>> {
     const rows = await this.readRows();
 
-    const monitors: SlaMonitor[] = rows.map((row) => ({
-      id: row.id,
-      account: row.account,
-      nodeId: row.nodeId,
-      nodeName: row.nodeName,
-      provider: row.provider,
-      sla: slaCommitment(row.targetBps, row.actualBps, row.creditNumerator, row.creditDenominator),
-      packetLossPpm: row.packetLossPpm,
-      latencyP95Ms: row.latencyP95Ms,
-      state: row.state,
-      measuredAt: row.measuredAt.toISOString(),
-    }));
+    const monitors: SlaMonitor[] = rows.map(monitorRecord);
 
     return envelope(monitors, slaStateEnum.enumValues as SlaState[]);
   }

@@ -15,9 +15,16 @@
  * re-spelling them here — a money literal written twice is two minor-unit
  * conventions, and they will not both be six decimals.
  *
+ * `writes.ts` is the third thing, and it is the one that is not about reading:
+ * the columns a caller may set on each of the six writable tables, which are not
+ * the same columns a read returns.
+ *
  * Adding a view is three edits: a record module here, an entry in `ConsolePayload`
  * and `CONSOLE_VIEWS`, and a route in the service. A view that is missing one of
  * them is caught by the service's e2e test and by `tests/data.test.ts` in the app.
+ * Adding a writable resource is four: the `*Write` interfaces here, a resource
+ * name in `CONSOLE_WRITE_RESOURCES`, a controller in the service, and an editor in
+ * the app.
  */
 export * from "./alerts.js";
 export * from "./envelope.js";
@@ -26,3 +33,4 @@ export * from "./infrastructure.js";
 export * from "./market.js";
 export * from "./settlement.js";
 export * from "./slas.js";
+export * from "./writes.js";

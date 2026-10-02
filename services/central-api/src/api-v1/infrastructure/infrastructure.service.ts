@@ -9,7 +9,8 @@ import type {
 import { asc, sql } from "drizzle-orm";
 
 import { DB, type Database } from "../../db/db.module.js";
-import { infrastructureNodes, nodeKindEnum } from "../../db/schema.js";
+import { infrastructureNodes, nodeKindEnum, type InfrastructureNodeRow } from "../../db/schema.js";
+import { nodeRecord } from "../data/records.js";
 import { envelope } from "../envelope.js";
 
 /**
@@ -68,20 +69,7 @@ export class InfrastructureService {
   async readNodes(): Promise<ConsoleEnvelope<InfrastructureNode[], NodeKind>> {
     const rows = await this.readRows();
 
-    const nodes: InfrastructureNode[] = rows.map((row) => ({
-      id: row.id,
-      name: row.name,
-      kind: row.kind,
-      provider: row.provider,
-      city: row.city,
-      country: row.country,
-      lat: row.lat,
-      lng: row.lng,
-      capacityGbps: row.capacityGbps,
-      utilisationBps: row.utilisationBps,
-      status: row.status,
-      observedAt: row.observedAt.toISOString(),
-    }));
+    const nodes: InfrastructureNode[] = rows.map(nodeRecord);
 
     return envelope(nodes, nodeKindEnum.enumValues as NodeKind[]);
   }
@@ -205,22 +193,15 @@ export class InfrastructureService {
   }
 
   /** One read shared by two sections, so both are answered from the same columns. */
-  private readRows(): Promise<
-    {
-      id: string;
-      name: string;
-      kind: NodeKind;
-      provider: string;
-      city: string;
-      country: string;
-      lat: number;
-      lng: number;
-      capacityGbps: number;
-      utilisationBps: number;
-      status: InfrastructureNode["status"];
-      observedAt: Date;
-    }[]
-  > {
+  /**
+   * Every node, by name.
+   *
+   * Typed as the schema's own row rather than a hand-written shape, because the two
+   * drift: a column added to the table arrives in this query and not in a type
+   * written out beside it, and the mapper in `data/records.ts` — shared with the
+   * write path — then cannot take what this returns.
+   */
+  private readRows(): Promise<InfrastructureNodeRow[]> {
     return this.db.select().from(infrastructureNodes).orderBy(asc(infrastructureNodes.name));
   }
 }

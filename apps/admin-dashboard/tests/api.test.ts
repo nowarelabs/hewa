@@ -1,8 +1,14 @@
 import { readdirSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vite-plus/test";
-import { CONSOLE_SECTION_KEYS, consoleSectionPath, parseSectionKey } from "@hewa/console-types";
+import {
+  CONSOLE_SECTION_KEYS,
+  CONSOLE_WRITE_RESOURCES,
+  consoleSectionPath,
+  parseSectionKey,
+  type ConsoleWriteResource,
+} from "@hewa/console-types";
 
-import { sectionHandlers } from "../src/app/api/v1/_handlers";
+import { dataHandlers, dataRecordHandlers, sectionHandlers } from "../src/app/api/v1/_handlers";
 
 /**
  * The route handlers, and what they are for.
@@ -29,6 +35,8 @@ interface Seen {
   url: string;
   method: string;
   token: string | null;
+  writeToken: string | null;
+  contentType: string | null;
 }
 
 let seen: Seen[] = [];
@@ -43,11 +51,17 @@ function stubService(body: unknown = { code: "0", data: [] }, status = 200): voi
         url: String(url),
         method: init.method ?? "GET",
         token: headers.get("x-hewa-service-token"),
+        writeToken: headers.get("x-hewa-write-token"),
+        contentType: headers.get("content-type"),
       });
-      return new Response(JSON.stringify(body), {
-        status,
-        headers: { "content-type": "application/json" },
-      });
+      // A 204 carries no body, and a `Response` that has both is a `TypeError` in
+      // the stub rather than an assertion failure in the test.
+      return status === 204
+        ? new Response(null, { status })
+        : new Response(JSON.stringify(body), {
+            status,
+            headers: { "content-type": "application/json" },
+          });
     }),
   );
 }
@@ -105,13 +119,20 @@ describe("the token", () => {
 
 describe("which paths exist", () => {
   /**
-   * There is a route *file* per section and no catch-all, and the file is the
-   * thing that keeps the proxy from being an open relay. So the count is checked
-   * against the contract rather than against a list written out here: a section
-   * added to `CONSOLE_SECTIONS` and forgotten here would otherwise be a rail
-   * button that opens a panel which can never load.
+   * There is a route *file* per path and no catch-all, and the file is the thing
+   * that keeps the proxy from being an open relay. So the set of paths is checked
+   * against the two contracts that name them — the sections and the writable
+   * resources — rather than against a list written out here: a section added to
+   * `CONSOLE_SECTIONS` and given no file would otherwise be a rail button that
+   * opens a panel which can never load.
+   *
+   * Equality rather than containment, in both directions. A directory here that
+   * neither contract names is a path the app serves and nothing else describes,
+   * which is the open relay this check exists to prevent — and `data/` is named by
+   * `CONSOLE_WRITE_RESOURCES`, so the write routes are pinned to the contract as
+   * tightly as the read ones.
    */
-  test("every section in the contract has a route file, and answers", async () => {
+  test("every path the contracts name has a route file, and nothing else does", () => {
     const routes = new Set(
       readdirSync(new URL("../src/app/api/v1/", import.meta.url), { withFileTypes: true })
         .filter((entry) => entry.isDirectory() && !entry.name.startsWith("_"))
@@ -124,7 +145,12 @@ describe("which paths exist", () => {
         ),
     );
 
-    expect([...routes].toSorted()).toEqual([...CONSOLE_SECTION_KEYS].toSorted());
+    expect([...routes].toSorted()).toEqual(
+      [
+        ...CONSOLE_SECTION_KEYS,
+        ...CONSOLE_WRITE_RESOURCES.map((resource) => `data/${resource}`),
+      ].toSorted(),
+    );
   });
 
   test("every section forwards to the path the contract names", async () => {
@@ -286,5 +312,119 @@ describe("what comes back", () => {
     expect(response.status).toBe(502);
     expect(body.message).toContain("not JSON");
     expect(body.message).not.toContain("<html>");
+  });
+});
+
+describe("the write handlers", () => {
+  const WRITE_TOKEN = "a-write-token";
+
+  /** A `Request` with a body, for the verbs that take one. */
+  function post(body: unknown): Request {
+    return new Request("http://app.test/api/v1/data/alerts", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  }
+
+  function context(id: string): { readonly params: Promise<{ readonly id: string }> } {
+    return { params: Promise.resolve({ id }) };
+  }
+
+  beforeEach(() => {
+    process.env["CENTRAL_API_WRITE_TOKEN"] = WRITE_TOKEN;
+  });
+
+  test("a create forwards the body and asks for the resource's own path", async () => {
+    stubService({ id: "a1" }, 201);
+
+    const response = await dataHandlers("alerts").POST(post({ title: "Subsea" }));
+
+    expect(response.status).toBe(201);
+    expect(seen[0]?.url).toBe(`${BASE}/api/v1/data/alerts`);
+    expect(seen[0]?.method).toBe("POST");
+    expect(seen[0]?.writeToken).toBe(WRITE_TOKEN);
+    expect(seen[0]?.token).toBe(TOKEN);
+    // Declared, because Nest parses a body by its header rather than by sniffing.
+    // Without it the schema sees `undefined` where an object should be and refuses
+    // at the root, naming no field — a refusal that looks like the caller sent
+    // nothing rather than like a proxy that forgot a header.
+    expect(seen[0]?.contentType).toBe("application/json");
+  });
+
+  test("a verb with no payload does not claim there is one", async () => {
+    stubService(null, 204);
+
+    await dataRecordHandlers("orders").DELETE(get(), context("o1"));
+
+    expect(seen[0]?.contentType).toBeNull();
+  });
+
+  test("a patch awaits the route's params and sends the id as one path segment", async () => {
+    stubService({ id: "n 1" }, 200);
+
+    await dataRecordHandlers("nodes").PATCH(post({ status: "operational" }), context("n 1"));
+
+    // Percent-encoded, because the id arrived from a URL: an id of `n 1` that went
+    // out raw would be a request the service's router may not match, and an id of
+    // `../../admin` would leave `/api/v1/data/nodes/` entirely.
+    expect(seen[0]?.url).toBe(`${BASE}/api/v1/data/nodes/n%201`);
+    expect(seen[0]?.method).toBe("PATCH");
+  });
+
+  test("an id cannot walk out of the resource's own path", async () => {
+    stubService({}, 404);
+
+    await dataRecordHandlers("orders").DELETE(get(), context("../../admin"));
+
+    expect(seen[0]?.url).toBe(`${BASE}/api/v1/data/orders/..%2F..%2Fadmin`);
+  });
+
+  test("a resource the contract does not name is refused here, not forwarded", async () => {
+    const response = await dataRecordHandlers("secrets" as unknown as ConsoleWriteResource).PATCH(
+      post({}),
+      context("x"),
+    );
+
+    expect(response.status).toBe(404);
+    expect(seen).toHaveLength(0);
+  });
+
+  test("a delete the contract does not allow answers 404 and asks nothing", async () => {
+    const response = await dataRecordHandlers("alerts").DELETE(get(), context("a1"));
+
+    expect(response.status).toBe(404);
+    expect(seen).toHaveLength(0);
+  });
+
+  test("a delete the contract allows is forwarded", async () => {
+    stubService(null, 204);
+
+    const response = await dataRecordHandlers("orders").DELETE(get(), context("o1"));
+
+    expect(response.status).toBe(204);
+    expect(seen[0]?.method).toBe("DELETE");
+  });
+
+  test("a body that is not JSON is refused here rather than forwarded as nothing", async () => {
+    const response = await dataHandlers("alerts").POST(
+      new Request("http://app.test/api/v1/data/alerts", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: "{",
+      }),
+    );
+
+    expect(response.status).toBe(400);
+    expect(seen).toHaveLength(0);
+  });
+
+  test("no write leaves without a write token configured, and says so", async () => {
+    delete process.env["CENTRAL_API_WRITE_TOKEN"];
+
+    const response = await dataHandlers("alerts").POST(post({ title: "x" }));
+
+    expect(response.status).toBe(503);
+    expect(seen).toHaveLength(0);
   });
 });

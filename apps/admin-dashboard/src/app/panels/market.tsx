@@ -12,12 +12,27 @@ import {
   YAxis,
 } from "recharts";
 import {
+  MARKET_POOLS,
   MARKET_POOL_TITLES,
+  MARKET_SIDES,
   type MarketOrder,
   type MarketQuote,
+  type OrderWrite,
+  type SpotRecord,
   type VenueShare,
 } from "@hewa/console-types";
-import { formatMoney } from "@hewa/marketplace-types";
+import { formatMoney, type Currency } from "@hewa/marketplace-types";
+
+import {
+  CURRENCY_FIELDS,
+  RecordEditor,
+  asWrite,
+  editorIdField,
+  type FieldSpec,
+  useRecordWrite,
+} from "../ui/editor";
+import { createOrder, deleteOrder, patchOrder } from "../mutations/orders";
+import { createSpot, upsertSpot } from "../mutations/spots";
 
 import { useMarketBook, usePriceHistory, useVenues } from "../data/market";
 import { useSearchParam } from "../state/filter";
@@ -198,38 +213,6 @@ function BookTable({ rows }: { rows: readonly MarketOrder[] }): ReactElement {
   );
 }
 
-/** `market/book`, right column: what the book holds, in figures. */
-export function BookDetails(): ReactElement {
-  const { data, status } = useMarketBook();
-  const bids = (data?.orders ?? []).filter((order) => order.side === "bid");
-  const offers = (data?.orders ?? []).filter((order) => order.side === "offer");
-
-  return (
-    <Panel title="Book">
-      {data === undefined ? (
-        <Empty>{emptyMessage({ status, filtered: false, noun: "the book" })}</Empty>
-      ) : (
-        <KeyValues
-          rows={[
-            { label: "Best bid", value: data.bestBid === null ? "—" : formatMoney(data.bestBid) },
-            {
-              label: "Best offer",
-              value: data.bestOffer === null ? "—" : formatMoney(data.bestOffer),
-            },
-            { label: "Bids", value: bids.length },
-            { label: "Offers", value: offers.length },
-            { label: "Committed", value: `${data.committedGbps} Gbps` },
-            {
-              label: "Pools",
-              value: data.orders.length === 0 ? 0 : new Set(data.orders.map((o) => o.pool)).size,
-            },
-          ]}
-        />
-      )}
-    </Panel>
-  );
-}
-
 /**
  * `market/prices`, middle column: one line per pool, and the latest quote each.
  *
@@ -356,28 +339,6 @@ export function PricesSearch(): ReactElement {
   );
 }
 
-/** `market/prices`, right column: one pool's quote and its movement. */
-export function PricesDetails(): ReactElement {
-  const { data, status } = usePriceHistory();
-
-  return (
-    <Panel title="Price movement">
-      {data === undefined ? (
-        <Empty>{emptyMessage({ status, filtered: false, noun: "prices" })}</Empty>
-      ) : (
-        <KeyValues
-          rows={[
-            { label: "Change", value: `${data.changePct}%` },
-            { label: "Pools quoted", value: data.latest.length },
-            { label: "Observations", value: data.points.length },
-            { label: "Currency", value: data.currency },
-          ]}
-        />
-      )}
-    </Panel>
-  );
-}
-
 /** `market/venues`, middle column: where the committed capacity sits. */
 export function VenuesPanel(): ReactElement {
   const { data, status } = useVenues();
@@ -484,3 +445,235 @@ export function VenuesDetails(): ReactElement {
     </Panel>
   );
 }
+
+/**
+ * `market/book`, right column: the order this section is about, editable, under the
+ * book's own figures.
+ *
+ * The figures stay. Best bid, best offer and committed capacity are not columns of an
+ * order, and a form is the wrong place for them — they are the section's summary, so
+ * they stay above it and the order's own eight columns become inputs.
+ *
+ * The currency is read-only while editing, and the reason is on the field: the book
+ * is quoted in one currency and central-api refuses an order priced in another
+ * before it reaches the database. An operator who could type a different currency
+ * here would fill the form in carefully and be refused by a rule they cannot see.
+ */
+export function OrderEditor({ section }: { section: string | null }): ReactElement {
+  const { data, refetch } = useMarketBook();
+  // The book quotes one currency for every order in it, so the adapter takes it as
+  // an argument rather than reading it off the order.
+  const rows = (data?.orders ?? []).map((order) => orderWriteFields(order, data?.currency));
+
+  const write = useRecordWrite<OrderWriteRow>({
+    rows,
+    selected: section,
+    keyOf: (row) => row.id,
+    create: (body) => createOrder(asWrite(body)),
+    save: (id, body) => patchOrder(id, asWrite(body)),
+    remove: (id) => deleteOrder(id),
+    onSaved: refetch,
+  });
+
+  return (
+    <RecordEditor
+      noun="order"
+      fields={ORDER_FIELDS}
+      write={write}
+      submitLabel="Save order"
+      deleteLabel="Withdraw order"
+      summary={
+        data === undefined ? null : (
+          <KeyValues
+            rows={[
+              { label: "Best bid", value: data.bestBid === null ? "—" : formatMoney(data.bestBid) },
+              {
+                label: "Best offer",
+                value: data.bestOffer === null ? "—" : formatMoney(data.bestOffer),
+              },
+              { label: "Committed", value: `${data.committedGbps} Gbps` },
+              { label: "Quoted in", value: data.currency },
+            ]}
+          />
+        )
+      }
+    />
+  );
+}
+
+/**
+ * An order in the shape a write takes, with the id the panel addresses it by.
+ *
+ * The read record holds `unitPrice` as a `Money` because a table draws the amount
+ * beside its currency. The write takes `priceMinor` and a `currency`, so the two are
+ * joined here rather than in the form — which keeps `asWrite` the one place in the
+ * app where a read shape is asserted to be a write shape.
+ */
+type OrderWriteRow = OrderWrite & { readonly id: string };
+
+/**
+ * A resting order as the columns a write carries.
+ *
+ * The same adaptation the spot and the movement need, for the same reason: a read
+ * record holds money as an object because a table draws it with its currency beside
+ * it, and a write takes the amount and the currency as two columns. Doing it here
+ * rather than in the form means the form is handed something shaped like the
+ * contract, so the `asWrite` assertion is the only place in the app that crosses
+ * between a read shape and a write shape.
+ *
+ * The currency comes from the book rather than from the order, because it is the
+ * book's: an order priced in a currency the book is not quoted in would be refused
+ * by the service, so reading it from the row would only ever reproduce the value
+ * that is already correct.
+ */
+function orderWriteFields(order: MarketOrder, currency: Currency | undefined): OrderWriteRow {
+  return {
+    id: order.id,
+    pool: order.pool,
+    side: order.side,
+    provider: order.provider,
+    committedGbps: order.committedGbps,
+    burstGbps: order.burstGbps,
+    priceMinor: order.unitPrice.amountMinor,
+    currency: currency ?? order.unitPrice.currency,
+    submittedAt: order.submittedAt,
+  };
+}
+
+/** Every column `OrderWrite` accepts. */
+export const ORDER_FIELDS: readonly FieldSpec[] = [
+  editorIdField("orders"),
+  {
+    name: "pool",
+    label: "Pool",
+    kind: "select",
+    options: MARKET_POOLS.map((value) => ({ value, label: MARKET_POOL_TITLES[value] })),
+  },
+  {
+    name: "side",
+    label: "Side",
+    kind: "select",
+    options: MARKET_SIDES.map((value) => ({ value, label: value })),
+  },
+  { name: "provider", label: "Provider", kind: "text" },
+  { name: "committedGbps", label: "Committed", kind: "number", step: 0.1, hint: "Gbps" },
+  { name: "burstGbps", label: "Burst", kind: "number", step: 0.1, hint: "Gbps" },
+  {
+    name: "priceMinor",
+    label: "Unit price",
+    kind: "number",
+    step: 1,
+    hint: "minor units of the book's currency",
+  },
+  {
+    name: "currency",
+    label: "Currency",
+    kind: "select",
+    options: CURRENCY_FIELDS,
+    lockedWhenEditing:
+      "The book is quoted in one currency. An order priced in another is refused before it is stored, so it is not offered here.",
+  },
+  { name: "submittedAt", label: "Submitted at", kind: "instant" },
+];
+
+/**
+ * `market/prices`, right column: the latest observation per pool, editable.
+ *
+ * Two things are different about a spot and both come from its key.
+ *
+ * Its id is generated, so there is nothing for a `PATCH` to address and every save
+ * is the upsert on `(pool, observedAt)` — which is also the honest operation, since
+ * correcting a price a sampler produced and recording it are the same request. The
+ * read document does not carry an id for exactly that reason, and this panel is
+ * written so it never needs one.
+ *
+ * And `observedAt` is therefore locked while editing: it is half of what makes this
+ * observation this observation. Changing it does not correct the row, it records a
+ * different one, which is a field for the "New observation" case rather than for
+ * this one.
+ *
+ * The one adapter between the two shapes is {@link spotWriteFields}, and it exists
+ * here rather than in the contract because it is a fact about the read document: the
+ * read side hands over money as an object and the write side takes two columns.
+ */
+export function SpotEditor({ section }: { section: string | null }): ReactElement {
+  const { data, refetch } = usePriceHistory();
+  const rows = (data?.latest ?? []).map(spotWriteFields);
+
+  const write = useRecordWrite<SpotRecord>({
+    rows,
+    selected: section,
+    keyOf: (row) => row.id,
+    create: (body) => createSpot(asWrite(body)),
+    // The pool is this editor's identity, so there is no id to send: the upsert is
+    // addressed by the natural key the body carries, which is the whole operation.
+    save: (_id, body) => upsertSpot(asWrite(body)),
+    onSaved: refetch,
+  });
+
+  return (
+    <RecordEditor
+      noun="observation"
+      fields={SPOT_FIELDS}
+      write={write}
+      submitLabel="Record observation"
+      summary={
+        data === undefined ? null : (
+          <KeyValues
+            rows={[
+              { label: "Change", value: `${data.changePct}%` },
+              { label: "Pools quoted", value: data.latest.length },
+              { label: "Observations", value: data.points.length },
+              { label: "Quoted in", value: data.currency },
+            ]}
+          />
+        )
+      }
+    />
+  );
+}
+
+/**
+ * A read quote as the columns a write carries.
+ *
+ * `MarketQuote` holds a `Money` and no id, because a panel drawing a chart has no
+ * use for either. The write contract holds `priceMinor`, `currency` and a generated
+ * `id`, so this is the one place the two are joined: the id is the pool, which is
+ * enough to address the observation in this panel and is not sent.
+ */
+function spotWriteFields(quote: MarketQuote): SpotRecord {
+  return {
+    id: quote.pool,
+    pool: quote.pool,
+    priceMinor: quote.price.amountMinor,
+    currency: quote.price.currency,
+    observedAt: quote.observedAt,
+  };
+}
+
+/** Every column `SpotWrite` accepts. */
+export const SPOT_FIELDS: readonly FieldSpec[] = [
+  {
+    name: "pool",
+    label: "Pool",
+    kind: "select",
+    options: MARKET_POOLS.map((value) => ({ value, label: MARKET_POOL_TITLES[value] })),
+    lockedWhenEditing:
+      "A pool's current price is one observation. Start a new one to move it to another pool.",
+  },
+  {
+    name: "priceMinor",
+    label: "Price",
+    kind: "number",
+    step: 1,
+    hint: "minor units of the quoted currency",
+  },
+  { name: "currency", label: "Currency", kind: "select", options: CURRENCY_FIELDS },
+  {
+    name: "observedAt",
+    label: "Observed at",
+    kind: "instant",
+    lockedWhenEditing:
+      "Half of this observation's key. Changing it here would record a different observation rather than correct this one.",
+  },
+];

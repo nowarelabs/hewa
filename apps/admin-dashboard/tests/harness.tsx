@@ -206,6 +206,27 @@ export async function press(element: HTMLElement): Promise<void> {
 }
 
 /**
+ * Submit a form, the way pressing its save button would.
+ *
+ * Dispatching the event rather than clicking the button, because happy-dom's
+ * implicit submission is not dependable: the same order form, with the same markup,
+ * submitted from a press in "new" mode and did not in "edit" mode, and no
+ * assertion could tell the two apart. `Event("submit")` on the form is what React's
+ * delegated `onSubmit` listens for, so this reaches the same handler a reader's
+ * press does — and a suite that could not submit a form could not have caught a form
+ * that sends the wrong body.
+ */
+export async function submit(form: HTMLFormElement): Promise<void> {
+  await act(async () => {
+    form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    // Long enough for the write to leave. The handler starts the request and returns
+    // without awaiting it, so a reader of the request that returns in the same tick
+    // as the dispatch reads an array the write has not been pushed to yet.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  });
+}
+
+/**
  * Type into a controlled input, the way a reader would.
  *
  * Through the prototype's own `value` setter rather than by assignment: React

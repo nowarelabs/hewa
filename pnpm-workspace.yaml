@@ -90,6 +90,13 @@ catalog:
   # node and a control primitive's keyboard behaviour is testable at all.
   happy-dom: ^20
 
+  # Validation
+  #
+  # Validates a write body in the service, against the contract types in
+  # `@hewa/console-types`. A hand-written check is a check somebody forgets, and
+  # a check in the panel is a check the next caller does not have.
+  zod: ^4
+
 overrides:
   vite@*: "catalog:"
 

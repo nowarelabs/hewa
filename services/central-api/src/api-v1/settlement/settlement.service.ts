@@ -12,6 +12,7 @@ import { asc, desc, sql } from "drizzle-orm";
 import { DB, type Database } from "../../db/db.module.js";
 import { instant } from "../../db/instant.js";
 import { settlementKindEnum, settlements, transactionStatusEnum } from "../../db/schema.js";
+import { settlementRecord } from "../data/records.js";
 import { envelope } from "../envelope.js";
 
 /** A settlement row, as it comes back from any of the three sections' queries. */
@@ -37,23 +38,7 @@ export class SettlementService {
   async readMovements(): Promise<ConsoleEnvelope<Settlement[], SettlementKind>> {
     const rows = await this.readRows(desc(settlements.occurredAt));
 
-    const lines: Settlement[] = rows.map((row) => ({
-      id: row.id,
-      batch: row.batch,
-      kind: row.kind,
-      status: row.status,
-      counterparty: row.counterparty,
-      // Signed and read straight from a `bigint`, so a credit stays negative and the
-      // column sums with the sign the ledger wrote.
-      amount: money(row.amountMinor, row.currency),
-      // Never negative: the `CHECK` on the column refuses it, so the one thing a
-      // panel cannot be handed is a fee that credits the ISP.
-      fee: money(row.feeMinor, row.currency),
-      occurredAt: row.occurredAt.toISOString(),
-      // `null` when the line did not fail, which the panel renders as a dash. Not
-      // an empty string, which would render as the same dash and mean nothing.
-      failureReason: row.failureReason,
-    }));
+    const lines: Settlement[] = rows.map(settlementRecord);
 
     return envelope(lines, settlementKindEnum.enumValues as SettlementKind[]);
   }

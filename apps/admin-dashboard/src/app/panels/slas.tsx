@@ -16,6 +16,8 @@ import { useFilterParam } from "../state/filter";
 import type { SectionStatus } from "../state/query";
 import { Empty, KeyValues, Panel, emptyMessage, summaryCounts, visibleBy } from "../ui/primitives";
 import { ScopePanel } from "../ui/scope";
+import { RecordEditor, asWrite, editorIdField, type FieldSpec, useRecordWrite } from "../ui/editor";
+import { createMonitor, patchMonitor } from "../mutations/monitors";
 
 /**
  * The `slas` view's panels: three per section, and the middle column of each.
@@ -189,44 +191,6 @@ function formatPpm(ppm: number): string {
 /** The gap against target, or a zero rather than the word "none". */
 function Shortfall(row: SlaMonitor | SlaRisk): string {
   return formatBps(slaShortfallBps(row.sla));
-}
-
-/** `slas/commitments`, right column: one commitment as the service holds it. */
-export function CommitmentsDetails({ section }: { section: string | null }): ReactElement {
-  const { rows, status } = useCommitments();
-  const row = rows.find((candidate) => candidate.id === section) ?? rows[0];
-
-  return (
-    <Panel title="Commitment">
-      {row === undefined ? (
-        <Empty>
-          {status !== "ready"
-            ? emptyMessage({ status, filtered: false, noun: "commitments" })
-            : "Select a commitment to view details"}
-        </Empty>
-      ) : (
-        <KeyValues
-          rows={[
-            { label: "Account", value: row.account },
-            { label: "Node", value: `${row.nodeName} (${row.nodeId})` },
-            { label: "Provider", value: row.provider },
-            { label: "State", value: SLA_STATE_TITLES[row.state] },
-            { label: "Target", value: formatBps(row.sla.targetBps) },
-            { label: "Actual", value: formatBps(row.sla.actualBps) },
-            { label: "Shortfall", value: Shortfall(row) },
-            { label: "Creditable points", value: creditablePoints(row.sla) },
-            {
-              label: "Credit rate",
-              value: creditRate(row.sla.creditNumerator, row.sla.creditDenominator),
-            },
-            { label: "Packet loss", value: `${row.packetLossPpm} ppm` },
-            { label: "Latency p95", value: `${row.latencyP95Ms} ms` },
-            { label: "Measured at", value: new Date(row.measuredAt).toLocaleString() },
-          ]}
-        />
-      )}
-    </Panel>
-  );
 }
 
 /**
@@ -447,3 +411,124 @@ export function CreditsDetails({ section }: { section: string | null }): ReactEl
     </Panel>
   );
 }
+
+/**
+ * `slas/commitments`, right column: the commitment this section is about, editable.
+ *
+ * The four commitment figures are in basis points and the credit is an exact
+ * fraction, because those are the columns. A field showing `99.95` for `9995` would
+ * have to multiply by 100 on the way out and divide by 100 on the way back, and
+ * `99.95 * 100` is not always `9995` — which is a figure that agrees with the
+ * database most of the time, which is worse.
+ *
+ * `state` is not a field, and that is the point of this panel being four inputs
+ * smaller than the details panel it replaces. The service derives it from these
+ * numbers, so a form that could set it could declare a commitment compliant by
+ * typing a word — and the derived state is what the credit and the alert both rest
+ * on. It is shown above the form instead, read-only, so the operator can see what
+ * their numbers produced.
+ */
+export function MonitorEditor({ section }: { section: string | null }): ReactElement {
+  const { rows, refetch } = useCommitments();
+  const write = useRecordWrite<SlaMonitor>({
+    rows,
+    selected: section,
+    keyOf: (row) => row.id,
+    create: (body) => createMonitor(asWrite(body)),
+    save: (id, body) => patchMonitor(id, asWrite(body)),
+    onSaved: refetch,
+  });
+
+  const row = rows.find((candidate) => candidate.id === section) ?? rows[0];
+
+  return (
+    <RecordEditor
+      noun="commitment"
+      fields={MONITOR_FIELDS}
+      write={write}
+      submitLabel="Save commitment"
+      summary={
+        row === undefined ? (
+          <p className="text-sm text-ink-muted">
+            No commitment loaded. Pick one in the list, or start a new one.
+          </p>
+        ) : (
+          <KeyValues
+            rows={[
+              { label: "State", value: SLA_STATE_TITLES[row.state] },
+              { label: "Shortfall", value: `${slaShortfallBps(row.sla)} bps` },
+              { label: "Creditable points", value: creditablePoints(row.sla) },
+            ]}
+          />
+        )
+      }
+    />
+  );
+}
+
+/**
+ * Every column `MonitorWrite` accepts, which is the record minus the derived state.
+ *
+ * `nodeName` beside `nodeId` is the contract's, not this form's: the service checks
+ * the pair agrees, so both are editable and a mismatch is refused rather than
+ * silently corrected — a commitment whose row says one thing and whose name says
+ * another is the ambiguity the check exists to stop.
+ */
+export const MONITOR_FIELDS: readonly FieldSpec[] = [
+  editorIdField("monitors"),
+  { name: "account", label: "Account", kind: "text" },
+  { name: "nodeId", label: "Node id", kind: "text" },
+  { name: "nodeName", label: "Node name", kind: "text" },
+  { name: "provider", label: "Provider", kind: "text" },
+  {
+    name: "sla.targetBps",
+    label: "Target",
+    kind: "number",
+    min: 0,
+    max: 10_000,
+    step: 1,
+    hint: "basis points: 9995 is 99.95%",
+  },
+  {
+    name: "sla.actualBps",
+    label: "Actual",
+    kind: "number",
+    min: 0,
+    max: 10_000,
+    step: 1,
+    hint: "basis points",
+  },
+  {
+    name: "sla.creditNumerator",
+    label: "Credit numerator",
+    kind: "number",
+    min: 0,
+    step: 1,
+    hint: "credit per point of shortfall, as a fraction of the charge",
+  },
+  {
+    name: "sla.creditDenominator",
+    label: "Credit denominator",
+    kind: "number",
+    min: 1,
+    step: 1,
+    hint: "1 / 20 is 5% of the charge per point",
+  },
+  {
+    name: "packetLossPpm",
+    label: "Packet loss",
+    kind: "number",
+    min: 0,
+    step: 1,
+    hint: "parts per million",
+  },
+  {
+    name: "latencyP95Ms",
+    label: "Latency p95",
+    kind: "number",
+    min: 0,
+    step: 1,
+    hint: "milliseconds",
+  },
+  { name: "measuredAt", label: "Measured at", kind: "instant" },
+];

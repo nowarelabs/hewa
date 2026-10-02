@@ -9,25 +9,14 @@ import {
   type VenueBreakdown,
   type VenueShare,
 } from "@hewa/console-types";
-import { ValidationError } from "@hewa/errors";
 import { money, type Currency, type Money } from "@hewa/marketplace-types";
 import { asc, desc, eq, sql } from "drizzle-orm";
 
 import { DB, type Database } from "../../db/db.module.js";
 import { marketOrders, marketSpots } from "../../db/schema.js";
+import { orderRecord } from "../data/records.js";
 import { envelope } from "../envelope.js";
-
-/**
- * The unit of account the market is quoted in when it holds nothing at all.
- *
- * `USD`, from `CURRENCIES` in `@hewa/marketplace-types`, where it is described as
- * the marketplace's unit of account. This is the only place the market payload
- * names a currency no row states, and it is reachable only with an empty book —
- * where it is shown beside a count of zero and nothing else. The alternative is
- * making `currency` nullable to avoid naming a unit of account, and a panel
- * rendering "no currency" for an empty market is a worse answer.
- */
-const UNIT_OF_ACCOUNT: Currency = "USD";
+import { quoteCurrency, UNIT_OF_ACCOUNT } from "../quote-currency.js";
 
 /**
  * How many observations of one pool a chart draws.
@@ -89,7 +78,7 @@ export class MarketService {
     ]);
 
     const byPool = new Map(pools.map((pool) => [pool.pool, pool]));
-    const currency = bookCurrency(book);
+    const currency = quoteCurrency(book, "order book");
     const bid = headline(byPool, "bestBidMinor", currency, Math.max);
     const offer = headline(byPool, "bestOfferMinor", currency, Math.min);
 
@@ -100,16 +89,7 @@ export class MarketService {
         committedGbps: total(byPool, "committedGbps"),
         openOrders: total(byPool, "openOrders"),
         currency,
-        orders: book.map((order) => ({
-          id: order.id,
-          pool: order.pool,
-          side: order.side,
-          provider: order.provider,
-          committedGbps: order.committedGbps,
-          burstGbps: order.burstGbps,
-          unitPrice: money(order.priceMinor, currency),
-          submittedAt: order.submittedAt.toISOString(),
-        })),
+        orders: book.map(orderRecord),
       },
       [],
     );
@@ -141,7 +121,7 @@ export class MarketService {
     );
 
     const points = windows.flat().sort(byPoolThenTime);
-    const currency = spotCurrency(points);
+    const currency = quoteCurrency(points, "price history");
     const latest = points.filter(
       (point, index) => index === points.length - 1 || points[index + 1]?.pool !== point.pool,
     );
@@ -258,44 +238,6 @@ type PoolAggregate = {
   bestBidMinor: string | null;
   bestOfferMinor: string | null;
 };
-
-/**
- * The one currency every order is priced in, or the unit of account for an empty
- * book.
- *
- * Refuses a book quoted in two currencies rather than picking one. `MarketBook`
- * declares a single `currency` for the whole payload, so a mixed book has no honest
- * rendering: whichever side won, the other figure would be labelled in the wrong
- * unit, and a price in the wrong currency is worse than no price at all.
- */
-function bookCurrency(book: readonly { currency: Currency }[]): Currency {
-  const quoted = [...new Set(book.map((order) => order.currency))];
-  if (quoted.length > 1) {
-    throw new ValidationError("The order book is quoted in more than one currency", {
-      currencies: quoted,
-    });
-  }
-  return quoted[0] ?? UNIT_OF_ACCOUNT;
-}
-
-/**
- * The one currency every observation is priced in.
- *
- * The same rule as `bookCurrency`, for the spots rather than the orders, because a
- * chart that draws USDC in the same axis as USD is not a chart of anything. The
- * two could disagree with each other — a book quoted in USD and a history sampled
- * in USDC is bad data, not a bug — and both refusals are correct: each payload
- * refuses on its own evidence rather than inheriting the other's answer.
- */
-function spotCurrency(spots: readonly { currency: Currency }[]): Currency {
-  const quoted = [...new Set(spots.map((spot) => spot.currency))];
-  if (quoted.length > 1) {
-    throw new ValidationError("The price history is quoted in more than one currency", {
-      currencies: quoted,
-    });
-  }
-  return quoted[0] ?? UNIT_OF_ACCOUNT;
-}
 
 /**
  * A `Money`, or `null` when no pool has that side.

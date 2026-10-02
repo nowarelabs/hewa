@@ -2,10 +2,13 @@ import { Global, Module } from "@nestjs/common";
 
 import { loadEnv, type Env } from "../config/env.js";
 import { ServiceTokenGuard } from "./service-token.guard.js";
-import { SERVICE_TOKEN } from "./tokens.js";
+import { SERVICE_TOKEN, WRITE_TOKEN } from "./tokens.js";
+import { WriteTokenGuard } from "./write-token.guard.js";
 
-/** Re-exported so one import finds both halves of the guard's contract. */
-export { SERVICE_TOKEN, SERVICE_TOKEN_HEADER } from "./service-token.guard.js";
+/** Re-exported so one import finds both halves of a guard's contract. */
+export { SERVICE_TOKEN, WRITE_TOKEN } from "./tokens.js";
+export { SERVICE_TOKEN_HEADER } from "./service-token.guard.js";
+export { WRITE_TOKEN_HEADER } from "./write-token.guard.js";
 
 /**
  * The environment, loaded once and shared.
@@ -15,8 +18,8 @@ export { SERVICE_TOKEN, SERVICE_TOKEN_HEADER } from "./service-token.guard.js";
  * a provider per module — is four lines repeated to avoid a global, and a
  * template should not model that.
  *
- * The guard is provided here rather than per controller so the token is read at
- * resolution from this `Env` and not from a second call to `loadEnv` somewhere
+ * The guards are provided here rather than per controller so the tokens are read
+ * at resolution from this `Env` and not from a second call to `loadEnv` somewhere
  * that could disagree with it.
  */
 @Global()
@@ -32,14 +35,23 @@ export { SERVICE_TOKEN, SERVICE_TOKEN_HEADER } from "./service-token.guard.js";
       // that must never happen.
       useFactory: (): string | undefined => loadEnv().serviceToken,
     },
+    {
+      // The same shape for the same reason, on a separate symbol. One factory
+      // returning both tokens under one provider would be the coupling
+      // `WRITE_TOKEN` exists to avoid: everything that can inject the read token
+      // could then inject the write one.
+      provide: WRITE_TOKEN,
+      useFactory: (): string | undefined => loadEnv().writeToken,
+    },
     // `useClass` rather than a factory: the guard's own constructor is annotated
-    // with `@Inject(SERVICE_TOKEN)`, so providing the class is enough and the
-    // token arrives the ordinary way. A factory here would have to name the
-    // parameter type, and an unannotated `string` arrives as the class `String` —
-    // which Nest then tries to resolve from the module graph.
+    // with `@Inject(...)`, so providing the class is enough and the token arrives
+    // the ordinary way. A factory here would have to name the parameter type, and
+    // an unannotated `string` arrives as the class `String` — which Nest then
+    // tries to resolve from the module graph.
     ServiceTokenGuard,
+    WriteTokenGuard,
   ],
-  exports: [SERVICE_TOKEN, ServiceTokenGuard],
+  exports: [SERVICE_TOKEN, WRITE_TOKEN, ServiceTokenGuard, WriteTokenGuard],
 })
 export class ServiceAuthModule {}
 

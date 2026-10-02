@@ -1,66 +1,828 @@
-@host = http://localhost:5173
-@email = newtest@example.com
+# The admin dashboard's own API, exercised with httpyac.
+#
+#   cd apps/admin-dashboard   && vp dev      # serves on :3005
+#   cd services/central-api   && vp dev      # serves on :4000 — this file needs it
+#
+# `httpyac` is not a dependency of this package, so it is reached through `npx`.
+# `--all` runs every request rather than only the one the cursor is on, and `-o short`
+# keeps the summary to a line per request:
+#
+#   npx httpyac run src/qa.http --all -o short
+#
+# **No auth header, and that is the point.** Every request below goes to this app's
+# route handlers, which read `CENTRAL_API_URL`, `CENTRAL_API_SERVICE_TOKEN` and
+# `CENTRAL_API_WRITE_TOKEN` from the *server's* environment and attach them here. A
+# request that carried a token would be a token the browser is not supposed to have,
+# and `services/central-api/src/qa.http` is where the tokens belong.
+#
+# The writes answer the **bare record**, not an envelope: `{ "id": "…", … }`. Reads
+# answer the envelope `{ "code": "0", "data": … }`.
+#
+# Every status in a `###` line is the one this app was asked for and answered, and
+# three of them are Next.js rather than the proxy: a path with no `route.ts` is a
+# 404, and a `route.ts` that does not export the verb is a 405 — the request never
+# reaches a handler, so no token is attached and the service is never asked. That is
+# also why this file cannot demonstrate the proxy's own allowlist: the only refusals
+# it has are for paths Next has never heard of.
+#
+# Ids are generated per run rather than fixed, so the file can be run twice with no
+# reset. A fixed id would make the second run's create a 409, which is a fact about
+# the rows left behind rather than about the route.
 
-### Health Check
-GET {{host}}/api/health
+@host = http://localhost:3005
 
-# ==================== USERS ====================
+# A literal, and not `{{$timestamp}}`: that renders as epoch milliseconds
+# (`"1790940124991"`), and every timestamp column here is an ISO datetime, so the
+# variable would put a number in the body and get a 422 naming the field.
+@observedAt = 2026-03-01T05:00:00.000Z
 
-### List Users
-GET {{host}}/api/users
+# The spot's key carries a random time of day, because a spot is addressed by
+# `(pool, observedAt)` rather than by an id — so this is the one place where a second
+# run would otherwise collide with the first and the create below would be a 409.
+#
+# Each `{{$randomInt a b}}` is separated from the next by a literal, and every range
+# starts at 10 or above, because both details decide whether the instant is valid at
+# all. Two `{{...}}` written back to back are read as one expression and the first
+# vanishes, and a value below 10 renders without a leading zero — so
+# `{{$randomInt 0 23}}` can produce `T9:`, and `T9:00:00` is not an ISO datetime the
+# service will accept. It answers 422 naming `observedAt`, which is a confusing way to
+# learn that a QA file needed a zero.
+@spotAt = 2026-03-{{$randomInt 10 28}}T{{$randomInt 10 23}}:{{$randomInt 10 59}}:00.{{$randomInt 100 999}}Z
 
-### Create User
-# @name createUser
-POST {{host}}/api/users
+@nodeId = nod-{{$guid}}
+@orderId = ord-{{$guid}}
+@alertId = alt-{{$guid}}
+@settlementId = stl-{{$guid}}
+@monitorId = sla-{{$guid}}
+
+# ══════════════════════════════ reads: sixteen sections ══════════════════════════════
+#
+# One endpoint per section, not one per view: a rail button is a destination with its
+# own rows. Each answers 200 with the envelope above.
+
+### Order book — 200
+GET {{host}}/api/v1/market/book
+
+### Prices — 200
+GET {{host}}/api/v1/market/prices
+
+### Venues — 200
+GET {{host}}/api/v1/market/venues
+
+### Nodes — 200
+GET {{host}}/api/v1/infrastructure/nodes
+
+### Headroom — 200
+GET {{host}}/api/v1/infrastructure/headroom
+
+### Providers — 200
+GET {{host}}/api/v1/infrastructure/providers
+
+### Movements — 200
+GET {{host}}/api/v1/settlement/movements
+
+### Settlement runs — 200
+GET {{host}}/api/v1/settlement/runs
+
+### Payouts — 200
+GET {{host}}/api/v1/settlement/payouts
+
+### Commitments — 200
+GET {{host}}/api/v1/slas/commitments
+
+### At risk — 200
+GET {{host}}/api/v1/slas/at_risk
+
+### Credits — 200
+GET {{host}}/api/v1/slas/credits
+
+### Alert feed — 200
+GET {{host}}/api/v1/alerts/feed
+
+### Outages — 200
+GET {{host}}/api/v1/alerts/outages
+
+### Capacity pressure — 200
+GET {{host}}/api/v1/alerts/capacity
+
+### Security events — 200
+GET {{host}}/api/v1/alerts/security
+
+### A read path asked to write — 405, because the route exports no such verb
+#
+# `market/book/route.ts` exports `GET` and nothing else, so Next answers 405 before
+# a handler runs. It is the status that says "this verb does not exist here", where
+# a 404 would say "this path does not exist" and be a different claim.
+POST {{host}}/api/v1/market/book
+Content-Type: application/json
+
+{}
+
+# ════════════════════════════ paths this app does not have ═════════════════════════
+#
+# No `route.ts` at all, so Next answers 404 and nothing here reads a token or reaches
+# the service. A resource outside the write allowlist and a typo look the same from
+# outside, which is the answer to both: there is no such endpoint on this app.
+
+### A resource outside the write allowlist — 404
+POST {{host}}/api/v1/data/secrets
+Content-Type: application/json
+
+{}
+
+### The same by the record route — 404
+GET {{host}}/api/v1/data/secrets/anything
+
+### A verb the record route does not export — 405, and the proxy's allowlist never runs
+#
+# `monitors/[id]/route.ts` has no `DELETE`, so Next refuses the method itself. The
+# allowlist in `_proxy.ts` would refuse it too, but it is not reached: a 405 here is
+# Next's answer, which is why this file cannot claim to have tested that guard.
+DELETE {{host}}/api/v1/data/monitors/anything
+
+# ═══════════════════════════ the refusals this app owes you ══════════════════════════
+#
+# The answers that are the proxy's own rather than the service's, and the only ones a
+# `.http` file can show without a second service running.
+
+# `@broken` holds `{` and nothing else. Written as a literal it would be a parse
+# error in this file rather than a request, which is the wrong order of events: the
+# point is that the *service* never sees it. The variable is declared here, above
+# its request's title, because anything between a title and its method line is read
+# as part of the request.
+@broken = {
+
+### A body that is not JSON — 400 here, and nothing reaches the service
+POST {{host}}/api/v1/data/nodes
+Content-Type: application/json
+
+{{broken}}
+
+### A spot with no price in the body — 422 naming the field, from the service's schema
+PUT {{host}}/api/v1/data/spots
 Content-Type: application/json
 
 {
-  "email": "{{email}}",
-  "name": "Test User",
-  "avatarUrl": "https://example.com/avatar.png"
+  "pool": "nairobi_ixp",
+  "currency": "USD"
 }
 
-### Get User
-GET {{host}}/api/users/{{email}}
+# ═══════════════════════════════════════════ nodes ═══════════════════════════════════
+#
+# The one resource exercised end to end, and the only one of the six that is
+# `DELETE`-able, so all four record verbs appear here.
 
-### Update User
-PATCH {{host}}/api/users/{{email}}
+### Create a node — 201 with the bare record
+POST {{host}}/api/v1/data/nodes
 Content-Type: application/json
 
 {
-  "name": "Updated Test User"
+  "id": "{{nodeId}}",
+  "name": "QA Amsterdam IX",
+  "kind": "ixp",
+  "provider": "Northwind",
+  "city": "Amsterdam",
+  "country": "NL",
+  "lat": 52.3676,
+  "lng": 4.9041,
+  "capacityGbps": 400,
+  "utilisationBps": 8750,
+  "status": "operational",
+  "observedAt": "{{observedAt}}"
 }
 
-### Delete User
-# @name deleteUser
-DELETE {{host}}/api/users/{{email}}
+### Read one node back — 200
+GET {{host}}/api/v1/data/nodes/{{nodeId}}
 
-# ==================== POSTS ====================
-
-### List Posts (must have user first)
-GET {{host}}/api/users/{{email}}/posts
-
-### Create Post (uses user from createUser)
-# @name createPost
-POST {{host}}/api/users/{{email}}/posts
+### Patch one field — the form's save, so this is what an editor sends — 200
+PATCH {{host}}/api/v1/data/nodes/{{nodeId}}
 Content-Type: application/json
 
 {
-  "content": "Hello from httpyac! {{$timestamp}}"
+  "status": "degraded"
 }
 
-@postId = {{createPost.post.id}}
+### An empty patch — 200, and the record is unchanged
+#
+# Every field is optional in `nodePatchSchema`, so a body naming nothing is valid.
+# A form that sent this would look like a save that did nothing, which is why the
+# editors send at least the field the operator touched.
+PATCH {{host}}/api/v1/data/nodes/{{nodeId}}
+Content-Type: application/json
 
-### Get Post
-GET {{host}}/api/users/{{email}}/posts/{{postId}}
+{}
 
-### Update Post
-PATCH {{host}}/api/users/{{email}}/posts/{{postId}}
+### Replace the whole record — `PUT` is a machine's verb, not a form's — 200
+PUT {{host}}/api/v1/data/nodes/{{nodeId}}
 Content-Type: application/json
 
 {
-  "content": "Updated content at {{$timestamp}}"
+  "name": "QA Amsterdam IX renamed",
+  "kind": "ixp",
+  "provider": "Northwind",
+  "city": "Amsterdam",
+  "country": "NL",
+  "lat": 52.3676,
+  "lng": 4.9041,
+  "capacityGbps": 400,
+  "utilisationBps": 9100,
+  "status": "operational",
+  "observedAt": "{{observedAt}}"
 }
 
-### Delete Post
-DELETE {{host}}/api/users/{{email}}/posts/{{postId}}
+### A patch that names an id — 422, because `id` is not a field a patch may set
+PATCH {{host}}/api/v1/data/nodes/{{nodeId}}
+Content-Type: application/json
+
+{
+  "id": "{{nodeId}}"
+}
+
+### A patch that breaks a column rule — 422 naming the field that broke it
+PATCH {{host}}/api/v1/data/nodes/{{nodeId}}
+Content-Type: application/json
+
+{
+  "utilisationBps": 12000
+}
+
+### An instant as epoch milliseconds — 422, so a timestamp cannot arrive as a number
+PATCH {{host}}/api/v1/data/nodes/{{nodeId}}
+Content-Type: application/json
+
+{
+  "observedAt": 1772000000000
+}
+
+### A create with no id — 422 at `id`, the column's refusal rather than the form's
+POST {{host}}/api/v1/data/nodes
+Content-Type: application/json
+
+{
+  "name": "QA nameless node",
+  "kind": "ixp",
+  "provider": "Northwind",
+  "city": "Amsterdam",
+  "country": "NL",
+  "lat": 52.3676,
+  "lng": 4.9041,
+  "capacityGbps": 400,
+  "utilisationBps": 8750,
+  "status": "operational",
+  "observedAt": "{{observedAt}}"
+}
+
+### A create with a fractional `capacityGbps` — 422 rather than a rounded value
+#
+# The column holds a whole number of gigabits and there is no rounding in the
+# schema, so `400.5` is refused instead of becoming `400` or `401`.
+POST {{host}}/api/v1/data/nodes
+Content-Type: application/json
+
+{
+  "id": "nod-{{$guid}}",
+  "name": "QA fractional node",
+  "kind": "ixp",
+  "provider": "Northwind",
+  "city": "Amsterdam",
+  "country": "NL",
+  "lat": 52.3676,
+  "lng": 4.9041,
+  "capacityGbps": 400.5,
+  "utilisationBps": 8750,
+  "status": "operational",
+  "observedAt": "{{observedAt}}"
+}
+
+### A latitude past the pole — 422 naming `lat`
+PATCH {{host}}/api/v1/data/nodes/{{nodeId}}
+Content-Type: application/json
+
+{
+  "lat": 91
+}
+
+### A path id carrying an encoded traversal — 404, and it never leaves as one
+GET {{host}}/api/v1/data/nodes/..%2F..%2Fadmin
+
+### Delete the node — 204, and the only resource here with a delete
+DELETE {{host}}/api/v1/data/nodes/{{nodeId}}
+
+### It is gone — 404
+GET {{host}}/api/v1/data/nodes/{{nodeId}}
+
+### Deleting it twice — 404, naming what is not there
+DELETE {{host}}/api/v1/data/nodes/{{nodeId}}
+
+# ═══════════════════════════════════════════ orders ══════════════════════════════════
+
+### Create an order — 201
+#
+# `currency` is the book's own, so `assertQuotedIn` has something true to check; a
+# currency the market does not quote in is refused below.
+POST {{host}}/api/v1/data/orders
+Content-Type: application/json
+
+{
+  "id": "{{orderId}}",
+  "pool": "nairobi_ixp",
+  "side": "bid",
+  "provider": "Northwind",
+  "committedGbps": 40,
+  "burstGbps": 60,
+  "priceMinor": 540000,
+  "currency": "USD",
+  "submittedAt": "2026-03-01T02:00:00.000Z"
+}
+
+### Read one order back — 200
+GET {{host}}/api/v1/data/orders/{{orderId}}
+
+### Replace the whole order — 200
+PUT {{host}}/api/v1/data/orders/{{orderId}}
+Content-Type: application/json
+
+{
+  "pool": "nairobi_ixp",
+  "side": "bid",
+  "provider": "Northwind",
+  "committedGbps": 40,
+  "burstGbps": 60,
+  "priceMinor": 541000,
+  "currency": "USD",
+  "submittedAt": "2026-03-01T02:00:00.000Z"
+}
+
+### Burst below committed — 422 naming `burstGbps`, which is the field to correct
+POST {{host}}/api/v1/data/orders
+Content-Type: application/json
+
+{
+  "id": "ord-{{$guid}}",
+  "pool": "nairobi_ixp",
+  "side": "bid",
+  "provider": "Northwind",
+  "committedGbps": 40,
+  "burstGbps": 10,
+  "priceMinor": 540000,
+  "currency": "USD",
+  "submittedAt": "2026-03-01T02:00:00.000Z"
+}
+
+### A side the book does not have — 422 naming `side` and listing the two it does
+POST {{host}}/api/v1/data/orders
+Content-Type: application/json
+
+{
+  "id": "ord-{{$guid}}",
+  "pool": "nairobi_ixp",
+  "side": "sell",
+  "provider": "Northwind",
+  "committedGbps": 40,
+  "burstGbps": 60,
+  "priceMinor": 540000,
+  "currency": "USD",
+  "submittedAt": "2026-03-01T02:00:00.000Z"
+}
+
+### A price with a fractional minor unit — 422, never rounded
+#
+# Money is an integer count of minor units. `540000.75` is not a price in a currency
+# that has no subunit to hold the `.75`, so it is refused rather than rounded to
+# `540001` — which would be a different price than the one asked for.
+POST {{host}}/api/v1/data/orders
+Content-Type: application/json
+
+{
+  "id": "ord-{{$guid}}",
+  "pool": "nairobi_ixp",
+  "side": "bid",
+  "provider": "Northwind",
+  "committedGbps": 40,
+  "burstGbps": 60,
+  "priceMinor": 540000.75,
+  "currency": "USD",
+  "submittedAt": "2026-03-01T02:00:00.000Z"
+}
+
+### A currency the market does not quote in — 422 from the service, not the schema
+#
+# `KES` is a real currency and is in the column's own vocabulary; what it fails is
+# `assertQuotedIn`, which knows this market quotes `USD`. The distinction matters when
+# reading a refusal: a currency the schema does not know is a 422 at the field, and
+# one it knows but the market does not quote is a 422 from the service.
+POST {{host}}/api/v1/data/orders
+Content-Type: application/json
+
+{
+  "id": "ord-{{$guid}}",
+  "pool": "nairobi_ixp",
+  "side": "bid",
+  "provider": "Northwind",
+  "committedGbps": 40,
+  "burstGbps": 60,
+  "priceMinor": 540000,
+  "currency": "KES",
+  "submittedAt": "2026-03-01T02:00:00.000Z"
+}
+
+### Patch a price — minor units, so no currency rides along with it — 200
+PATCH {{host}}/api/v1/data/orders/{{orderId}}
+Content-Type: application/json
+
+{
+  "priceMinor": 545000
+}
+
+### Withdraw the order — 204
+DELETE {{host}}/api/v1/data/orders/{{orderId}}
+
+# ════════════════════════════════════════════ spots ═══════════════════════════════════
+#
+# The odd one: the id is the column's, and the write is addressed by the natural key
+# the body carries. So `POST` and `PUT` on the collection are the same document, and
+# each answers 201 the first time and 200 once the row is there.
+#
+# A spot's id is the one value this file has to read back from a response, because it
+# is the only row whose key the service decides. httpyac gives a named response to a
+# request that declares a `# @ref` to it, and the parsed body sits directly on the
+# name — so the id below is the name then a dot then `id`, with no `body` in between,
+# which is the spelling JetBrains and VS Code use and the one that resolves here. The
+# other five resources need none of this: their ids come from `{{$guid}}` above.
+
+### Create a spot — 201, with the id the column made rather than one the body chose
+# @name upsertSpot
+POST {{host}}/api/v1/data/spots
+Content-Type: application/json
+
+{
+  "pool": "nairobi_ixp",
+  "priceMinor": 512000,
+  "currency": "USD",
+  "observedAt": "{{spotAt}}"
+}
+
+### The same document as an upsert — 200, because the row is now there
+PUT {{host}}/api/v1/data/spots
+Content-Type: application/json
+
+{
+  "pool": "nairobi_ixp",
+  "priceMinor": 512000,
+  "currency": "USD",
+  "observedAt": "{{spotAt}}"
+}
+
+### Create the same key — 409, because `(pool, observedAt)` is already there
+#
+# The one refusal a spot has that is about the data rather than the shape of it: the
+# key is unique, so a second create for it is a collision and not a duplicate to
+# merge. `PUT` on the collection is the upsert that answers this case.
+POST {{host}}/api/v1/data/spots
+Content-Type: application/json
+
+{
+  "pool": "nairobi_ixp",
+  "priceMinor": 512000,
+  "currency": "USD",
+  "observedAt": "{{spotAt}}"
+}
+
+### Read it by the id the column made — 200
+# @ref upsertSpot
+GET {{host}}/api/v1/data/spots/{{upsertSpot.id}}
+
+### Patch it — 200, and the body carries no key because the path carries the id
+# @ref upsertSpot
+PATCH {{host}}/api/v1/data/spots/{{upsertSpot.id}}
+Content-Type: application/json
+
+{
+  "priceMinor": 513000
+}
+
+### A patch carrying the id — 422, because the path already named it
+# @ref upsertSpot
+PATCH {{host}}/api/v1/data/spots/{{upsertSpot.id}}
+Content-Type: application/json
+
+{
+  "id": "{{upsertSpot.id}}",
+  "priceMinor": 513000
+}
+
+### There is no `PUT` on a spot's record route — 405
+#
+# A spot's id is generated and its key is `(pool, observedAt)`, so there is nothing
+# for a path id to address and no replace to perform; the upsert is the collection's
+# `PUT` above. This is the one record route in the app that is short a verb, and it
+# is 405 here where a forwarded path the service does not declare would be a 404.
+PUT {{host}}/api/v1/data/spots/{{upsertSpot.id}}
+Content-Type: application/json
+
+{
+  "pool": "nairobi_ixp",
+  "priceMinor": 514000,
+  "currency": "USD",
+  "observedAt": "{{spotAt}}"
+}
+
+### A spot cannot be deleted either — 405, and a price someone observed is a fact
+# @ref upsertSpot
+DELETE {{host}}/api/v1/data/spots/{{upsertSpot.id}}
+
+### A spot id that is not a number — 422, from the proxy rather than the service
+#
+# `market_spots.id` is a generated identity, so the path carries a number and the
+# proxy's `SPOT_ID_SCHEMA` checks it before forwarding. The refusal is a 422
+# naming the parameter and not a 404, because `spots/not-a-number` is a bad
+# path rather than a lookup that came back empty — and it is a 422 here as well
+# as at the service, with the same message, because the schema is the same one
+# either side of the proxy.
+GET {{host}}/api/v1/data/spots/not-a-number
+
+### A well-formed spot id that does not exist — 404, forwarded
+#
+# The counterpart to the refusal above, and the reason the two are different
+# statuses: this path is addressable, and the service holds nothing under it.
+GET {{host}}/api/v1/data/spots/999999999
+
+# ═══════════════════════════════════════════ alerts ═══════════════════════════════════
+
+### Create an alert — 201
+POST {{host}}/api/v1/data/alerts
+Content-Type: application/json
+
+{
+  "id": "{{alertId}}",
+  "title": "Latency up 45 ms on the primary path",
+  "description": "Failover engaged at {{observedAt}}.",
+  "category": "outage",
+  "severity": "high",
+  "entityId": "nod-nbo-01",
+  "entityLabel": "Equinix Nairobi",
+  "provider": "Equinix",
+  "city": "Nairobi",
+  "lat": -1.3192,
+  "lng": 36.9278,
+  "impactedGbps": 40,
+  "affectedSlas": 3,
+  "automatedAction": null,
+  "raisedAt": "{{observedAt}}"
+}
+
+### Read one alert back — 200
+GET {{host}}/api/v1/data/alerts/{{alertId}}
+
+### Replace the whole alert — 200
+PUT {{host}}/api/v1/data/alerts/{{alertId}}
+Content-Type: application/json
+
+{
+  "title": "Latency up 45 ms on the primary path",
+  "description": "Failover engaged, traffic restored after 12 minutes.",
+  "category": "outage",
+  "severity": "high",
+  "entityId": "nod-nbo-01",
+  "entityLabel": "Equinix Nairobi",
+  "provider": "Equinix",
+  "city": "Nairobi",
+  "lat": -1.3192,
+  "lng": 36.9278,
+  "impactedGbps": 40,
+  "affectedSlas": 3,
+  "automatedAction": null,
+  "raisedAt": "{{observedAt}}"
+}
+
+### Patch the severity — 200
+PATCH {{host}}/api/v1/data/alerts/{{alertId}}
+Content-Type: application/json
+
+{
+  "severity": "critical"
+}
+
+### A category the vocabulary does not have — 422 naming the field
+PATCH {{host}}/api/v1/data/alerts/{{alertId}}
+Content-Type: application/json
+
+{
+  "category": "weather"
+}
+
+### A null title — 422, so a record of something cannot lose its subject
+PATCH {{host}}/api/v1/data/alerts/{{alertId}}
+Content-Type: application/json
+
+{
+  "title": null
+}
+
+### An alert cannot be deleted — 405, and a record of something that happened is not a correction
+DELETE {{host}}/api/v1/data/alerts/{{alertId}}
+
+# ════════════════════════════════════════ settlements ══════════════════════════════════
+
+### Create a settlement movement — 201
+POST {{host}}/api/v1/data/settlements
+Content-Type: application/json
+
+{
+  "id": "{{settlementId}}",
+  "batch": "run-2026-03-01",
+  "kind": "clearing",
+  "status": "completed",
+  "counterparty": "Sahara ISP",
+  "amountMinor": 1250000,
+  "feeMinor": 12500,
+  "currency": "USD",
+  "occurredAt": "2026-03-01T01:30:00.000Z",
+  "failureReason": null
+}
+
+### Read one movement back — 200
+GET {{host}}/api/v1/data/settlements/{{settlementId}}
+
+### Replace the whole movement — 200
+PUT {{host}}/api/v1/data/settlements/{{settlementId}}
+Content-Type: application/json
+
+{
+  "batch": "run-2026-03-01",
+  "kind": "clearing",
+  "status": "completed",
+  "counterparty": "Sahara ISP",
+  "amountMinor": 1250000,
+  "feeMinor": 12500,
+  "currency": "USD",
+  "occurredAt": "2026-03-01T01:30:00.000Z",
+  "failureReason": null
+}
+
+### Patch the status, with the reason a failure requires — 200
+#
+# `failureReason` is not optional on a `failed` movement, so it travels with the
+# status rather than being something a second write has to remember.
+PATCH {{host}}/api/v1/data/settlements/{{settlementId}}
+Content-Type: application/json
+
+{
+  "status": "failed",
+  "failureReason": "Counterparty bank rejected the batch."
+}
+
+### A replace that drops the reason — 422 at the document
+#
+# `SettlementWrite` names every column, so a failed movement cannot be replaced by
+# one that has stopped saying why it failed.
+PUT {{host}}/api/v1/data/settlements/{{settlementId}}
+Content-Type: application/json
+
+{
+  "batch": "run-2026-03-01",
+  "kind": "clearing",
+  "status": "completed",
+  "counterparty": "Sahara ISP",
+  "amountMinor": 1250000,
+  "feeMinor": 12500,
+  "currency": "USD",
+  "occurredAt": "2026-03-01T01:30:00.000Z"
+}
+
+### A negative fee — 422, because a fee is an amount charged and not a credit
+POST {{host}}/api/v1/data/settlements
+Content-Type: application/json
+
+{
+  "id": "stl-{{$guid}}",
+  "batch": "run-2026-03-01",
+  "kind": "clearing",
+  "status": "completed",
+  "counterparty": "Sahara ISP",
+  "amountMinor": 1250000,
+  "feeMinor": -1,
+  "currency": "USD",
+  "occurredAt": "2026-03-01T01:30:00.000Z",
+  "failureReason": null
+}
+
+### A movement cannot be deleted — 405, and that is the one that would make a settlement look unpaid
+DELETE {{host}}/api/v1/data/settlements/{{settlementId}}
+
+# ══════════════════════════════════════════ monitors ═══════════════════════════════════
+
+### Create a monitor — 201, with `sla` nested
+#
+# So a commitment cannot arrive with a target and no credit rate: the numbers that
+# describe one commitment are one object, and half of it is not a commitment.
+POST {{host}}/api/v1/data/monitors
+Content-Type: application/json
+
+{
+  "id": "{{monitorId}}",
+  "account": "Sahara ISP",
+  "nodeId": "nod-nbo-01",
+  "nodeName": "Equinix Nairobi",
+  "provider": "Equinix",
+  "sla": {
+    "targetBps": 9995,
+    "actualBps": 9975,
+    "creditNumerator": 1,
+    "creditDenominator": 20
+  },
+  "packetLossPpm": 120,
+  "latencyP95Ms": 12,
+  "measuredAt": "{{observedAt}}"
+}
+
+### Read it back — 200, and `state` is derived by the service rather than written
+GET {{host}}/api/v1/data/monitors/{{monitorId}}
+
+### Replace the whole monitor — 200
+PUT {{host}}/api/v1/data/monitors/{{monitorId}}
+Content-Type: application/json
+
+{
+  "account": "Sahara ISP",
+  "nodeId": "nod-nbo-01",
+  "nodeName": "Equinix Nairobi",
+  "provider": "Equinix",
+  "sla": {
+    "targetBps": 9995,
+    "actualBps": 9975,
+    "creditNumerator": 1,
+    "creditDenominator": 20
+  },
+  "packetLossPpm": 130,
+  "latencyP95Ms": 13,
+  "measuredAt": "{{observedAt}}"
+}
+
+### A patch carrying `state` — 422 as an unrecognised key, which is the point
+#
+# `state` is what the service computes from `targetBps` and `actualBps`. Accepting it
+# on a write would let a caller set the conclusion and leave the measurements
+# contradicting it.
+PATCH {{host}}/api/v1/data/monitors/{{monitorId}}
+Content-Type: application/json
+
+{
+  "state": "compliant"
+}
+
+### A commitment far enough below its target to be a breach — 20 bps, an exact figure — 200
+#
+# 9995 − 9800 = 195 bps of shortfall, and the credit is `195/20 = 9.75`, capped by the
+# bill. Basis points rather than a percentage, so the shortfall is an integer and no
+# float decides where the boundary is.
+PATCH {{host}}/api/v1/data/monitors/{{monitorId}}
+Content-Type: application/json
+
+{
+  "sla": {
+    "targetBps": 9995,
+    "actualBps": 9800,
+    "creditNumerator": 1,
+    "creditDenominator": 20
+  }
+}
+
+### Back inside the target — 200, and the whole `sla` travels again
+#
+# A patch makes each *top-level* field optional, but `sla` is one field holding four
+# numbers, so it is all four or none: `{ "sla": { "actualBps": 9999 } }` is a 422. The
+# editor sends the whole object for the same reason — its four `sla.*` fields build
+# one nested object, and a commitment is not four independent measurements.
+PATCH {{host}}/api/v1/data/monitors/{{monitorId}}
+Content-Type: application/json
+
+{
+  "sla": {
+    "targetBps": 9995,
+    "actualBps": 9999,
+    "creditNumerator": 1,
+    "creditDenominator": 20
+  }
+}
+
+### Half a commitment — 422 at the nested object
+PATCH {{host}}/api/v1/data/monitors/{{monitorId}}
+Content-Type: application/json
+
+{
+  "sla": {
+    "targetBps": 9995
+  }
+}
+
+### A packet loss above the column's own ceiling — 422
+PATCH {{host}}/api/v1/data/monitors/{{monitorId}}
+Content-Type: application/json
+
+{
+  "packetLossPpm": 1000001
+}
+
+### A monitor cannot be deleted either — 405
+DELETE {{host}}/api/v1/data/monitors/{{monitorId}}

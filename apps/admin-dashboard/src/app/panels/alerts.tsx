@@ -3,7 +3,9 @@
 import type { ReactElement } from "react";
 import { AlertTriangle, Coins, TrendingDown } from "lucide-react";
 import {
+  ALERT_CATEGORIES,
   ALERT_CATEGORY_TITLES,
+  ALERT_SEVERITIES,
   ALERT_SEVERITY_TITLES,
   type Alert,
   type AlertSeverity,
@@ -16,6 +18,8 @@ import { useFilterParam } from "../state/filter";
 import type { SectionStatus } from "../state/query";
 import { Empty, KeyValues, Panel, emptyMessage, summaryCounts, visibleBy } from "../ui/primitives";
 import { ScopePanel } from "../ui/scope";
+import { RecordEditor, asWrite, editorIdField, type FieldSpec, useRecordWrite } from "../ui/editor";
+import { createAlert, patchAlert } from "../mutations/alerts";
 
 /**
  * The `alerts` view's panels: three per section, and the middle column of each.
@@ -195,39 +199,6 @@ function AlertCard({ row }: { row: Alert }): ReactElement {
         <p className="mt-2 text-xs text-ink-muted">{row.automatedAction}</p>
       )}
     </article>
-  );
-}
-
-/** `alerts/feed`, right column: one alert in full. */
-export function FeedDetails({ section }: { section: string | null }): ReactElement {
-  const { rows, status } = useAlertFeed();
-  const row = rows.find((candidate) => candidate.id === section) ?? rows[0];
-
-  return (
-    <Panel title="Alert">
-      {row === undefined ? (
-        <Empty>
-          {status !== "ready"
-            ? emptyMessage({ status, filtered: false, noun: "alerts" })
-            : "Select an alert to view details"}
-        </Empty>
-      ) : (
-        <KeyValues
-          rows={[
-            { label: "Title", value: row.title },
-            { label: "Severity", value: ALERT_SEVERITY_TITLES[row.severity] },
-            { label: "Category", value: ALERT_CATEGORY_TITLES[row.category] },
-            { label: "Entity", value: row.entityLabel },
-            { label: "Provider", value: row.provider },
-            { label: "Location", value: row.city },
-            { label: "Impacted", value: `${row.impactedGbps} Gbps` },
-            { label: "Commitments", value: row.affectedSlas },
-            { label: "Raised", value: new Date(row.raisedAt).toLocaleString() },
-            { label: "Automation", value: row.automatedAction ?? "Nothing done" },
-          ]}
-        />
-      )}
-    </Panel>
   );
 }
 
@@ -539,3 +510,71 @@ export function SecurityFigures({ row }: { row: SecurityEvent }): ReactElement {
     />
   );
 }
+
+/**
+ * `alerts/feed`, right column: the alert this section is about, editable.
+ *
+ * The form replaces the read-only panel rather than sitting under it, because the
+ * two would show the same seven columns twice and the only thing that changed would
+ * be that one of them could be typed into. Everything here is `AlertWrite` and
+ * nothing else — a column the read side holds that a write does not accept is not
+ * sent, and a column the service refuses names itself in the refusal.
+ *
+ * There is no Delete, and its absence is the contract's: an alert is a record that
+ * something happened, and deleting it would remove the fact rather than correct it.
+ * A severity that was overstated is a severity that can be changed.
+ */
+export function AlertEditor({ section }: { section: string | null }): ReactElement {
+  const { rows, refetch } = useAlertFeed();
+  const write = useRecordWrite<Alert>({
+    rows,
+    selected: section,
+    keyOf: (row) => row.id,
+    create: (body) => createAlert(asWrite(body)),
+    save: (id, body) => patchAlert(id, asWrite(body)),
+    onSaved: refetch,
+  });
+
+  return <RecordEditor noun="alert" fields={ALERT_FIELDS} write={write} submitLabel="Save alert" />;
+}
+
+/** Every column `AlertWrite` accepts, in the order an operator reads an alert. */
+export const ALERT_FIELDS: readonly FieldSpec[] = [
+  editorIdField("alerts"),
+  { name: "title", label: "Title", kind: "text" },
+  { name: "description", label: "Description", kind: "multiline" },
+  {
+    name: "category",
+    label: "Category",
+    kind: "select",
+    options: ALERT_CATEGORIES.map((value) => ({ value, label: value })),
+  },
+  {
+    name: "severity",
+    label: "Severity",
+    kind: "select",
+    options: ALERT_SEVERITIES.map((value) => ({ value, label: value })),
+  },
+  { name: "entityId", label: "Entity id", kind: "text" },
+  { name: "entityLabel", label: "Entity", kind: "text" },
+  { name: "provider", label: "Provider", kind: "text" },
+  { name: "city", label: "City", kind: "text" },
+  { name: "lat", label: "Latitude", kind: "number", step: 0.0001 },
+  { name: "lng", label: "Longitude", kind: "number", step: 0.0001 },
+  { name: "impactedGbps", label: "Impacted", kind: "number", step: 0.1, hint: "Gbps" },
+  {
+    name: "affectedSlas",
+    label: "Commitments affected",
+    kind: "number",
+    step: 1,
+    hint: "whole commitments",
+  },
+  {
+    name: "automatedAction",
+    label: "Automated action",
+    kind: "text",
+    nullable: true,
+    hint: "empty for an alert nothing acted on",
+  },
+  { name: "raisedAt", label: "Raised at", kind: "instant" },
+];
