@@ -42,13 +42,33 @@ import * as schema from "./schema.js";
 /**
  * 2026-02-01T00:00:00Z. Every timestamp below is this plus a fixed number of
  * minutes, so the oldest row in the database is also the oldest one in the file.
+ *
+ * Exported because it is also the instant the e2e suite pins `CLOCK` to in
+ * `tests/boot.ts`, and a suite that pinned its own date would put the ageing
+ * assertions a day out of step with the fixture's due dates every time the epoch
+ * moved. One constant, so "which day is it in these tests" has one answer.
  */
-const EPOCH = Date.parse("2026-02-01T00:00:00.000Z");
+export const EPOCH = Date.parse("2026-02-01T00:00:00.000Z");
 
 const MINUTE = 60_000;
 
 /** `EPOCH` plus whole minutes, so the fixture reads as "twelve minutes in". */
 const at = (minutes: number): Date => new Date(EPOCH + minutes * MINUTE);
+
+/** Minutes in a day, for the two helpers below. */
+const DAY_MINUTES = 24 * 60;
+
+/**
+ * `EPOCH` minus whole days.
+ *
+ * The ageing fixtures need dates on either side of `EPOCH`, and `at` only takes
+ * minutes — so these two spell the day boundary once rather than making every call
+ * site write `at(-40 * 24 * 60)`, which is a number nobody can check at a glance.
+ */
+const daysBefore = (days: number): Date => at(-days * DAY_MINUTES);
+
+/** `EPOCH` plus whole days. */
+const daysAfter = (days: number): Date => at(days * DAY_MINUTES);
 
 const ORDERS = [
   {
@@ -870,6 +890,529 @@ const ALERTS = [
 const CURRENCY = "USD" as const;
 
 /**
+ * The customers the existing SLA rows are already about.
+ *
+ * Reused rather than invented, because `finance_bills.isp_id` and `sla_monitors
+ * .account` name the same five companies and a seed that gave them two sets of
+ * names would make "is this ISP's bill overdue" unanswerable across the two tables.
+ * The id is the stable half; the name is carried on every row that draws it.
+ */
+const ISPS = [
+  { id: "isp-coastal", name: "Coastal Broadband" },
+  { id: "isp-airtel", name: "Airtel Business" },
+  { id: "isp-he", name: "Hurricane Electric" },
+  { id: "isp-sokowango", name: "Sokowango Fiber" },
+  { id: "isp-vodacom", name: "Vodacom Tanzania" },
+] as const;
+
+const ispName = (ispId: string): string => {
+  const found = ISPS.find((isp) => isp.id === ispId);
+  if (found === undefined) {
+    throw new Error(`Seed references an unknown ISP: ${ispId}`);
+  }
+  return found.name;
+};
+
+/**
+ * Eleven bills: one per ISP for each of the three months around {@link EPOCH}.
+ *
+ * ## Why the due dates are the point of this fixture
+ *
+ * `revenue/receivables` ages every bill against the injected clock, and its group
+ * vocabulary is five ageing buckets. The e2e suite pins the clock to `EPOCH`, and
+ * these due dates are placed around it so that every bucket holds at least one
+ * `issued` or `disputed` bill:
+ *
+ * | Bucket     | Bill       | Due            | Overdue at `EPOCH` |
+ * | ---------- | ---------- | -------------- | ------------------ |
+ * | `current`  | `bil-0006` | `EPOCH + 30d`  | −30 (not yet due)  |
+ * | `d1_30`    | `bil-0005` | `EPOCH − 12d`  | 12                 |
+ * | `d1_30`    | `bil-0007` | `EPOCH − 10d`  | 10                 |
+ * | `d31_60`   | `bil-0008` | `EPOCH − 40d`  | 40                 |
+ * | `d61_90`   | `bil-0009` | `EPOCH − 70d`  | 70                 |
+ * | `d90_plus` | `bil-0010` | `EPOCH − 100d` | 100                |
+ *
+ * A bucket with no row in it is a chip that filters to nothing, which is a worse
+ * control than no chip at all, and `tests/schema.test.ts` asserts the coverage so
+ * this table cannot lose one without a test noticing.
+ *
+ * `bil-0007` is the only partly settled one, so the section has a row whose
+ * `outstanding` is neither its total nor nothing — a column where every row is zero
+ * or whole cannot tell a subtraction that ran from one that was skipped.
+ */
+const BILLS = [
+  {
+    id: "bil-0001",
+    ispId: "isp-coastal",
+    month: "2026-01",
+    committedMbps: 1_000,
+    commitmentChargeMinor: 100_000_00,
+    overageChargeMinor: 4_250_00,
+    slaCreditMinor: -12_500_00,
+    status: "paid",
+    dueAt: daysBefore(17),
+    disputeReason: null,
+    issuedAt: daysBefore(45),
+    settledMinor: 91_750_00,
+  },
+  {
+    id: "bil-0002",
+    ispId: "isp-airtel",
+    month: "2026-01",
+    committedMbps: 2_500,
+    commitmentChargeMinor: 250_000_00,
+    overageChargeMinor: 0,
+    slaCreditMinor: 0,
+    status: "paid",
+    dueAt: daysBefore(17),
+    disputeReason: null,
+    issuedAt: daysBefore(45),
+    settledMinor: 250_000_00,
+  },
+  {
+    id: "bil-0003",
+    ispId: "isp-he",
+    month: "2026-01",
+    committedMbps: 100,
+    commitmentChargeMinor: 10_000_00,
+    overageChargeMinor: 900_00,
+    slaCreditMinor: 0,
+    // Withdrawn rather than deleted: this workspace has no delete on a finance
+    // table, and a January bill for an ISP that never took the service is a fact.
+    status: "void",
+    dueAt: daysBefore(17),
+    disputeReason: null,
+    issuedAt: daysBefore(45),
+    settledMinor: 0,
+  },
+  {
+    id: "bil-0004",
+    ispId: "isp-sokowango",
+    month: "2026-01",
+    committedMbps: 500,
+    commitmentChargeMinor: 50_000_00,
+    overageChargeMinor: 1_100_00,
+    slaCreditMinor: -2_500_00,
+    status: "paid",
+    dueAt: daysBefore(17),
+    disputeReason: null,
+    issuedAt: daysBefore(45),
+    settledMinor: 48_600_00,
+  },
+  {
+    id: "bil-0005",
+    ispId: "isp-vodacom",
+    month: "2026-01",
+    committedMbps: 3_000,
+    commitmentChargeMinor: 300_000_00,
+    overageChargeMinor: 22_400_00,
+    slaCreditMinor: -18_000_00,
+    status: "disputed",
+    dueAt: daysBefore(12),
+    disputeReason:
+      "Overage metered against the Dar es Salaam commitment instead of ours for four days.",
+    issuedAt: daysBefore(45),
+    settledMinor: 0,
+  },
+  {
+    id: "bil-0006",
+    ispId: "isp-coastal",
+    month: "2026-02",
+    committedMbps: 1_000,
+    commitmentChargeMinor: 100_000_00,
+    overageChargeMinor: 3_100_00,
+    slaCreditMinor: 0,
+    status: "issued",
+    dueAt: daysAfter(30),
+    disputeReason: null,
+    issuedAt: daysBefore(1),
+    settledMinor: 0,
+  },
+  {
+    id: "bil-0007",
+    ispId: "isp-airtel",
+    month: "2026-02",
+    committedMbps: 2_500,
+    commitmentChargeMinor: 250_000_00,
+    overageChargeMinor: 0,
+    slaCreditMinor: 0,
+    status: "issued",
+    dueAt: daysBefore(10),
+    disputeReason: null,
+    issuedAt: daysBefore(1),
+    // Partly paid, so `outstanding` is neither the total nor nothing.
+    settledMinor: 100_000_00,
+  },
+  {
+    id: "bil-0008",
+    ispId: "isp-he",
+    month: "2026-02",
+    committedMbps: 100,
+    commitmentChargeMinor: 10_000_00,
+    overageChargeMinor: 1_450_00,
+    slaCreditMinor: -900_00,
+    status: "issued",
+    dueAt: daysBefore(40),
+    disputeReason: null,
+    issuedAt: daysBefore(1),
+    settledMinor: 0,
+  },
+  {
+    id: "bil-0009",
+    ispId: "isp-sokowango",
+    month: "2026-02",
+    committedMbps: 500,
+    commitmentChargeMinor: 50_000_00,
+    overageChargeMinor: 8_800_00,
+    slaCreditMinor: 0,
+    status: "disputed",
+    dueAt: daysBefore(70),
+    disputeReason: "Second Mombasa metro ring outage in the month; credit requested twice over.",
+    issuedAt: daysBefore(1),
+    settledMinor: 0,
+  },
+  {
+    id: "bil-0010",
+    ispId: "isp-vodacom",
+    month: "2026-02",
+    committedMbps: 3_000,
+    commitmentChargeMinor: 300_000_00,
+    overageChargeMinor: 31_900_00,
+    slaCreditMinor: -6_000_00,
+    status: "issued",
+    dueAt: daysBefore(100),
+    disputeReason: null,
+    issuedAt: daysBefore(1),
+    settledMinor: 0,
+  },
+  {
+    id: "bil-0011",
+    ispId: "isp-coastal",
+    month: "2026-03",
+    committedMbps: 1_000,
+    commitmentChargeMinor: 100_000_00,
+    overageChargeMinor: 0,
+    slaCreditMinor: 0,
+    // The only draft, and it is the reason `revenue/receivables` excludes `draft`:
+    // a month that has not been issued is not yet money anybody owes.
+    status: "draft",
+    dueAt: daysAfter(58),
+    disputeReason: null,
+    issuedAt: daysAfter(28),
+    settledMinor: 0,
+  },
+] as const;
+
+/**
+ * Three credits, one per basis, because `revenue/credits` filters on it.
+ *
+ * Every one of them is negative, which is the ledger's convention and the reason the
+ * `finance_credits_amount_lte_zero` check exists: a credit that raised a receivable
+ * would be a charge under a column named after a reduction.
+ *
+ * ## These are credits taken **after** the bill was issued, not its SLA line
+ *
+ * A bill carries an `sla_credit_minor` of its own, and no row here repeats one. The
+ * difference is the reason the two cannot be added together twice: the SLA line is
+ * priced into the invoice before it is issued, while a row here is a decision taken
+ * afterwards — a meter reading that turned out to be wrong, a goodwill gesture, half
+ * a shortfall credited while a report is read.
+ *
+ * `revenue/receivables` therefore reduces a bill's net total by these rows as well as
+ * subtracting what has been settled, and that is the only place the three credit
+ * tables' facts meet. `crd-0001` is deliberately not `12,500` and `crd-0002` is
+ * deliberately not `18,000`: a fixture where a credit row repeats a bill's SLA figure
+ * exactly is a fixture where the reader cannot tell whether the two are the same
+ * money, and the receivables figure would then depend on the answer.
+ */
+const CREDITS = [
+  {
+    id: "crd-0001",
+    billId: "bil-0006",
+    amountMinor: -6_250_00,
+    basis: "sla_shortfall",
+    note: "February commitment metered at 99.87% for four days; half the shortfall credited while the third-party monitor's report is read.",
+    recordedAt: daysBefore(2),
+  },
+  {
+    id: "crd-0002",
+    billId: "bil-0005",
+    amountMinor: -9_000_00,
+    basis: "dispute",
+    note: "Half the disputed overage credited now; the meter reading is still being checked.",
+    recordedAt: daysBefore(9),
+  },
+  {
+    id: "crd-0003",
+    billId: "bil-0004",
+    amountMinor: -7_500_00,
+    basis: "goodwill",
+    note: "Second Mombasa metro ring outage in January; credited as a gesture, not against the SLA.",
+    recordedAt: daysBefore(6),
+  },
+] as const;
+
+/**
+ * Six obligations, one per `PAYOUT_STATUSES` member.
+ *
+ * All five states are present for the same reason the ageing buckets are: a chip for
+ * a state with no row is a control that filters to nothing. The `failed` row carries
+ * a reason and no other row does, because the `finance_payouts_failure_reason_iff_
+ * failed` check refuses the other combination — so a payout that stopped says why
+ * and one that moved says nothing, which are different facts that would otherwise
+ * render as the same dash.
+ *
+ * `reference` names the bill each payout settles, and every one of those bills is
+ * `issued` or `paid`: an obligation against a `void` bill would be money owed for a
+ * month that was withdrawn.
+ */
+const PAYOUTS = [
+  {
+    id: "pay-0001",
+    ispId: "isp-coastal",
+    amountMinor: 91_750_00,
+    feeMinor: 450_00,
+    status: "completed",
+    method: "bank",
+    reference: "bil-0001",
+    occurredAt: daysBefore(14),
+    failureReason: null,
+  },
+  {
+    id: "pay-0002",
+    ispId: "isp-airtel",
+    amountMinor: 250_000_00,
+    feeMinor: 1_200_00,
+    status: "completed",
+    method: "usdc",
+    reference: "bil-0002",
+    occurredAt: daysBefore(14),
+    failureReason: null,
+  },
+  {
+    id: "pay-0003",
+    ispId: "isp-sokowango",
+    amountMinor: 48_600_00,
+    feeMinor: 260_00,
+    status: "sending",
+    method: "usdc",
+    reference: "bil-0004",
+    occurredAt: daysBefore(2),
+    failureReason: null,
+  },
+  {
+    id: "pay-0004",
+    ispId: "isp-vodacom",
+    amountMinor: 325_900_00,
+    feeMinor: 1_500_00,
+    status: "pending",
+    method: "bank",
+    reference: "bil-0010",
+    occurredAt: daysBefore(1),
+    failureReason: null,
+  },
+  {
+    id: "pay-0005",
+    ispId: "isp-he",
+    amountMinor: 10_550_00,
+    feeMinor: 60_00,
+    status: "converting",
+    method: "usdc",
+    reference: "bil-0008",
+    occurredAt: at(30),
+    failureReason: null,
+  },
+  {
+    id: "pay-0006",
+    ispId: "isp-coastal",
+    amountMinor: 103_100_00,
+    feeMinor: 480_00,
+    status: "failed",
+    method: "usdc",
+    reference: "bil-0006",
+    occurredAt: at(45),
+    failureReason: "Rail rejected the transfer: the destination wallet is on an unsupported chain.",
+  },
+] as const;
+
+/**
+ * The chart of accounts, one per `ACCOUNT_TYPES` member plus a second asset.
+ *
+ * Two assets rather than one so the `ledger/ledger` section has a group with more
+ * than one row in it, which is what tells a rollup that added up correctly from one
+ * that did not add up at all.
+ *
+ * `normalSide` is not a column and never will be. It is derived from `type` by
+ * `@hewa/ledger-accounting`'s `account(...)`, so "a revenue balance is positive
+ * because it was credited" has one definition in this workspace.
+ */
+const LEDGER_ACCOUNTS = [
+  { id: "acc-1000", name: "Accounts receivable", type: "asset", currency: CURRENCY },
+  { id: "acc-1001", name: "Cash at bank", type: "asset", currency: CURRENCY },
+  { id: "acc-2000", name: "Payout obligations", type: "liability", currency: CURRENCY },
+  { id: "acc-3000", name: "Marketplace revenue", type: "revenue", currency: CURRENCY },
+  { id: "acc-4000", name: "Network operating costs", type: "expense", currency: CURRENCY },
+  { id: "acc-5000", name: "Retained earnings", type: "equity", currency: CURRENCY },
+] as const;
+
+/**
+ * Eight journal entries, every one of which balances.
+ *
+ * Each entry is a positive posting beside a negative one, so the pair sums to zero by
+ * construction — and `tests/schema.test.ts` re-derives the whole trial balance through
+ * `@hewa/ledger-accounting`'s own `trialBalance` rather than trusting that.
+ *
+ * The signs are the ledger's, not the accounts': a revenue account is credited with a
+ * **negative** posting and its balance still reads positive, because
+ * `balancesFrom` flips it onto the normal side. That is the convention
+ * `totalsFor` reads, and writing the opposite here would be a second one.
+ *
+ * `reference` is unique, so a retrying settlement pipeline cannot post twice — and
+ * every account ends with a non-zero balance, because an account whose balance is
+ * always zero tells a reader nothing about whether the fold ran.
+ */
+const LEDGER_ENTRIES = [
+  {
+    id: "jrn-0001",
+    reference: "2026-01:accrual",
+    description: "January billing run: revenue accrued against receivables.",
+    occurredAt: daysBefore(45),
+    postings: [
+      { accountId: "acc-1000", amountMinor: 689_350_00 },
+      { accountId: "acc-3000", amountMinor: -689_350_00 },
+    ],
+  },
+  {
+    id: "jrn-0002",
+    reference: "2026-02:accrual",
+    description: "February billing run: revenue accrued against receivables.",
+    occurredAt: daysBefore(1),
+    postings: [
+      { accountId: "acc-1000", amountMinor: 806_350_00 },
+      { accountId: "acc-3000", amountMinor: -806_350_00 },
+    ],
+  },
+  {
+    id: "jrn-0003",
+    reference: "2026-01:operating-costs",
+    description: "January network operating costs paid from cash.",
+    occurredAt: daysBefore(20),
+    postings: [
+      { accountId: "acc-4000", amountMinor: 212_400_00 },
+      { accountId: "acc-1001", amountMinor: -212_400_00 },
+    ],
+  },
+  {
+    id: "jrn-0004",
+    reference: "2026-01:obligations",
+    description: "January payout obligations recognised as cost and liability.",
+    occurredAt: daysBefore(16),
+    postings: [
+      { accountId: "acc-4000", amountMinor: 389_350_00 },
+      { accountId: "acc-2000", amountMinor: -389_350_00 },
+    ],
+  },
+  {
+    id: "jrn-0005",
+    reference: "2026-01:payouts",
+    description: "January payouts settled against cash.",
+    occurredAt: daysBefore(14),
+    postings: [
+      { accountId: "acc-2000", amountMinor: 389_350_00 },
+      { accountId: "acc-1001", amountMinor: -389_350_00 },
+    ],
+  },
+  {
+    id: "jrn-0006",
+    reference: "2026-02:sla-credits",
+    description: "February SLA credits issued: revenue reduced and receivables relieved.",
+    occurredAt: daysBefore(3),
+    postings: [
+      { accountId: "acc-3000", amountMinor: 12_400_00 },
+      { accountId: "acc-1000", amountMinor: -12_400_00 },
+    ],
+  },
+  {
+    id: "jrn-0007",
+    reference: "2025-12:capital",
+    description: "Opening capital contributed by the owners.",
+    occurredAt: daysBefore(45),
+    postings: [
+      { accountId: "acc-1001", amountMinor: 1_000_000_00 },
+      { accountId: "acc-5000", amountMinor: -1_000_000_00 },
+    ],
+  },
+  {
+    id: "jrn-0008",
+    reference: "2026-02:obligations",
+    description: "February payout obligations recognised and not yet settled.",
+    occurredAt: daysBefore(1),
+    postings: [
+      { accountId: "acc-4000", amountMinor: 460_550_00 },
+      { accountId: "acc-2000", amountMinor: -460_550_00 },
+    ],
+  },
+] as const;
+
+/**
+ * One month of daily attestations for three cities.
+ *
+ * ## Coverage is the group vocabulary, so one city is short a day on purpose
+ *
+ * `proof/attestations` groups by its month's verdict, which is `complete` when every
+ * day of the month is published and `partial` when some are. Two complete cities and
+ * one that stops on the nineteenth puts both verdicts on screen, and the partial one
+ * is what an operator is looking for when they open the view.
+ *
+ * ## The days are generated, and the figures are a fixed walk
+ *
+ * Eighty-one hand-written rows would be eighty-one chances to mistype a figure, and
+ * none of them is the thing under test. `gross` steps by a constant per day and
+ * `costs` is 62% of it — no clock, no randomness, so a failing assertion names one
+ * day rather than a moving target. This is the same reasoning as `priceWalk` for the
+ * market's spot series.
+ */
+const ATTESTED_CITIES = [
+  { slug: "nbo", city: "Nairobi", days: 31, grossStartMinor: 420_000_00 },
+  { slug: "mba", city: "Mombasa", days: 19, grossStartMinor: 265_000_00 },
+  { slug: "dar", city: "Dar es Salaam", days: 31, grossStartMinor: 310_000_00 },
+] as const;
+
+/** The month every seeded attestation belongs to. January, which is complete by date. */
+const ATTESTED_MONTH = "2026-01";
+
+/**
+ * When a day's figures were published.
+ *
+ * Six in the morning, so it reads as a job that ran rather than as an instant that
+ * happens to be midnight — and it is derived from the row's own month and day rather
+ * than from `EPOCH`, because `EPOCH` is 1 February and every attestation here is in
+ * January.
+ */
+const publishedAt = (month: string, day: number): Date =>
+  new Date(Date.parse(`${month}-${String(day).padStart(2, "0")}T06:00:00.000Z`));
+
+const ATTESTATIONS = ATTESTED_CITIES.flatMap(({ slug, city, days, grossStartMinor }) =>
+  Array.from({ length: days }, (_, index) => {
+    const day = index + 1;
+    const grossMinor = grossStartMinor + day * 1_275_00;
+    return {
+      id: `att-${slug}-${ATTESTED_MONTH}-${String(day).padStart(2, "0")}`,
+      city,
+      month: ATTESTED_MONTH,
+      day,
+      currency: CURRENCY,
+      grossMinor,
+      // A whole number of minor units, never a division: `Math.round` on a ratio is
+      // the one rounding in this file, it happens here where it can be seen, and the
+      // value it produces is a figure a ledger can carry.
+      costsMinor: Math.round(grossMinor * 0.62),
+      publishedAt: publishedAt(ATTESTED_MONTH, day),
+    };
+  }),
+);
+
+/**
  * The rows a given connection should hold.
  *
  * ## Every alert category, and why that is asserted rather than assumed
@@ -920,6 +1463,27 @@ export function seedRows() {
       };
     }),
     alerts: [...ALERTS],
+
+    // Finance. The two flat lists are the entries and their legs, kept apart because
+    // the tables are: a test that rebuilds `JournalEntry` objects out of them is
+    // exercising the same join the service does, rather than reading back a nested
+    // structure the seed happened to build in memory.
+    bills: BILLS.map((bill) => ({ ...bill, ispName: ispName(bill.ispId), currency: CURRENCY })),
+    credits: CREDITS.map((credit) => ({ ...credit })),
+    payouts: PAYOUTS.map((payout) => ({
+      ...payout,
+      ispName: ispName(payout.ispId),
+      currency: CURRENCY,
+    })),
+    ledgerAccounts: LEDGER_ACCOUNTS.map((account_) => ({ ...account_ })),
+    ledgerEntries: LEDGER_ENTRIES.map(({ postings: _legs, ...entry }) => ({
+      ...entry,
+      currency: CURRENCY,
+    })),
+    ledgerPostings: LEDGER_ENTRIES.flatMap((entry) =>
+      entry.postings.map((leg) => ({ entryId: entry.id, ...leg })),
+    ),
+    attestations: ATTESTATIONS.map((attestation) => ({ ...attestation })),
   };
 }
 
@@ -932,9 +1496,11 @@ export function seedRows() {
  * identity column and a table that keeps counting across re-seeds gives two different
  * id sequences for the same data.
  *
- * The order matters only for the foreign key: `infrastructure_nodes` before
- * `sla_monitors`. Everything else is independent, and Drizzle sends each insert as
- * one multi-row statement so this is eight round trips rather than sixty.
+ * The order matters for the foreign keys and only for them: `infrastructure_nodes`
+ * before `sla_monitors`, and on the finance side the chart before the entries, the
+ * entries before their legs, and the bills before the credits that point at them.
+ * Everything else is independent, and Drizzle sends each insert as one multi-row
+ * statement so this is fourteen round trips rather than a hundred and thirty.
  */
 export async function seedDatabase(db: Database): Promise<void> {
   const rows = seedRows();
@@ -946,6 +1512,13 @@ export async function seedDatabase(db: Database): Promise<void> {
   await db.insert(schema.settlements).values(rows.settlements);
   await db.insert(schema.slaMonitors).values(rows.monitors);
   await db.insert(schema.alerts).values(rows.alerts);
+  await db.insert(schema.financeBills).values(rows.bills);
+  await db.insert(schema.financeCredits).values(rows.credits);
+  await db.insert(schema.financePayouts).values(rows.payouts);
+  await db.insert(schema.financeLedgerAccounts).values(rows.ledgerAccounts);
+  await db.insert(schema.financeLedgerEntries).values(rows.ledgerEntries);
+  await db.insert(schema.financeLedgerPostings).values(rows.ledgerPostings);
+  await db.insert(schema.financeAttestations).values(rows.attestations);
 }
 
 /**
@@ -955,10 +1528,21 @@ export async function seedDatabase(db: Database): Promise<void> {
  * workspace's own, written out in the same order as {@link seedRows} so a table
  * added to the schema without a truncate shows up as a `TRUNCATE` that leaves rows
  * behind — which the e2e test's row counts would catch.
+ *
+ * `cascade` means the order here is documentation rather than a requirement, which is
+ * the better property: a table added to this list without a truncate is caught by a
+ * row count, and a table left out of the schema entirely is caught by the migration.
  */
 function truncateAll() {
   return sql`truncate table
     ${sql.raw("alerts")},
+    ${sql.raw("finance_attestations")},
+    ${sql.raw("finance_ledger_postings")},
+    ${sql.raw("finance_ledger_entries")},
+    ${sql.raw("finance_ledger_accounts")},
+    ${sql.raw("finance_payouts")},
+    ${sql.raw("finance_credits")},
+    ${sql.raw("finance_bills")},
     ${sql.raw("sla_monitors")},
     ${sql.raw("settlements")},
     ${sql.raw("infrastructure_nodes")},

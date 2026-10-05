@@ -16,6 +16,26 @@ export const PAYOUT_STATUSES = ["pending", "converting", "sending", "completed",
 
 export type PayoutStatus = (typeof PAYOUT_STATUSES)[number];
 
+/**
+ * How each status is written where a human reads it.
+ *
+ * Keyed by the **value** a row carries rather than by the member name, so a panel
+ * writes "Converting" while its filter is keyed on `converting`. Built from the
+ * member name it would read "Converting" for one of the five and "Failed" for
+ * another by coincidence, and "Payoutstatus.Completed" for the rest.
+ *
+ * A `Record<PayoutStatus, string>` rather than a partial one, so a status added to
+ * `PAYOUT_STATUSES` without a title is a compile error here and not an `undefined`
+ * in a status column.
+ */
+export const PAYOUT_STATUS_TITLES: Readonly<Record<PayoutStatus, string>> = {
+  pending: "Pending",
+  converting: "Converting",
+  sending: "Sending",
+  completed: "Completed",
+  failed: "Failed",
+};
+
 const PAYOUT_STATUS_SET: ReadonlySet<string> = new Set(PAYOUT_STATUSES);
 
 export function isPayoutStatus(value: unknown): value is PayoutStatus {

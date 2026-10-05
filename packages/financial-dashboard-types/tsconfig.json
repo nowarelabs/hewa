@@ -1,0 +1,15 @@
+{
+  "extends": "@hewa/tsconfig/library.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "types": ["node"],
+    "paths": {
+      "@hewa/billing-domain": ["../billing-domain/src/index.ts"],
+      "@hewa/ledger-accounting": ["../ledger-accounting/src/index.ts"],
+      "@hewa/marketplace-types": ["../marketplace-types/src/index.ts"],
+      "@hewa/response-codes": ["../response-codes/src/index.ts"],
+      "@hewa/settlement-domain": ["../settlement-domain/src/index.ts"]
+    }
+  },
+  "include": ["src", "tests"]
+}

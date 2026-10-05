@@ -3,11 +3,15 @@
   "compilerOptions": {
     "noEmit": true,
     "paths": {
+      "@hewa/billing-domain": ["../../packages/billing-domain/src/index.ts"],
       "@hewa/console-types": ["../../packages/console-types/src/index.ts"],
       "@hewa/errors": ["../../packages/errors/src/index.ts"],
+      "@hewa/financial-dashboard-types": ["../../packages/financial-dashboard-types/src/index.ts"],
+      "@hewa/ledger-accounting": ["../../packages/ledger-accounting/src/index.ts"],
       "@hewa/marketplace-types": ["../../packages/marketplace-types/src/index.ts"],
       "@hewa/observability": ["../../packages/observability/src/index.ts"],
-      "@hewa/response-codes": ["../../packages/response-codes/src/index.ts"]
+      "@hewa/response-codes": ["../../packages/response-codes/src/index.ts"],
+      "@hewa/settlement-domain": ["../../packages/settlement-domain/src/index.ts"]
     }
   },
   "include": ["src", "tests"]

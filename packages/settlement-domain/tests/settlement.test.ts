@@ -4,6 +4,8 @@ import { conversionQuote, InMemoryStablecoinWallet } from "@hewa/crypto";
 import {
   assertNoDuplicateReferences,
   canTransitionPayout,
+  PAYOUT_STATUSES,
+  PAYOUT_STATUS_TITLES,
   convertPayout,
   outstanding,
   payoutObligation,
@@ -71,6 +73,20 @@ describe("status machine", () => {
     // Re-sending a settled payout is the expensive failure this guards.
     expect(canTransitionPayout("completed", "sending")).toBe(false);
     expect(canTransitionPayout("sending", "pending")).toBe(false);
+  });
+});
+
+describe("display titles", () => {
+  test("names every status the machine can be in", () => {
+    // The titles map and the transition machine are read from the same list, and a
+    // status with a title but no moves is a chip an operator can press onto nothing.
+    expect(Object.keys(PAYOUT_STATUS_TITLES).toSorted()).toEqual([...PAYOUT_STATUSES].toSorted());
+  });
+
+  test("a title is a phrase and not the wire value", () => {
+    for (const status of PAYOUT_STATUSES) {
+      expect(PAYOUT_STATUS_TITLES[status], status).not.toBe(status);
+    }
   });
 });
 

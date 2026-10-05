@@ -2,6 +2,7 @@ import { Global, Module } from "@nestjs/common";
 import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
 
 import { loadEnv } from "../config/env.js";
+import { CLOCK, systemClock } from "./clock.js";
 import * as schema from "./schema.js";
 
 /**
@@ -41,7 +42,10 @@ export type Database = NodePgDatabase<typeof schema>;
       provide: DB,
       useFactory: (): Database => drizzle(loadEnv().databaseUrl, { schema, casing: "snake_case" }),
     },
+    // Provided beside the connection because it is overridden beside it: both are
+    // the two things a test has to control, and both are global for the same reason.
+    { provide: CLOCK, useValue: systemClock },
   ],
-  exports: [DB],
+  exports: [DB, CLOCK],
 })
 export class DbModule {}

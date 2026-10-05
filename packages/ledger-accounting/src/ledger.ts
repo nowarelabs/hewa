@@ -12,6 +12,24 @@ export const ACCOUNT_TYPES = ["asset", "liability", "revenue", "expense", "equit
 
 export type AccountType = (typeof ACCOUNT_TYPES)[number];
 
+/**
+ * How each type is written where a human reads it.
+ *
+ * Beside the list rather than in a panel, keyed by the **value** a row carries, so
+ * `revenue` reads "Revenue" while a filter is keyed on `revenue`. A panel that
+ * built these by upper-casing the member name would render `Liability` correctly
+ * and `Expense` correctly and get the rest only by luck — the titles are a
+ * vocabulary, and a vocabulary held per-surface is two answers to "what do we call
+ * this account type".
+ */
+export const ACCOUNT_TYPE_TITLES: Readonly<Record<AccountType, string>> = {
+  asset: "Asset",
+  liability: "Liability",
+  revenue: "Revenue",
+  expense: "Expense",
+  equity: "Equity",
+};
+
 const ACCOUNT_TYPE_SET: ReadonlySet<string> = new Set(ACCOUNT_TYPES);
 
 export function isAccountType(value: unknown): value is AccountType {

@@ -2,6 +2,7 @@ import { describe, expect, test } from "vite-plus/test";
 import { money } from "@hewa/marketplace-types";
 import {
   ACCOUNT_TYPES,
+  ACCOUNT_TYPE_TITLES,
   account,
   assertBalanced,
   assertLedgerBalances,
@@ -44,6 +45,13 @@ describe("chart of accounts", () => {
 
   test("rejects an unknown type at construction", () => {
     expect(() => account("x", "X", "contra" as never, "USD")).toThrow(/Unsupported account type/);
+  });
+
+  test("names every type where a person reads it", () => {
+    // Keyed by the value a row carries, so a chart of accounts labelled by its own
+    // enum member renders `Asset` by luck and `Liability` only by hand.
+    expect(Object.keys(ACCOUNT_TYPE_TITLES).toSorted()).toEqual([...ACCOUNT_TYPES].toSorted());
+    expect(ACCOUNT_TYPE_TITLES.liability).toBe("Liability");
   });
 });
 

@@ -1,9 +1,19 @@
 import { describe, expect, test } from "vite-plus/test";
 import { ALERT_CATEGORIES } from "@hewa/console-types";
+import { RECEIVABLE_BUCKETS } from "@hewa/financial-dashboard-types";
+import {
+  ACCOUNT_TYPES,
+  account,
+  balancesFrom,
+  indexAccounts,
+  trialBalance,
+} from "@hewa/ledger-accounting";
 import { SLA_STATES, TRANSACTION_STATUSES, slaCommitment, slaState } from "@hewa/marketplace-types";
+import { PAYOUT_STATUSES } from "@hewa/settlement-domain";
 
+import { receivableBucket } from "../src/api-v1/finance/ageing.js";
 import * as schema from "../src/db/schema.js";
-import { seedRows } from "../src/db/seed.js";
+import { EPOCH, seedRows } from "../src/db/seed.js";
 
 /**
  * The invariants the schema and the seed have to hold.
@@ -100,6 +110,53 @@ describe("the group vocabularies", () => {
 
   test("the sla state column is the domain's own list", () => {
     expect(schema.slaStateEnum.enumValues).toEqual([...SLA_STATES]);
+  });
+
+  test("a bill's status is a status the column declares", () => {
+    everyRowIsGrouped(
+      rows.bills.map((bill) => bill.status),
+      schema.billStatusEnum.enumValues,
+      "bills",
+    );
+  });
+
+  test("a credit's basis is a basis the column declares", () => {
+    everyRowIsGrouped(
+      rows.credits.map((credit) => credit.basis),
+      schema.creditBasisEnum.enumValues,
+      "credits",
+    );
+  });
+
+  test("a payout's status is a status the column declares", () => {
+    everyRowIsGrouped(
+      rows.payouts.map((payout) => payout.status),
+      schema.financePayoutStatusEnum.enumValues,
+      "finance payouts",
+    );
+  });
+
+  test("the finance payout status column is the domain's own list", () => {
+    // Same reasoning as `transactionStatusEnum` above, and for the same reason: the
+    // column cannot take `PAYOUT_STATUSES` directly because `pgEnum` wants a mutable
+    // array. `assertPayoutTransition` decides which move is legal from this list, so
+    // a payout status added to the domain and not to the column is a status this
+    // service will refuse to write on a machine rather than in a build.
+    expect([...schema.financePayoutStatusEnum.enumValues].sort()).toEqual(
+      [...PAYOUT_STATUSES].sort(),
+    );
+  });
+
+  test("the account type column is the domain's own list", () => {
+    expect(schema.accountTypeEnum.enumValues).toEqual([...ACCOUNT_TYPES]);
+  });
+
+  test("a ledger account's type is a type the column declares", () => {
+    everyRowIsGrouped(
+      rows.ledgerAccounts.map((row_) => row_.type),
+      schema.accountTypeEnum.enumValues,
+      "ledger accounts",
+    );
   });
 });
 
@@ -273,6 +330,86 @@ describe("the seeded rows", () => {
     }
   });
 
+  test("every bill status, credit basis and payout status has a row, so no chip is dead", () => {
+    // The other direction from `everyRowIsGrouped`, and the one the finance sections
+    // need most: all three sections filter on exactly one of these, so a status the
+    // seed leaves out is a chip that empties the table. A panel that renders its empty
+    // state proves the query ran, not that it answered.
+    const bills = new Set(rows.bills.map((bill) => bill.status));
+    expect([...schema.billStatusEnum.enumValues].filter((status) => !bills.has(status))).toEqual(
+      [],
+    );
+
+    const bases = new Set(rows.credits.map((credit) => credit.basis));
+    expect([...schema.creditBasisEnum.enumValues].filter((basis) => !bases.has(basis))).toEqual([]);
+
+    const statuses = new Set(rows.payouts.map((payout) => payout.status));
+    expect([...PAYOUT_STATUSES].filter((status) => !statuses.has(status))).toEqual([]);
+  });
+
+  test("a bill's net total is the sum of its own three parts", () => {
+    // The column is not stored and the panel computes it, so this is the assertion
+    // that the fixture can be invoiced: `net_total_minor` is absent from
+    // `finance_bills` on purpose, and a seed whose parts do not add up would produce
+    // an invoice no reader could reconcile.
+    for (const bill of rows.bills) {
+      const total = bill.commitmentChargeMinor + bill.overageChargeMinor + bill.slaCreditMinor;
+      expect(bill.commitmentChargeMinor, `${bill.id} commitment`).toBeGreaterThanOrEqual(0);
+      expect(bill.overageChargeMinor, `${bill.id} overage`).toBeGreaterThanOrEqual(0);
+      expect(bill.slaCreditMinor, `${bill.id} sla credit`).toBeLessThanOrEqual(0);
+      expect(total, `${bill.id} totals`).toBeGreaterThan(0);
+    }
+  });
+
+  test("a bill's month is the `YYYY-MM` its column checks", () => {
+    for (const bill of rows.bills) {
+      expect(bill.month, bill.id).toMatch(/^[0-9]{4}-[0-9]{2}$/);
+      expect(daysIn(bill.month), `${bill.id} month`).toBeGreaterThanOrEqual(28);
+    }
+  });
+
+  test("a credit is a reduction and it does not repeat its bill's SLA line", () => {
+    const billsById = new Map(rows.bills.map((bill) => [bill.id, bill]));
+
+    for (const credit of rows.credits) {
+      const bill = billsById.get(credit.billId);
+      expect(bill, `${credit.id} names no seeded bill`).toBeDefined();
+      expect(credit.amountMinor, `${credit.id} amount`).toBeLessThanOrEqual(0);
+      // `finance_credits` holds a decision taken *after* issue, so its figure is
+      // additional to the invoice rather than a copy of the SLA line on it. A credit
+      // equal to its bill's `sla_credit_minor` would be either a double count in
+      // `revenue/receivables` or a row indistinguishable from a column, and the
+      // receivables figure would depend on which the reader picked.
+      expect(credit.amountMinor, `${credit.id} repeats ${bill?.id}'s sla credit`).not.toBe(
+        bill?.slaCreditMinor,
+      );
+    }
+  });
+
+  test("a payout is a positive obligation, and it names a bill that was not withdrawn", () => {
+    const billsById = new Map(rows.bills.map((bill) => [bill.id, bill]));
+
+    for (const payout of rows.payouts) {
+      expect(payout.amountMinor, `${payout.id} amount`).toBeGreaterThan(0);
+      expect(payout.feeMinor, `${payout.id} fee`).toBeGreaterThanOrEqual(0);
+
+      const bill = billsById.get(payout.reference);
+      expect(bill, `${payout.id} names no seeded bill`).toBeDefined();
+      // An obligation against a `void` bill is money owed for a month that was
+      // withdrawn, which is a row that reads as owed and is not.
+      expect(bill?.status, `${payout.id} settles a ${bill?.status} bill`).not.toBe("void");
+    }
+  });
+
+  test("a bill is disputed or it has no dispute reason", () => {
+    for (const bill of rows.bills) {
+      expect(bill.disputeReason !== null, `${bill.id} reason`).toBe(bill.status === "disputed");
+      if (bill.disputeReason !== null) {
+        expect(bill.disputeReason.length, `${bill.id} reason is empty`).toBeGreaterThan(0);
+      }
+    }
+  });
+
   test("every node kind has a row, so no chip is dead", () => {
     // The other direction from `everyRowIsGrouped`, and the one the client owns. A
     // vocabulary entry with nothing on it is a chip an operator can press to see
@@ -283,3 +420,215 @@ describe("the seeded rows", () => {
     expect([...covered].sort()).toEqual([...schema.nodeKindEnum.enumValues].sort());
   });
 });
+
+/**
+ * The seeded ledger, folded through the domain package rather than read back.
+ *
+ * This is the one place the fixture's ledger is checked as a **book** rather than as
+ * rows. `tests/finance.e2e.test.ts` asserts the section's own three columns agree
+ * with each other, which is a check on the mapper; this asserts the postings are a
+ * set of journal entries that balance and a trial balance that foots, which is a
+ * check on the fixture. A seed that posted a revenue accrual with the sign of the
+ * other side would satisfy every per-row assertion above and produce a revenue
+ * account that grew by being debited.
+ */
+describe("the seeded ledger", () => {
+  const accounts = rows.ledgerAccounts.map((row_) =>
+    account(row_.id, row_.name, row_.type, row_.currency),
+  );
+  const currencies = new Map(accounts.map((row_) => [row_.id, row_.currency]));
+
+  /** The entries the two flat lists make, which is the join the service performs. */
+  const entries = rows.ledgerEntries.map((entry) => ({
+    ...entry,
+    postings: rows.ledgerPostings
+      .filter((leg) => leg.entryId === entry.id)
+      .map((leg) => ({
+        accountId: leg.accountId,
+        amountMinor: leg.amountMinor,
+        currency: currencies.get(leg.accountId),
+      })),
+  }));
+
+  test("every posting belongs to a seeded entry", () => {
+    // The direction that catches a typo in a seed constant: an orphan leg loads fine,
+    // because the foreign key is satisfied by *some* entry, and then it is a row no
+    // entry read will ever return.
+    const known = new Set(rows.ledgerEntries.map((entry) => entry.id));
+    for (const leg of rows.ledgerPostings) {
+      expect(known, `${leg.entryId} has a leg with no entry`).toContain(leg.entryId);
+    }
+  });
+
+  test("every posting names an account in the chart", () => {
+    const known = new Set(accounts.map((row_) => row_.id));
+    for (const leg of rows.ledgerPostings) {
+      expect(known, `${leg.accountId} is not in the chart`).toContain(leg.accountId);
+    }
+    // `indexAccounts` is the domain's own duplicate check, and a chart with two
+    // accounts of one name and currency would be caught by the schema's unique index
+    // rather than here — so this is about the service's own failure mode instead.
+    expect(() => indexAccounts(accounts)).not.toThrow();
+  });
+
+  test("every entry has at least two legs and balances", () => {
+    for (const entry of entries) {
+      expect(entry.postings.length, `${entry.id} legs`).toBeGreaterThanOrEqual(2);
+      const total = entry.postings.reduce((sum, leg) => sum + (leg.amountMinor ?? 0), 0);
+      expect(total, `${entry.id} sums to ${total}`).toBe(0);
+      for (const leg of entry.postings) {
+        expect(leg.amountMinor, `${entry.id} has a zero posting`).not.toBe(0);
+      }
+    }
+  });
+
+  test("the trial balance foots", () => {
+    // `trialBalance` sums the *raw* debits and credits across every entry, which is
+    // the check that matters: summing normal-side balances would prove nothing,
+    // because a revenue account's balance is positive precisely by being credited.
+    const balance = trialBalance(
+      entries.map((entry) => ({
+        id: entry.id,
+        reference: entry.reference,
+        description: entry.description,
+        occurredAt: entry.occurredAt.toISOString(),
+        postings: entry.postings.map((leg) => ({
+          accountId: leg.accountId,
+          amount: { amountMinor: leg.amountMinor ?? 0, currency: "USD" },
+        })),
+      })),
+      "USD",
+    );
+
+    expect(balance.debits.amountMinor - balance.credits.amountMinor, "trial balance").toBe(0);
+    expect(balance.debits.amountMinor).toBeGreaterThan(0);
+  });
+
+  test("every account was posted to and ends with a non-zero balance", () => {
+    const balances = new Map(
+      balancesFrom(
+        accounts,
+        entries.map((entry) => ({
+          id: entry.id,
+          reference: entry.reference,
+          description: entry.description,
+          occurredAt: entry.occurredAt.toISOString(),
+          postings: entry.postings.map((leg) => ({
+            accountId: leg.accountId,
+            amount: { amountMinor: leg.amountMinor ?? 0, currency: "USD" },
+          })),
+        })),
+      ).map((row_) => [row_.accountId, row_.balance.amountMinor]),
+    );
+
+    for (const row_ of accounts) {
+      const balance = balances.get(row_.id);
+      expect(balance, `${row_.id} has no balance`).toBeDefined();
+      // An account whose balance is always zero tells a reader nothing about whether
+      // the fold ran, which is what this is here to catch.
+      expect(balance, `${row_.id} is zero`).not.toBe(0);
+    }
+  });
+
+  test("revenue was credited, not debited, and reads positive", () => {
+    const revenue = accounts.filter((row_) => row_.type === "revenue");
+    expect(revenue.length).toBeGreaterThan(0);
+
+    const positive = rows.ledgerPostings
+      .filter((leg) => revenue.some((row_) => row_.id === leg.accountId))
+      .reduce((sum, leg) => sum + leg.amountMinor, 0);
+
+    // Every accrual to a revenue account is a negative posting under this package's
+    // convention, and the whole `ledger/ledger` section is wrong if it is not.
+    expect(positive, "revenue's postings sum positive").toBeLessThan(0);
+  });
+});
+
+/**
+ * The ageing fixture and the rule that reads it.
+ *
+ * The buckets are the group vocabulary of `revenue/receivables`, so a bucket with no
+ * row in it is a chip that filters to nothing — and the rule itself is spelled out
+ * here rather than left to whatever the fixture happens to contain, because a fixture
+ * with only comfortable cases would pass while the boundary at 30 was wrong.
+ */
+describe("the ageing fixture", () => {
+  const epoch = new Date(EPOCH);
+
+  test("the rule's boundaries are the ones the section documents", () => {
+    expect(receivableBucket(-30)).toBe("current");
+    expect(receivableBucket(0)).toBe("current");
+    expect(receivableBucket(1)).toBe("d1_30");
+    expect(receivableBucket(30)).toBe("d1_30");
+    expect(receivableBucket(31)).toBe("d31_60");
+    expect(receivableBucket(60)).toBe("d31_60");
+    expect(receivableBucket(61)).toBe("d61_90");
+    expect(receivableBucket(90)).toBe("d61_90");
+    expect(receivableBucket(91)).toBe("d90_plus");
+  });
+
+  test("every bucket has an issued or disputed bill at the epoch", () => {
+    const buckets = new Set(
+      rows.bills
+        .filter((bill) => bill.status === "issued" || bill.status === "disputed")
+        .map((bill) =>
+          receivableBucket(Math.trunc((epoch.getTime() - bill.dueAt.getTime()) / 86_400_000)),
+        ),
+    );
+
+    expect([...RECEIVABLE_BUCKETS].filter((bucket) => !buckets.has(bucket))).toEqual([]);
+  });
+});
+
+describe("the seeded attestations", () => {
+  test("one row per city and day, and the day is a day of that month", () => {
+    const keys = new Set<string>();
+
+    for (const row of rows.attestations) {
+      const key = `${row.city} ${row.month} ${row.day}`;
+      expect(keys.has(key), `${key} is published twice`).toBe(false);
+      keys.add(key);
+
+      expect(row.month, row.id).toMatch(/^[0-9]{4}-[0-9]{2}$/);
+      expect(row.day, `${row.id} day`).toBeGreaterThanOrEqual(1);
+      expect(row.day, `${row.id} day`).toBeLessThanOrEqual(daysIn(row.month));
+      expect(row.grossMinor, `${row.id} gross`).toBeGreaterThanOrEqual(0);
+      expect(row.costsMinor, `${row.id} costs`).toBeGreaterThanOrEqual(0);
+      // `gross - costs` is what the panel shows as the day's net, and the column pair
+      // is the only place that subtraction exists.
+      expect(row.grossMinor - row.costsMinor, `${row.id} net is negative`).toBeGreaterThan(0);
+    }
+  });
+
+  test("one city is short a day, so both verdicts are on screen", () => {
+    const byCity = new Map<string, Set<number>>();
+    for (const row of rows.attestations) {
+      const days = byCity.get(row.city) ?? new Set<number>();
+      days.add(row.day);
+      byCity.set(row.city, days);
+    }
+
+    const coverage = [...byCity.entries()].map(([city, days]) => [
+      city,
+      days.size >= daysIn(rows.attestations.find((row) => row.city === city)?.month ?? ""),
+    ]);
+
+    // Two complete cities and one short, in the same month. A verdict per month
+    // would call that month complete and hide the shortfall, which is the reason the
+    // verdict is judged per `(city, month)`.
+    expect(coverage.filter(([, complete]) => complete)).toHaveLength(2);
+    expect(coverage.filter(([, complete]) => !complete)).toHaveLength(1);
+  });
+});
+
+/**
+ * How many days a `YYYY-MM` month has, computed the way `records.ts` computes it.
+ *
+ * Duplicated here on purpose rather than imported: this is the fixture's own view of
+ * a calendar, and a test that called the function under test to decide what the
+ * fixture should contain would agree with a wrong implementation.
+ */
+function daysIn(month: string): number {
+  const [year, monthNumber] = month.split("-").map(Number);
+  return new Date(Date.UTC(year, monthNumber, 0)).getUTCDate();
+}

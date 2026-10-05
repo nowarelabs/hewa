@@ -606,31 +606,67 @@ importers:
 
   apps/financial-dashboard:
     dependencies:
+      '@hewa/app-shell':
+        specifier: workspace:*
+        version: link:../../packages/app-shell
+      '@hewa/financial-dashboard-types':
+        specifier: workspace:*
+        version: link:../../packages/financial-dashboard-types
+      '@hewa/ledger-accounting':
+        specifier: workspace:*
+        version: link:../../packages/ledger-accounting
+      '@hewa/marketplace-types':
+        specifier: workspace:*
+        version: link:../../packages/marketplace-types
       '@hewa/response-codes':
         specifier: workspace:*
         version: link:../../packages/response-codes
+      '@hewa/settlement-domain':
+        specifier: workspace:*
+        version: link:../../packages/settlement-domain
+      '@tailwindcss/vite':
+        specifier: 'catalog:'
+        version: 4.3.3(@voidzero-dev/vite-plus-core@1.0.0(@types/node@26.6.3)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(typescript@6.0.3)(yaml@2.9.1))
       '@tanstack/react-query':
         specifier: 'catalog:'
         version: 5.104.0(react@19.3.0)
+      lucide-react:
+        specifier: 'catalog:'
+        version: 1.48.0(react@19.3.0)
       next:
         specifier: 'catalog:'
         version: 16.3.6(@types/node@26.6.3)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
+      nuqs:
+        specifier: 'catalog:'
+        version: 2.10.1(next@16.3.6(@types/node@26.6.3)(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(react@19.3.0)
       react:
         specifier: 'catalog:'
         version: 19.3.0
       react-dom:
         specifier: 'catalog:'
         version: 19.3.0(react@19.3.0)
+      server-only:
+        specifier: 'catalog:'
+        version: 0.0.1
+      tailwindcss:
+        specifier: 'catalog:'
+        version: 4.3.3
     devDependencies:
       '@hewa/tsconfig':
         specifier: workspace:*
         version: link:../../packages/tsconfig
+      '@tailwindcss/postcss':
+        specifier: 'catalog:'
+        version: 4.3.3
       '@types/react':
         specifier: 'catalog:'
         version: 19.3.0
       '@types/react-dom':
         specifier: 'catalog:'
         version: 19.3.0(@types/react@19.3.0)
+      happy-dom:
+        specifier: 'catalog:'
+        version: 20.14.5
       typescript:
         specifier: 'catalog:'
         version: 6.0.3
@@ -1131,6 +1167,37 @@ importers:
         specifier: 'catalog:'
         version: 1.0.0(@types/node@26.6.3)(@vitest/ui@5.0.1)(esbuild@0.28.2)(happy-dom@20.14.5)(jiti@2.7.0)(tsx@4.23.15)(typescript@6.0.3)(yaml@2.9.1)
 
+  packages/financial-dashboard-types:
+    dependencies:
+      '@hewa/billing-domain':
+        specifier: workspace:*
+        version: link:../billing-domain
+      '@hewa/ledger-accounting':
+        specifier: workspace:*
+        version: link:../ledger-accounting
+      '@hewa/marketplace-types':
+        specifier: workspace:*
+        version: link:../marketplace-types
+      '@hewa/response-codes':
+        specifier: workspace:*
+        version: link:../response-codes
+      '@hewa/settlement-domain':
+        specifier: workspace:*
+        version: link:../settlement-domain
+    devDependencies:
+      '@hewa/tsconfig':
+        specifier: workspace:*
+        version: link:../tsconfig
+      '@types/node':
+        specifier: 'catalog:'
+        version: 26.6.3
+      typescript:
+        specifier: 'catalog:'
+        version: 6.0.3
+      vite-plus:
+        specifier: 'catalog:'
+        version: 1.0.0(@types/node@26.6.3)(@vitest/ui@5.0.1)(esbuild@0.28.2)(happy-dom@20.14.5)(jiti@2.7.0)(tsx@4.23.15)(typescript@6.0.3)(yaml@2.9.1)
+
   packages/ledger-accounting:
     dependencies:
       '@hewa/errors':
@@ -1361,12 +1428,21 @@ importers:
 
   services/central-api:
     dependencies:
+      '@hewa/billing-domain':
+        specifier: workspace:*
+        version: link:../../packages/billing-domain
       '@hewa/console-types':
         specifier: workspace:*
         version: link:../../packages/console-types
       '@hewa/errors':
         specifier: workspace:*
         version: link:../../packages/errors
+      '@hewa/financial-dashboard-types':
+        specifier: workspace:*
+        version: link:../../packages/financial-dashboard-types
+      '@hewa/ledger-accounting':
+        specifier: workspace:*
+        version: link:../../packages/ledger-accounting
       '@hewa/marketplace-types':
         specifier: workspace:*
         version: link:../../packages/marketplace-types
@@ -1376,6 +1452,9 @@ importers:
       '@hewa/response-codes':
         specifier: workspace:*
         version: link:../../packages/response-codes
+      '@hewa/settlement-domain':
+        specifier: workspace:*
+        version: link:../../packages/settlement-domain
       '@nestjs/common':
         specifier: 'catalog:'
         version: 12.1.0(reflect-metadata@0.2.2)(rxjs@7.8.2)

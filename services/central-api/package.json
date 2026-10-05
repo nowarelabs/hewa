@@ -16,11 +16,15 @@
     "check": "vp check"
   },
   "dependencies": {
+    "@hewa/billing-domain": "workspace:*",
     "@hewa/console-types": "workspace:*",
     "@hewa/errors": "workspace:*",
+    "@hewa/financial-dashboard-types": "workspace:*",
+    "@hewa/ledger-accounting": "workspace:*",
     "@hewa/marketplace-types": "workspace:*",
     "@hewa/observability": "workspace:*",
     "@hewa/response-codes": "workspace:*",
+    "@hewa/settlement-domain": "workspace:*",
     "@nestjs/common": "catalog:",
     "@nestjs/core": "catalog:",
     "@nestjs/platform-express": "catalog:",

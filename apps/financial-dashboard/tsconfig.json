@@ -1,9 +1,23 @@
 {
   "extends": "@hewa/tsconfig/next.json",
   "compilerOptions": {
+    // No `@hewa/financial-dashboard-types` entry, and that is deliberate. A
+    // `paths` entry pointing at a sibling's `src` is the usual way to type-check a
+    // shared package here, but it also makes *the bundler* resolve through `src`,
+    // and the two consumers of this package disagree about how a relative import is
+    // written. `central-api` runs on `nodenext`, which requires the `.js`
+    // extension; this app is bundled by Next, which wants it extensionless.
+    //
+    // The types package has both on it, so there is no spelling that satisfies
+    // `nodenext` and a bundler at once. Resolving through `node_modules` to the
+    // built `dist` is the answer that both can take, and it is the resolution the
+    // package's own `exports` was written for. The cost is that `dist` has to be
+    // current: `pnpm run build:shared` at the root, which `verify` already runs
+    // before anything here.
     "paths": {
       "@/*": ["./src/*"],
-      "@hewa/response-codes": ["../../packages/response-codes/src/index.ts"]
+      "@hewa/response-codes": ["../../packages/response-codes/src/index.ts"],
+      "@hewa/app-shell": ["../../packages/app-shell/src/index.tsx"]
     }
   },
   "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],

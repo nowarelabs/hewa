@@ -1019,3 +1019,299 @@ Content-Type: application/json
 DELETE {{host}}/api/v1/data/monitors/{{monitorId}}
 x-hewa-service-token: {{serviceToken}}
 x-hewa-write-token: {{writeToken}}
+# ═══════════════════════════════════════════════ finance ═══════════════════════════════
+# The financial dashboard's six reads and five writes, in the order a finance operator
+# works in: what was billed, what is still owed, what was given back, what is going out,
+# what the books say, and what was published.
+#
+# Two conventions differ from the sections above, and both come from what the rows are.
+#
+# **The reads are pinned to seeded ids** (`bil-0011` is the one draft bill, `pay-0003`
+# the one payout mid-rail), because a finance row is a fact about a month and a QA run
+# that invented one would be asserting against its own fixture. The writes that follow
+# move those rows, so each section below returns what it started on: a bill is patched
+# back to `issued`, a payout is retried to `pending`.
+#
+# **A city name carries the run's guid**, because an attestation's key is
+# `(city, month, day)` and a literal city would make the second run of this file a 409
+# about a day that was already published — a fact about the rows, not about the route.
+
+@creditId = crd-{{$guid}}
+@entryId = jrn-{{$guid}}
+@attestationId = att-{{$guid}}
+@qaCity = Kisumu {{$guid}}
+
+### The bills — 200, every status a vocabulary chip can filter on
+GET {{host}}/api/v1/finance/revenue/bills
+x-hewa-service-token: {{serviceToken}}
+
+### The receivables — 200, and each bill's bucket is a function of the clock, not of the row
+GET {{host}}/api/v1/finance/revenue/receivables
+x-hewa-service-token: {{serviceToken}}
+
+### The credits taken off — 200, negative amounts because a credit is a reduction
+GET {{host}}/api/v1/finance/revenue/credits
+x-hewa-service-token: {{serviceToken}}
+
+### The payout obligations — 200
+GET {{host}}/api/v1/finance/settlement/payouts
+x-hewa-service-token: {{serviceToken}}
+
+### The ledger — 200, the chart with each balance on its normal side, and the journal
+### that produced those balances
+GET {{host}}/api/v1/finance/ledger/ledger
+x-hewa-service-token: {{serviceToken}}
+
+### The published attestations — 200, with each city-month's verdict
+GET {{host}}/api/v1/finance/proof/attestations
+x-hewa-service-token: {{serviceToken}}
+
+### Issue the one draft bill — 200
+PATCH {{host}}/api/v1/data/bills/bil-0011
+x-hewa-service-token: {{serviceToken}}
+x-hewa-write-token: {{writeToken}}
+Content-Type: application/json
+
+{
+  "status": "issued"
+}
+
+### Dispute it, with the reason a dispute cannot be without — 200
+PATCH {{host}}/api/v1/data/bills/bil-0011
+x-hewa-service-token: {{serviceToken}}
+x-hewa-write-token: {{writeToken}}
+Content-Type: application/json
+
+{
+  "status": "disputed",
+  "disputeReason": "The overage for March is above the independent probe's figure by more than a rounding difference."
+}
+
+### Resolve the dispute back to issued — 200, so a second run of this file starts where it needs to
+PATCH {{host}}/api/v1/data/bills/bil-0011
+x-hewa-service-token: {{serviceToken}}
+x-hewa-write-token: {{writeToken}}
+Content-Type: application/json
+
+{
+  "status": "issued",
+  "disputeReason": null
+}
+
+### A dispute with no reason — 422 naming `disputeReason`, which is the field to fill in
+PATCH {{host}}/api/v1/data/bills/bil-0011
+x-hewa-service-token: {{serviceToken}}
+x-hewa-write-token: {{writeToken}}
+Content-Type: application/json
+
+{
+  "status": "disputed"
+}
+
+### A paid bill back to draft — 422, because `paid` is terminal and an un-paid bill is one whose ageing can be rewritten
+PATCH {{host}}/api/v1/data/bills/bil-0001
+x-hewa-service-token: {{serviceToken}}
+x-hewa-write-token: {{writeToken}}
+Content-Type: application/json
+
+{
+  "status": "draft"
+}
+
+### A charge on a patch — 422, because a metered figure is not a field an operator types
+PATCH {{host}}/api/v1/data/bills/bil-0011
+x-hewa-service-token: {{serviceToken}}
+x-hewa-write-token: {{writeToken}}
+Content-Type: application/json
+
+{
+  "commitmentChargeMinor": 100000
+}
+
+### A bill cannot be created — 404, because an invoice is issued by the billing run
+POST {{host}}/api/v1/data/bills/bil-0011
+x-hewa-service-token: {{serviceToken}}
+x-hewa-write-token: {{writeToken}}
+Content-Type: application/json
+
+{
+  "status": "issued"
+}
+
+### Record a credit against a bill — 201, and the answer carries the bill's own ISP and month
+POST {{host}}/api/v1/data/credits
+x-hewa-service-token: {{serviceToken}}
+x-hewa-write-token: {{writeToken}}
+Content-Type: application/json
+
+{
+  "id": "{{creditId}}",
+  "billId": "bil-0010",
+  "amountMinor": -250000,
+  "basis": "goodwill",
+  "note": "One day of unannounced maintenance in the February window, credited at the operator's discretion.",
+  "recordedAt": "2026-02-20T09:00:00.000Z"
+}
+
+### A positive credit — 422 naming `amountMinor`, because a charge under a column named after a reduction is not a credit
+POST {{host}}/api/v1/data/credits
+x-hewa-service-token: {{serviceToken}}
+x-hewa-write-token: {{writeToken}}
+Content-Type: application/json
+
+{
+  "id": "{{creditId}}-positive",
+  "billId": "bil-0010",
+  "amountMinor": 250000,
+  "basis": "goodwill",
+  "note": "The same credit with the sign the schema refuses.",
+  "recordedAt": "2026-02-20T09:05:00.000Z"
+}
+
+### A credit against a bill that does not exist — 404, naming the bill rather than the field
+POST {{host}}/api/v1/data/credits
+x-hewa-service-token: {{serviceToken}}
+x-hewa-write-token: {{writeToken}}
+Content-Type: application/json
+
+{
+  "id": "{{creditId}}-absent",
+  "billId": "bil-0000",
+  "amountMinor": -250000,
+  "basis": "goodwill",
+  "note": "A credit against nothing, which the foreign key would answer as a 422 about a constraint.",
+  "recordedAt": "2026-02-20T09:10:00.000Z"
+}
+
+### Post a journal entry — 201, with its legs resolved to the names in the chart
+POST {{host}}/api/v1/data/ledger_entries
+x-hewa-service-token: {{serviceToken}}
+x-hewa-write-token: {{writeToken}}
+Content-Type: application/json
+
+{
+  "id": "{{entryId}}",
+  "reference": "{{entryId}}:operating-costs",
+  "description": "Network operating costs accrued for the month.",
+  "occurredAt": "2026-03-01T00:00:00.000Z",
+  "currency": "USD",
+  "postings": [
+    { "accountId": "acc-4000", "amountMinor": 1250000 },
+    { "accountId": "acc-1001", "amountMinor": -1250000 }
+  ]
+}
+
+### Legs that do not foot — 422 carrying the difference, from the ledger package's own rule
+POST {{host}}/api/v1/data/ledger_entries
+x-hewa-service-token: {{serviceToken}}
+x-hewa-write-token: {{writeToken}}
+Content-Type: application/json
+
+{
+  "id": "{{entryId}}-unbalanced",
+  "reference": "{{entryId}}:unbalanced",
+  "description": "An entry whose legs differ by a hundred minor units.",
+  "occurredAt": "2026-03-01T00:00:00.000Z",
+  "currency": "USD",
+  "postings": [
+    { "accountId": "acc-4000", "amountMinor": 1250000 },
+    { "accountId": "acc-1001", "amountMinor": -1249900 }
+  ]
+}
+
+### A leg into an account outside the chart — 422 naming the account, not the constraint
+POST {{host}}/api/v1/data/ledger_entries
+x-hewa-service-token: {{serviceToken}}
+x-hewa-write-token: {{writeToken}}
+Content-Type: application/json
+
+{
+  "id": "{{entryId}}-unknown",
+  "reference": "{{entryId}}:unknown-account",
+  "description": "An entry posting to an account the chart does not hold.",
+  "occurredAt": "2026-03-01T00:00:00.000Z",
+  "currency": "USD",
+  "postings": [
+    { "accountId": "acc-4000", "amountMinor": 1250000 },
+    { "accountId": "acc-9999", "amountMinor": -1250000 }
+  ]
+}
+
+### A journal entry cannot be deleted — 404, because it is one half of a pair that balances
+DELETE {{host}}/api/v1/data/ledger_entries/{{entryId}}
+x-hewa-service-token: {{serviceToken}}
+x-hewa-write-token: {{writeToken}}
+
+### Publish a day of a city's revenue — 201, stamped by the server rather than sent
+POST {{host}}/api/v1/data/attestations
+x-hewa-service-token: {{serviceToken}}
+x-hewa-write-token: {{writeToken}}
+Content-Type: application/json
+
+{
+  "id": "{{attestationId}}",
+  "city": "{{qaCity}}",
+  "month": "2026-03",
+  "day": 28,
+  "currency": "USD",
+  "grossMinor": 9000000,
+  "costsMinor": 3100000
+}
+
+### The same day again — 409, because `(city, month, day)` is what an attestation is
+POST {{host}}/api/v1/data/attestations
+x-hewa-service-token: {{serviceToken}}
+x-hewa-write-token: {{writeToken}}
+Content-Type: application/json
+
+{
+  "id": "{{attestationId}}-again",
+  "city": "{{qaCity}}",
+  "month": "2026-03",
+  "day": 28,
+  "currency": "USD",
+  "grossMinor": 9000000,
+  "costsMinor": 3100000
+}
+
+### Fail a payout, with the reason a failure cannot be without — 200
+PATCH {{host}}/api/v1/data/payouts/pay-0003
+x-hewa-service-token: {{serviceToken}}
+x-hewa-write-token: {{writeToken}}
+Content-Type: application/json
+
+{
+  "status": "failed",
+  "failureReason": "The beneficiary bank rejected the transfer: invalid account number."
+}
+
+### A failure with no reason — 422 naming `failureReason`
+PATCH {{host}}/api/v1/data/payouts/pay-0003
+x-hewa-service-token: {{serviceToken}}
+x-hewa-write-token: {{writeToken}}
+Content-Type: application/json
+
+{
+  "status": "failed"
+}
+
+### Retry it — 200, and the old reason is cleared, because it described the attempt that was abandoned
+PATCH {{host}}/api/v1/data/payouts/pay-0003
+x-hewa-service-token: {{serviceToken}}
+x-hewa-write-token: {{writeToken}}
+Content-Type: application/json
+
+{
+  "status": "pending",
+  "failureReason": null
+}
+
+### A payout cannot be created — 404, because an obligation is produced by settling a bill
+POST {{host}}/api/v1/data/payouts/pay-0003
+x-hewa-service-token: {{serviceToken}}
+x-hewa-write-token: {{writeToken}}
+Content-Type: application/json
+
+{
+  "status": "pending"
+}

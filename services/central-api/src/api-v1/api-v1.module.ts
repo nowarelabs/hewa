@@ -2,6 +2,7 @@ import { Module } from "@nestjs/common";
 
 import { AlertsModule } from "./alerts/alerts.module.js";
 import { DataWritesModule } from "./data/data-writes.module.js";
+import { FinanceModule } from "./finance/finance.module.js";
 import { InfrastructureModule } from "./infrastructure/infrastructure.module.js";
 import { MarketModule } from "./market/market.module.js";
 import { ServiceAuthModule } from "./service-auth.module.js";
@@ -45,6 +46,7 @@ import { SlasModule } from "./slas/slas.module.js";
     // hand-written here is the list of things Nest can construct.
     AlertsModule,
     DataWritesModule,
+    FinanceModule,
     InfrastructureModule,
     MarketModule,
     SettlementModule,

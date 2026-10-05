@@ -13,8 +13,9 @@ import { corsDelegate } from "../src/config/cors.js";
 import { loadEnv } from "../src/config/env.js";
 import { SERVICE_TOKEN_HEADER } from "../src/api-v1/service-token.guard.js";
 import { WRITE_TOKEN_HEADER } from "../src/api-v1/write-token.guard.js";
+import { CLOCK, systemClock } from "../src/db/clock.js";
 import { DB, type Database } from "../src/db/db.module.js";
-import { seedDatabase } from "../src/db/seed.js";
+import { EPOCH, seedDatabase } from "../src/db/seed.js";
 import * as schema from "../src/db/schema.js";
 
 /**
@@ -50,6 +51,21 @@ export const TEST_WRITE_TOKEN = "e2e-write-token";
  * placeholder, so that if the override ever stops working the suite fails with a
  * connection refused instead of quietly passing against a developer's real data.
  */
+/**
+ * The instant every test reads as "now".
+ *
+ * {@link EPOCH}, the seed's own anchor, so the ageing buckets the finance sections
+ * compute are the ones the fixture's due dates were placed for. The alternative — the
+ * wall clock — makes `revenue/receivables` a function of the day the suite runs: the
+ * assertions would pass this month and fail next month without a line of code
+ * changing, which is the worst possible reason for a suite to go red.
+ *
+ * Overridable per boot so a test can move the date on purpose: ageing a bill from
+ * `current` to `d90_plus` is one call away, and no other section's answer depends on
+ * the day.
+ */
+export const TEST_NOW = new Date(EPOCH);
+
 export const TEST_DATABASE_URL =
   "postgres://central-api:central-api@127.0.0.1:5432/central_api_test";
 
@@ -93,6 +109,15 @@ export interface BootOptions {
    * once at resolution.
    */
   readonly serviceToken?: string | null;
+
+  /**
+   * The instant to read as "now", or `null` to use the wall clock.
+   *
+   * `null` boots the service as a deployment does, and is what a test that is not
+   * about ageing should use if it wants to prove the section works against a real
+   * clock at all. The default is {@link TEST_NOW}.
+   */
+  readonly now?: Date | null;
 
   /**
    * The write token to configure, or `null` to configure none.
@@ -178,11 +203,15 @@ export async function bootCentralApi(options: BootOptions = {}): Promise<INestAp
 
   const database = await createTestDatabase();
 
+  const now = options.now === undefined ? TEST_NOW : options.now;
+
   const moduleRef = await Test.createTestingModule({
     imports: [CentralApiAppModule],
   })
     .overrideProvider(DB)
     .useValue(database.db)
+    .overrideProvider(CLOCK)
+    .useValue(now === null ? systemClock : () => now)
     .compile();
 
   const app = moduleRef.createNestApplication();

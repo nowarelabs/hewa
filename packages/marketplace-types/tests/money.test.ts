@@ -8,6 +8,7 @@ import {
   scaleMoney,
   subtractMoney,
   sumMoney,
+  sumMoneyByCurrency,
   zero,
 } from "../src/money.ts";
 
@@ -52,6 +53,41 @@ describe("arithmetic", () => {
   test("sums a possibly empty list", () => {
     expect(sumMoney([], "KES")).toEqual(zero("KES"));
     expect(sumMoney([money(1, "KES"), money(2, "KES")], "KES").amountMinor).toBe(3);
+  });
+
+  test("sums a mixed list into one amount per currency", () => {
+    // The reason this exists: `sumMoney` is given a currency and refuses a mismatch, so
+    // a caller holding a mixed list has to group before it can total anything. Three
+    // totals is the honest answer; one would be a conversion nobody named.
+    expect(
+      sumMoneyByCurrency([
+        money(100, "USD"),
+        money(1, "KES"),
+        money(50, "USD"),
+        money(2_000_000, "USDC"),
+      ]),
+      // In `CURRENCIES` order — USD, USDC, KES — rather than alphabetical.
+    ).toEqual([money(150, "USD"), money(2_000_000, "USDC"), money(1, "KES")]);
+  });
+
+  test("orders the totals by the currency list, not by arrival", () => {
+    // Two renders of the same list, one of them filtered, have to agree: a summary bar
+    // whose figures reorder themselves between the first paint and the second is a
+    // summary bar nobody can read twice.
+    expect(sumMoneyByCurrency([money(1, "USDC"), money(1, "USD")])).toEqual(
+      sumMoneyByCurrency([money(1, "USD"), money(1, "USDC")]),
+    );
+  });
+
+  test("is empty for an empty list, rather than zero in every currency", () => {
+    expect(sumMoneyByCurrency([])).toEqual([]);
+  });
+
+  test("keeps a sum exact across USDC's six decimals", () => {
+    // 0.1 + 0.2 in USDC minor units is three units, and in a float it is not.
+    const total = sumMoneyByCurrency([money(1, "USDC"), money(2, "USDC")]);
+    expect(total[0]?.amountMinor).toBe(3);
+    expect(formatMoney(total[0]!)).toBe("0.000003 USDC");
   });
 });
 

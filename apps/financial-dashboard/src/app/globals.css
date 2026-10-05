@@ -1,72 +1,20 @@
-/* Minimal reset only. The workspace ships no CSS framework on purpose: each
-   app owns its own styling, and a shared framework would be a shared upgrade
-   nobody asked for. */
-:root {
-  color-scheme: light dark;
-  --surface: Canvas;
-  --ink: CanvasText;
-  --muted: color-mix(in oklab, CanvasText 60%, Canvas);
-  --line: color-mix(in oklab, CanvasText 15%, Canvas);
-}
+/*
+ * The financial dashboard's stylesheet is three lines.
+ *
+ * The palette, the theme tokens and the fixed-viewport base all live in
+ * `@hewa/app-shell`, so that the next app to adopt the shell gets the same
+ * colours without copying them. What is left here is Tailwind itself, the shell's
+ * stylesheet, and one line telling Tailwind where the shell's own class names
+ * are: the package ships compiled CSS, and a utility it uses in
+ * `dist/index.mjs` is not a class Tailwind can find by reading this app's
+ * sources.
+ *
+ * There is no palette of this app's own to remove. The generated shell's
+ * stylesheet held `:root` custom properties and a `main` block for a placeholder
+ * page; both described a screen that no longer exists.
+ */
 
-* {
-  box-sizing: border-box;
-}
+@import "tailwindcss";
+@import "@hewa/app-shell/styles.css";
 
-body {
-  margin: 0;
-  background: var(--surface);
-  color: var(--ink);
-  font:
-    16px/1.6 ui-sans-serif,
-    system-ui,
-    sans-serif;
-}
-
-main {
-  max-width: 42rem;
-  margin: 0 auto;
-  padding: 4rem 1.5rem;
-}
-
-h1 {
-  font-size: 2rem;
-  line-height: 1.2;
-  margin: 0 0 0.5rem;
-}
-
-p {
-  margin: 0 0 1rem;
-}
-
-.subtitle {
-  color: var(--muted);
-  margin: 0 0 2.5rem;
-}
-
-.badge {
-  display: inline-block;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  padding: 0.25rem 0.75rem;
-  font-size: 0.8125rem;
-  color: var(--muted);
-}
-
-dl {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 0.5rem 1.5rem;
-  margin: 0;
-  padding-top: 1.5rem;
-  border-top: 1px solid var(--line);
-}
-
-dt {
-  color: var(--muted);
-}
-
-dd {
-  margin: 0;
-  font-variant-numeric: tabular-nums;
-}
+@source "../../node_modules/@hewa/app-shell/dist";

@@ -145,6 +145,33 @@ export function scaleMoney(value: Money, rate: number): Money {
 }
 
 /**
+ * Add amounts that may be in more than one currency, by currency.
+ *
+ * `sumMoney` takes the currency as an argument because adding across currencies is
+ * refused rather than converted: a conversion needs a rate, and a rate nobody named is
+ * a rate somebody invented. So a list of amounts that might span currencies has no
+ * single total — and a caller that needs one has to say which currency it is summing,
+ * or draw them all.
+ *
+ * This is that second answer, and it returns one amount per currency rather than a
+ * single figure, because a caller that wanted a total and got three totals has to
+ * handle the case where the list spans currencies at all — which is the case worth
+ * handling. Ordered by the currency list so the result is stable between renders.
+ */
+export function sumMoneyByCurrency(values: readonly Money[]): Money[] {
+  const byCurrency = new Map<Currency, number>();
+
+  for (const value of values) {
+    assertCurrency(value.currency);
+    byCurrency.set(value.currency, (byCurrency.get(value.currency) ?? 0) + value.amountMinor);
+  }
+
+  return CURRENCIES.filter((currency) => byCurrency.has(currency)).map((currency) =>
+    money(byCurrency.get(currency) ?? 0, currency),
+  );
+}
+
+/**
  * Render an amount for humans and for logs.
  *
  * Never used for arithmetic, and deliberately never parsed back: a formatted
